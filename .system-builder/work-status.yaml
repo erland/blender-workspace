@@ -9,6 +9,7 @@ completed_steps:
   - DEV-002
   - DEV-003
   - DEV-004
+  - DEV-005
 verification:
   dev001:
     status: PASS
@@ -22,9 +23,12 @@ verification:
   dev004:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43949633134
-    source_sha: 3dbb5b693f5ddf03769ca1a3939fec2f8e553c5e
-    result: Six tests, PostgreSQL 16 migrations, migration CLI, production Docker image
+  dev005:
+    status: PASS
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43952685684
+    source_sha: 6a8297b911aed068bfd8e6f6845a08cd2621b37a
+    result: Storage tests, immutable revisions, concurrent write protection, integrity checks and production Docker image
 next:
-  recommended: DEV-005
-  reason: Implement persistent project artifact storage and version management
+  recommended: DEV-006
+  reason: Connect PostgreSQL metadata and persistent artifacts with Modal job orchestration
 blockers: []

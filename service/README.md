@@ -1,45 +1,26 @@
-# Blender Workspace – MCP service and PostgreSQL metadata
+# Blender Workspace – MCP, PostgreSQL och beständiga artefakter
 
-DEV-003 provides Node.js/TypeScript MCP Streamable HTTP. DEV-004 adds a **database layer** with versioned PostgreSQL migrations and project metadata. No real database connection, project APIs or job scheduling are exposed by the MCP server yet.
+DEV-003: TypeScript/MCP-HTTP. DEV-004: PostgreSQL-projektmetadata. DEV-005: intern, filbaserad versionslagring. Tjänsten erbjuder fortfarande bara `workspace_status` via MCP: projektfunktioner, OAuth och Modal-jobb orkestreras i senare steg.
 
-## Isolated PostgreSQL database on Coolify
+## Databas och migrationer
+Använd en separat databas och dedikerad användare på befintlig PostgreSQL-server. Kör `npm run db:migrate` efter `npm run build` med `DATABASE_URL` inställt. Migrationer har checksummor, transaktionslås och körs separat från appens start.
 
-Use your existing PostgreSQL server, but **create a separate database and dedicated application role**. Never use a shared superuser credential for this service.
+## Beständig projektlagring
 
-Example database administration (execute with appropriate admin permissions, not in application CI):
-```sql
-CREATE ROLE blender_workspace_user LOGIN PASSWORD 'GENERATE_A_LONG_RANDOM_PASSWORD';
-CREATE DATABASE blender_workspace OWNER blender_workspace_user;
-```
-Store `DATABASE_URL` as a secret in Coolify. TLS is recommended across hosts; use the relevant PostgreSQL client SSL configuration. Never commit secrets or log the URL.
+`LocalArtifactStore` i `src/storage/artifact-store.ts` skriver verifierade och oföränderliga versioner till en persistent volym. Läs [lagringsbeskrivningen](docs/artifact-storage.md) för formaten, begränsningarna, återställning och Coolify-konfiguration. Rekommenderad monteringspunkt är `/data/blender-workspace`, med skrivbehörighet för containerns Node-användare.
 
-## Migrations
+OBS: Lagringsklassen är ännu bara ett internt gränssnitt. Kopplingen till PostgreSQL-revisioner och Modal-jobb kommer i DEV-006. Den är ännu inte tillgänglig som MCP-verktyg.
 
-From `service/`, with `DATABASE_URL` configured:
-```bash
-npm install
-npm run build
-npm run db:migrate
-```
-For the production image:
-```bash
-node dist/db/migrate-cli.js
-```
-Execute migrations once as a **separate deploy task before deploying the updated service**. They are transactional, serialized with a PostgreSQL advisory lock and checksum-verified. Do not edit an applied migration: add a new numbered file instead.
-
-`bw_projects` has owner scope, title, description, timestamps, soft deletion and a current revision number. `bw_project_revisions` stores revision number, note and optional storage prefix, not Blender file contents. All repository reads and writes require an explicit owner key. That key will be derived from validated authentication after OAuth integration; it is not caller-provided through a public API now.
-
-## Verification
-
-GitHub Actions runs all Node unit/MCP tests against a dedicated PostgreSQL 16 service container and validates migration idempotency, project CRUD, cross-owner isolation, concurrent revision numbering and Docker packaging. No production credentials are needed.
+## Verifiering
 
 ```bash
 cd service
 npm install
 npm run check
-# Run integration tests with an isolated TEST_DATABASE_URL
 ```
 
-## Security and remaining scope
+GitHub Actions kör lagringens enhetstester och Docker-bygge. PostgreSQL-integrationstester körs i separat workflow med en tillfällig PostgreSQL 16-server.
 
-The HTTP MCP scaffold uses an internal bearer token and is **not publicly deployable as a ChatGPT connector until OAuth is implemented**. The next step, DEV-005, handles persistent project files. The later job orchestration step connects metadata to Modal. Health endpoints still describe the MCP scaffold, not PostgreSQL availability.
+## Säkerhet
+
+Den befintliga Bearer-token är enbart ett tillfälligt internt skydd. Tjänsten är **inte redo för publik ChatGPT-anslutning** innan OAuth, ägaridentifiering och verktygsåtkomst är implementerade. Lämna inte ut lokala filvägar till okända klienter.
