@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import pg from 'pg';
+const { Pool } = pg;
 import { applyMigrations } from '../dist/db/migrations.js';
 import { ProjectRepository } from '../dist/db/projects.js';
 
