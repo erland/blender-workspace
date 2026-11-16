@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: ready_for_next_step
+status: verification_pending
 mode: CREATE
-selected_step: null
-in_progress: null
+selected_step: DEV-003
+in_progress: DEV-003
 completed_steps:
   - DEV-001
   - DEV-002
@@ -17,8 +17,10 @@ verification:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43945568990
     source_sha: 5c224f85a0b8b43ecef49a3d1ac504224ef49ad4
-    details: Authenticated Modal Sandbox created two animated GLBs, two Blender project versions, manifests, and verified termination
+  dev003:
+    status: PENDING
+    reason: Await Node.js MCP integration tests and production Docker build in CI
 next:
-  recommended: DEV-003
-  reason: Implement Coolify-hosted MCP service scaffold; PostgreSQL remains for DEV-004
+  recommended: REPAIR-DEV-003
+  reason: Resolve implementation or verification failures before completing DEV-003
 blockers: []

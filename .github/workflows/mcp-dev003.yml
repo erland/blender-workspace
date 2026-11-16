@@ -1,0 +1,31 @@
+name: DEV-003 MCP service
+on:
+  pull_request:
+    paths:
+      - 'service/**'
+      - '.github/workflows/mcp-dev003.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'service/**'
+      - '.github/workflows/mcp-dev003.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mcp-service:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: service
+        run: npm install --no-audit --no-fund
+      - name: Build and test
+        working-directory: service
+        run: npm run check
+      - name: Build production Docker image
+        run: docker build -f service/Dockerfile -t blender-workspace-mcp:dev003 service
