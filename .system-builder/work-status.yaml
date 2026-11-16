@@ -1,0 +1,21 @@
+schema_version: 1
+project: blender-workspace
+status: ready_for_next_step
+mode: CREATE
+selected_step: null
+in_progress: null
+completed_steps:
+  - DEV-001
+verification:
+  planning:
+    status: PASS
+  runtime:
+    status: PASS
+    evidence:
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922598791
+      commit_sha: c8347583a5d27905ed185b83ae60ae162e3bba1a
+      result: Docker build, headless Blender, v1/v2 revision, GLB skin/animation, manifests and artifacts passed
+next:
+  recommended: DEV-002
+  reason: Run the proven headless Blender workflow in short-lived Modal execution
+blockers: []

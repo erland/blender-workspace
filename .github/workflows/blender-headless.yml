@@ -1,0 +1,38 @@
+name: Blender headless DEV-001
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  blender-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static Python tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Check shell syntax
+        run: bash -n scripts/run_smoke.sh scripts/run_docker.sh
+      - name: Build Blender Docker image
+        run: docker build --progress plain -t blender-workspace:dev001 .
+      - name: Execute Blender integration test
+        run: ./scripts/run_docker.sh
+      - name: Check generated files
+        run: |
+          test -s out/monster_v1.blend
+          test -s out/monster_v2.blend
+          test -s out/monster_v1.glb
+          test -s out/monster_v2.glb
+          test -s out/monster_v1.json
+          test -s out/monster_v2.json
+      - name: Upload Blender evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-dev001-artifacts
+          path: out/
+          if-no-files-found: warn
+          retention-days: 7
