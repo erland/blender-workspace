@@ -9,15 +9,16 @@ import { ProjectRepository } from '../dist/db/projects.js';
 test('PostgreSQL migration idempotency, revisions and owner isolation',
   {skip:!process.env.TEST_DATABASE_URL}, async t=>{
   const pool=new Pool({connectionString:process.env.TEST_DATABASE_URL,max:10});
-  t.after(async()=>pool.end());
   const once=await applyMigrations(pool);
   assert.deepEqual(await applyMigrations(pool),once);
   const owner='test-'+randomUUID(), other='test-'+randomUUID();
   const db=new ProjectRepository(pool);
   const p=await db.create(owner,'Cube Monster','Walking test');
   t.after(async()=>{
-    await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[p.id]);
-    await pool.query('DELETE FROM bw_projects WHERE id=$1',[p.id]);
+    try {
+      await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[p.id]);
+      await pool.query('DELETE FROM bw_projects WHERE id=$1',[p.id]);
+    } finally { await pool.end(); }
   });
   assert.equal(p.current_revision,0);
   assert.equal((await db.get(owner,p.id))?.name,'Cube Monster');
