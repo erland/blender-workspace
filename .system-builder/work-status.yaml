@@ -12,8 +12,8 @@ verification:
   runtime:
     status: PASS
     evidence:
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922030335
-      commit_sha: e9b1f3d740006becabf6b97fe34c31c6df8ba08b
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922598791
+      commit_sha: c8347583a5d27905ed185b83ae60ae162e3bba1a
       result: Docker build, headless Blender, v1/v2 revision, GLB skin/animation, manifests and artifacts passed
 next:
   recommended: DEV-002
