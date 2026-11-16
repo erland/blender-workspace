@@ -1,14 +1,15 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: ready_for_next_step
 mode: CREATE
-selected_step: DEV-005
-in_progress: DEV-005
+selected_step: null
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
   - DEV-003
   - DEV-004
+  - DEV-005
 verification:
   dev001:
     status: PASS
@@ -23,9 +24,11 @@ verification:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43949633134
   dev005:
-    status: PENDING
-    reason: Await CI artifact integrity, concurrency, persistence and image verification
+    status: PASS
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43952685684
+    source_sha: 6a8297b911aed068bfd8e6f6845a08cd2621b37a
+    result: Storage tests, immutable revisions, concurrent write protection, integrity checks and production Docker image
 next:
-  recommended: REPAIR-DEV-005
-  reason: Resolve any failing DEV-005 checks before completion
+  recommended: DEV-006
+  reason: Connect PostgreSQL metadata and persistent artifacts with Modal job orchestration
 blockers: []
