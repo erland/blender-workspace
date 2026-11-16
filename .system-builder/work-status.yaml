@@ -1,21 +1,24 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: ready_for_next_step
 mode: CREATE
-selected_step: DEV-002
-in_progress: DEV-002
+selected_step: null
+in_progress: null
 completed_steps:
   - DEV-001
+  - DEV-002
 verification:
   planning:
     status: PASS
-  runtime:
+  dev001:
     status: PASS
-    evidence:
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922598791
-      commit_sha: c8347583a5d27905ed185b83ae60ae162e3bba1a
-      result: Docker build, headless Blender, v1/v2 revision, GLB skin/animation, manifests and artifacts passed
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922824540
+  dev002:
+    status: PASS
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43945568990
+    source_sha: 5c224f85a0b8b43ecef49a3d1ac504224ef49ad4
+    details: Authenticated Modal Sandbox created two animated GLBs, two Blender project versions, manifests, and verified termination
 next:
-  recommended: REPAIR-DEV-002
-  reason: Run the proven headless Blender workflow in short-lived Modal execution
+  recommended: DEV-003
+  reason: Implement Coolify-hosted MCP service scaffold; PostgreSQL remains for DEV-004
 blockers: []
