@@ -1,12 +1,13 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: ready_for_next_step
 mode: CREATE
-selected_step: DEV-003
-in_progress: DEV-003
+selected_step: null
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
+  - DEV-003
 verification:
   planning:
     status: PASS
@@ -18,9 +19,11 @@ verification:
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43945568990
     source_sha: 5c224f85a0b8b43ecef49a3d1ac504224ef49ad4
   dev003:
-    status: PENDING
-    reason: Await Node.js MCP integration tests and production Docker build in CI
+    status: PASS
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43947670876
+    source_sha: 0a4b84920f62defb6ab4730a2da709dfd71d30c3
+    result: TypeScript build, four HTTP/MCP integration tests, production Docker build
 next:
-  recommended: REPAIR-DEV-003
-  reason: Resolve implementation or verification failures before completing DEV-003
+  recommended: DEV-004
+  reason: Implement PostgreSQL project metadata and migrations using existing shared database server
 blockers: []
