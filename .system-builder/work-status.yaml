@@ -1,0 +1,17 @@
+schema_version: 1
+project: blender-workspace
+status: verification_pending
+mode: CREATE
+selected_step: DEV-001
+in_progress: DEV-001
+completed_steps: []
+verification:
+  planning:
+    status: PASS
+  runtime:
+    status: PENDING
+    reason: Awaiting real Blender execution and artifact validation in GitHub Actions
+next:
+  recommended: REPAIR-DEV-001
+  reason: Inspect CI, fix any Blender runtime failures, and only then complete DEV-001
+blockers: []
