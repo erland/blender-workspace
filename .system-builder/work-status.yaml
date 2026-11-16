@@ -16,8 +16,17 @@ verification:
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43952685684
   dev006:
     status: PENDING
-    reason: Await PostgreSQL job orchestration tests, worker integration and Docker verification
+    implementation_sha: 4704fffb7f6b6282b66d3b30b494b342f589227d
+    ci:
+      status: PASS
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43957315378
+      tests: 18
+      result: PostgreSQL job journal, recovery, concurrent revision protection, MCP image and Modal worker image passed
+    live_modal:
+      status: PENDING
+      reason: Authenticated end-to-end Modal to PostgreSQL to persistent storage run must pass after merge
 next:
   recommended: REPAIR-DEV-006
-  reason: Verify job journal and recovery; live Modal execution remains an external gate
-blockers: []
+  reason: Merge PR #7 then run DEV-006 Modal live workflow on main; inspect artifacts and mark completion only after PASS
+blockers:
+  - Real Modal worker orchestration integration verification pending
