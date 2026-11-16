@@ -11,4 +11,4 @@ COPY tests ./tests
 COPY scripts ./scripts
 RUN chmod +x scripts/*.sh && useradd -m -u 10001 blender && mkdir -p /workspace/out && chown -R blender:blender /workspace
 USER blender
-ENTRYPOINT ["/workspace/scripts/run_smoke.sh"]
+CMD ["/workspace/scripts/run_smoke.sh"]
