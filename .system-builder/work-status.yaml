@@ -1,17 +1,21 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: ready_for_next_step
 mode: CREATE
-selected_step: DEV-001
-in_progress: DEV-001
-completed_steps: []
+selected_step: null
+in_progress: null
+completed_steps:
+  - DEV-001
 verification:
   planning:
     status: PASS
   runtime:
-    status: PENDING
-    reason: Awaiting real Blender execution and artifact validation in GitHub Actions
+    status: PASS
+    evidence:
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922030335
+      commit_sha: e9b1f3d740006becabf6b97fe34c31c6df8ba08b
+      result: Docker build, headless Blender, v1/v2 revision, GLB skin/animation, manifests and artifacts passed
 next:
-  recommended: REPAIR-DEV-001
-  reason: Inspect CI, fix any Blender runtime failures, and only then complete DEV-001
+  recommended: DEV-002
+  reason: Run the proven headless Blender workflow in short-lived Modal execution
 blockers: []
