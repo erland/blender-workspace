@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: ready_for_next_step
+status: verification_pending
 mode: CREATE
-selected_step: null
-in_progress: null
+selected_step: DEV-002
+in_progress: DEV-002
 completed_steps:
   - DEV-001
 verification:
@@ -16,6 +16,6 @@ verification:
       commit_sha: c8347583a5d27905ed185b83ae60ae162e3bba1a
       result: Docker build, headless Blender, v1/v2 revision, GLB skin/animation, manifests and artifacts passed
 next:
-  recommended: DEV-002
+  recommended: REPAIR-DEV-002
   reason: Run the proven headless Blender workflow in short-lived Modal execution
 blockers: []
