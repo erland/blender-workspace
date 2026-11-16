@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import { McpServer } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
-import * as z from 'zod/v4';
 import { authorized, type ServiceConfig } from './config.js';
 
 export function createApp(config: ServiceConfig) {
@@ -30,7 +29,7 @@ export function createApp(config: ServiceConfig) {
     server.registerTool('workspace_status', {
       title: 'Blender Workspace status',
       description: 'Read the MCP service status. This scaffold does not yet run Blender or access projects.',
-      inputSchema: z.object({})
+      inputSchema: {}
     }, async () => ({
       content: [{ type: 'text' as const, text: JSON.stringify({ service: 'blender-workspace', stage: 'DEV-003', blender_jobs_available: false }) }]
     }));
