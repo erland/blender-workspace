@@ -1,6 +1,6 @@
 {
   "name": "blender-workspace-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,16 +10,19 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "test": "node --test __tests__/*.test.mjs",
-    "check": "npm run build && npm test"
+    "check": "npm run build && npm test",
+    "db:migrate": "node dist/db/migrate-cli.js"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
     "@modelcontextprotocol/node": "2.1.2",
     "fastify": "5.6.2",
-    "zod": "4.1.12"
+    "zod": "4.1.12",
+    "pg": "8.13.1"
   },
   "devDependencies": {
     "@types/node": "22.15.30",
+    "@types/pg": "8.11.10",
     "typescript": "5.9.3"
   }
 }
