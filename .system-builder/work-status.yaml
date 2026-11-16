@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: ready_for_next_step
+status: verification_pending
 mode: CREATE
-selected_step: null
-in_progress: null
+selected_step: DEV-006
+in_progress: DEV-006
 completed_steps:
   - DEV-001
   - DEV-002
@@ -11,24 +11,22 @@ completed_steps:
   - DEV-004
   - DEV-005
 verification:
-  dev001:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922824540
-  dev002:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43945568990
-  dev003:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43947670876
-  dev004:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43949633134
   dev005:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43952685684
-    source_sha: 6a8297b911aed068bfd8e6f6845a08cd2621b37a
-    result: Storage tests, immutable revisions, concurrent write protection, integrity checks and production Docker image
+  dev006:
+    status: PENDING
+    implementation_sha: 4704fffb7f6b6282b66d3b30b494b342f589227d
+    ci:
+      status: PASS
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43957315378
+      tests: 18
+      result: PostgreSQL job journal, recovery, concurrent revision protection, MCP image and Modal worker image passed
+    live_modal:
+      status: PENDING
+      reason: Authenticated end-to-end Modal to PostgreSQL to persistent storage run must pass after merge
 next:
-  recommended: DEV-006
-  reason: Connect PostgreSQL metadata and persistent artifacts with Modal job orchestration
-blockers: []
+  recommended: REPAIR-DEV-006
+  reason: Merge PR #7 then run DEV-006 Modal live workflow on main; inspect artifacts and mark completion only after PASS
+blockers:
+  - Real Modal worker orchestration integration verification pending
