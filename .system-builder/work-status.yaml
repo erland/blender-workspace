@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: ready_for_next_step
+status: verification_pending
 mode: CREATE
-selected_step: null
-in_progress: null
+selected_step: DEV-005
+in_progress: DEV-005
 completed_steps:
   - DEV-001
   - DEV-002
@@ -22,9 +22,10 @@ verification:
   dev004:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43949633134
-    source_sha: 3dbb5b693f5ddf03769ca1a3939fec2f8e553c5e
-    result: Six tests, PostgreSQL 16 migrations, migration CLI, production Docker image
+  dev005:
+    status: PENDING
+    reason: Await CI artifact integrity, concurrency, persistence and image verification
 next:
-  recommended: DEV-005
-  reason: Implement persistent project artifact storage and version management
+  recommended: REPAIR-DEV-005
+  reason: Resolve any failing DEV-005 checks before completion
 blockers: []
