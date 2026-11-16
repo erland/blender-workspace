@@ -1,31 +1,30 @@
 # DEV-006 – spårbar jobborkestrering
 
-En avgränsad första kedja för den **befintliga förutbestämda testfiguren**: skapa projektmetadata → reservera exklusivt jobb → kör Blender via Modal → hämta tre v1-artefakter → skriv immutabel revision till volym → registrera revision och slutfört jobb i en PostgreSQL-transaktion.
+Första kedjan för den **befintliga förutbestämda testfiguren**: skapa projektmetadata → reservera exklusivt jobb → kör Blender via Modal → hämta tre v1-artefakter → publicera immutabel revision på volym → registrera revision och slutfört jobb i en PostgreSQL-transaktion.
 
 ## Konsekvens och återhämtning
 
-`bw_jobs` lagrar status `pending`, `running`, `needs_recovery`, `completed` eller `failed`. Unikt partiellt index tillåter ett aktivt jobb per projekt. Inga artefakter publiceras om en annan revision finns. När filpubliceringen lyckats men databaskommittén misslyckas behålls de immutabla filerna och jobbet markeras `needs_recovery`. `recover` validerar manifest och SHA-256 innan den slutför metadata utan ny Modal-körning.
+`bw_jobs` lagrar `pending`, `running`, `needs_recovery`, `completed` eller `failed`. Partiellt unikt index tillåter ett aktivt jobb per projekt. När filpubliceringen lyckats men databaskommittén misslyckas behålls filerna och jobbet markeras `needs_recovery`. Återhämtningen verifierar SHA-256 och avslutar metadata utan att köra Modal igen.
 
-Vid abrupt processkrasch kan ett jobb vara kvar i `running`. Om dess filer finns går återhämtning; annars krävs operatörsåtgärd. Den första implementationen har ingen lease-/watchdog, och fullständig automatisk återhämtning/övervakning är fortfarande ett senare driftkrav.
+Vid en abrupt krasch kan ett jobb stanna i `running`. Om dess filer finns kan en operatör återställa det; om de saknas krävs separat felhantering. Ingen lease/watchdog eller automatisk omstart finns ännu.
 
-## Verklig Modal-exekvering
+## Worker
 
-`ModalPythonExecutor` anropar exakt det beprövade Python-programmet `modal_provider/runner.py` med fasta argument. Det behövs en **separat worker-miljö** med Python 3, Modal SDK och hela repositoryts Blender Docker-kontext. Första versionen exponerar bara en intern CLI; HTTP/MCP-servern får inga nya exekveringsverktyg innan autentisering och tillståndsmodell är klara.
+`ModalPythonExecutor` startar den beprövade `modal_provider/runner.py` med fasta parametrar. En separat Docker-image i `job-worker/Dockerfile` innehåller Python, Modal SDK och Blender-byggkontexten. Det existerande MCP-API:ets image påverkas inte. Worker exponeras inte på nätverket.
 
-CLI från repo-roten efter installation av Node/Modal och med miljövariablerna `DATABASE_URL`, `ARTIFACT_ROOT`, `MODAL_WORKER_ROOT` (absolut sökväg till repo-roten) och Modal-token:
+Se [job-worker/README.md](../../job-worker/README.md) för build och drift.
 
-```bash
-cd service && npm install && npm run build && npm run db:migrate
-node dist/jobs/cli.js create internal-operator "My cube monster"
-node dist/jobs/cli.js recover internal-operator <job-id>
-```
+Lagring och databas behöver finnas på samma säkra Coolify-nätverk eller en väl skyddad anslutning. Kör migrationer före körning, skydda Modal-token som secrets, och montera en beständig skrivbar volym för `ARTIFACT_ROOT`.
 
-Alla kommandon kräver välgrundad intern ägaridentitet från operatör; det finns ingen publik access.
+## Verifieringsgräns
+
+PR-CI kör enhetstester, riktiga PostgreSQL-transaktioner, rollback/felvägar, och bygger både MCP-image och worker-image. Ett separat `workflow_dispatch` (**DEV-006 Modal live**) kör full kedja med ett riktigt Modal-jobb samt en temporär PostgreSQL-instans efter att workflowet mergats till `main`. Detta manuella test är avsiktligt debiterbart och kräver redan konfigurerade `MODAL_TOKEN_ID` och `MODAL_TOKEN_SECRET`.
+
+**DEV-006 är inte helt verifierat förrän den riktiga jobbkedjan passerat.**
 
 ## Begränsningar
 
-- Prototypen kan skapa **första revisionen** från det hårdkodade monsterexemplet. Ändringar av en befintlig `.blend` från valfri tidigare version stöds ännu inte av Modal-runnern.
-- Worker-körmiljön ingår inte i tjänstens nuvarande Docker-image; den körs separat. Kravet på en komplett produktionsdistribution med Coolify är därför **inte verifierat** här.
-- Ett jobb ägs av den identitet som anroparen har verifierat; `owner` är ännu inte OAuth-bundet.
-- Kostnadsdata och fullständig jobbtelemetri lagras ännu inte i databasen; Modal-loggning/rapport finns i DEV-002.
-- GitHub Actions verifierar PostgreSQL-transaktioner, fillagring, felvägar och mockad worker, men inte ett riktigt Modal-jobb med den nya orkestreringen. Live-verifiering återstår innan DEV-006 godkänns fullt ut.
+- Bara revision 1 av det hårdkodade monstret kan skapas. Tidigare `.blend` används ännu inte som input till Modal.
+- Ingen publik MCP-jobbhantering eller OAuth-identifierad användare; bara en intern CLI.
+- Ägaridentiteten måste anges av en betrodd operatör; annars saknas garanti att projekten isoleras mellan användare.
+- Kostnader, schemaläggning, watchdog, färdiga download-länkar och fullständiga driftsrutiner återstår.

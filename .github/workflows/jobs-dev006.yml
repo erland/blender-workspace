@@ -3,19 +3,23 @@ on:
   pull_request:
     paths:
       - 'service/**'
+      - 'job-worker/**'
       - '.github/workflows/jobs-dev006.yml'
+      - '.github/workflows/jobs-dev006-live.yml'
   push:
     branches: [main]
     paths:
       - 'service/**'
+      - 'job-worker/**'
       - '.github/workflows/jobs-dev006.yml'
+      - '.github/workflows/jobs-dev006-live.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   job-orchestration:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16
@@ -48,5 +52,7 @@ jobs:
         run: |
           DATABASE_URL="$TEST_DATABASE_URL" npm run db:migrate
           DATABASE_URL="$TEST_DATABASE_URL" npm run db:migrate
-      - name: Build existing MCP service image
+      - name: Build MCP image
         run: docker build -f service/Dockerfile -t blender-workspace-mcp:dev006 service
+      - name: Build one-shot Modal worker image
+        run: docker build -f job-worker/Dockerfile -t blender-workspace-worker:dev006 .

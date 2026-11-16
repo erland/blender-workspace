@@ -1,0 +1,74 @@
+name: DEV-006 Modal live
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-modal-orchestration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: blender_test
+          POSTGRES_PASSWORD: ci-password-not-for-production
+          POSTGRES_DB: blender_workspace_live_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U blender_test -d blender_workspace_live_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://blender_test:ci-password-not-for-production@127.0.0.1:5432/blender_workspace_live_test
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Modal credentials
+        run: |
+          test -n "$MODAL_TOKEN_ID" && test -n "$MODAL_TOKEN_SECRET" || { echo 'Modal credentials missing'; exit 1; }
+      - name: Build one-shot worker image
+        run: docker build -f job-worker/Dockerfile -t blender-workspace-worker:dev006 .
+      - name: Prepare test volume
+        run: |
+          mkdir -p out-live
+          sudo chown 1000:1000 out-live
+      - name: Migrate test database
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL="$DATABASE_URL" \
+            --entrypoint node blender-workspace-worker:dev006 dist/db/migrate-cli.js
+      - name: Create project, run Modal, persist revision
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e MODAL_TOKEN_ID="$MODAL_TOKEN_ID" \
+            -e MODAL_TOKEN_SECRET="$MODAL_TOKEN_SECRET" \
+            -v "$PWD/out-live:/data/blender-workspace" \
+            blender-workspace-worker:dev006 create internal-live-test "Cube monster"
+      - name: Validate stored immutable artifacts
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, hashlib
+          manifests=list(pathlib.Path('out-live').glob('*/00000001/manifest.json'))
+          assert len(manifests)==1, manifests
+          manifest=json.loads(manifests[0].read_text())
+          assert manifest['revision']==1
+          assert len(manifest['artifacts'])==3
+          for item in manifest['artifacts']:
+              filename=manifests[0].parent/item['name']
+              assert filename.stat().st_size==item['sizeBytes']
+              assert hashlib.sha256(filename.read_bytes()).hexdigest()==item['sha256']
+          print('POSTGRES + MODAL + ARTIFACTS PASS')
+          PY
+      - name: Upload artifact evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev006-modal-files
+          path: out-live/
+          if-no-files-found: warn
+          retention-days: 7
