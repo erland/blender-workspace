@@ -1,22 +1,45 @@
-# DEV-003 – Blender Workspace MCP service
+# Blender Workspace – MCP service and PostgreSQL metadata
 
-An isolated Fastify + MCP TypeScript SDK v2 scaffold intended for Coolify. Provides **POST /mcp** with Streamable HTTP and one read-only `workspace_status` tool. GET/DELETE /mcp return 405. Unauthenticated clients receive 401; requests with a mismatched Origin receive 403. Public liveness is `/health/live`; readiness is `/health/ready`.
+DEV-003 provides Node.js/TypeScript MCP Streamable HTTP. DEV-004 adds a **database layer** with versioned PostgreSQL migrations and project metadata. No real database connection, project APIs or job scheduling are exposed by the MCP server yet.
 
-## Local checks
+## Isolated PostgreSQL database on Coolify
+
+Use your existing PostgreSQL server, but **create a separate database and dedicated application role**. Never use a shared superuser credential for this service.
+
+Example database administration (execute with appropriate admin permissions, not in application CI):
+```sql
+CREATE ROLE blender_workspace_user LOGIN PASSWORD 'GENERATE_A_LONG_RANDOM_PASSWORD';
+CREATE DATABASE blender_workspace OWNER blender_workspace_user;
+```
+Store `DATABASE_URL` as a secret in Coolify. TLS is recommended across hosts; use the relevant PostgreSQL client SSL configuration. Never commit secrets or log the URL.
+
+## Migrations
+
+From `service/`, with `DATABASE_URL` configured:
+```bash
+npm install
+npm run build
+npm run db:migrate
+```
+For the production image:
+```bash
+node dist/db/migrate-cli.js
+```
+Execute migrations once as a **separate deploy task before deploying the updated service**. They are transactional, serialized with a PostgreSQL advisory lock and checksum-verified. Do not edit an applied migration: add a new numbered file instead.
+
+`bw_projects` has owner scope, title, description, timestamps, soft deletion and a current revision number. `bw_project_revisions` stores revision number, note and optional storage prefix, not Blender file contents. All repository reads and writes require an explicit owner key. That key will be derived from validated authentication after OAuth integration; it is not caller-provided through a public API now.
+
+## Verification
+
+GitHub Actions runs all Node unit/MCP tests against a dedicated PostgreSQL 16 service container and validates migration idempotency, project CRUD, cross-owner isolation, concurrent revision numbering and Docker packaging. No production credentials are needed.
 
 ```bash
 cd service
 npm install
 npm run check
-MCP_ACCESS_TOKEN="$(openssl rand -hex 32)" PUBLIC_ORIGIN=http://127.0.0.1:3000 npm start
+# Run integration tests with an isolated TEST_DATABASE_URL
 ```
 
-## Coolify
+## Security and remaining scope
 
-Set Dockerfile path `service/Dockerfile` and build context `service/`. Expose container port 3000 and use a dedicated HTTPS domain. Set `PUBLIC_ORIGIN` to that domain's exact HTTPS origin, `MCP_ACCESS_TOKEN` to a randomly generated 64-character hexadecimal value, and the health probe to `/health/live`. Do not commit secrets.
-
-**Not ready for public ChatGPT connection:** The temporary bearer token is only an initial internal protection, not OAuth. Do not expose the endpoint to untrusted clients or connect it publicly until DEV-008 authentication is implemented and tested. Project operations, PostgreSQL, file storage and Modal orchestration remain future steps. Readiness only means the scaffold is running.
-
-## Security notes
-
-Use HTTPS termination at Coolify, a non-privileged Node process and restrictive inbound access while auth is incomplete. Restrict outbound networking and reverse-proxy access as appropriate. There is no generic Python execution tool in this step.
+The HTTP MCP scaffold uses an internal bearer token and is **not publicly deployable as a ChatGPT connector until OAuth is implemented**. The next step, DEV-005, handles persistent project files. The later job orchestration step connects metadata to Modal. Health endpoints still describe the MCP scaffold, not PostgreSQL availability.

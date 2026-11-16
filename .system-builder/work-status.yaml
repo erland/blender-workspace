@@ -8,22 +8,23 @@ completed_steps:
   - DEV-001
   - DEV-002
   - DEV-003
+  - DEV-004
 verification:
-  planning:
-    status: PASS
   dev001:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43922824540
   dev002:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43945568990
-    source_sha: 5c224f85a0b8b43ecef49a3d1ac504224ef49ad4
   dev003:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43947670876
-    source_sha: 0a4b84920f62defb6ab4730a2da709dfd71d30c3
-    result: TypeScript build, four HTTP/MCP integration tests, production Docker build
+  dev004:
+    status: PASS
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43949633134
+    source_sha: 3dbb5b693f5ddf03769ca1a3939fec2f8e553c5e
+    result: Six tests, PostgreSQL 16 migrations, migration CLI, production Docker image
 next:
-  recommended: DEV-004
-  reason: Implement PostgreSQL project metadata and migrations using existing shared database server
+  recommended: DEV-005
+  reason: Implement persistent project artifact storage and version management
 blockers: []

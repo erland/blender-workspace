@@ -1,0 +1,50 @@
+name: DEV-004 PostgreSQL
+on:
+  pull_request:
+    paths:
+      - 'service/**'
+      - '.github/workflows/postgres-dev004.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'service/**'
+      - '.github/workflows/postgres-dev004.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: blender_test
+          POSTGRES_PASSWORD: ci-password-not-for-production
+          POSTGRES_DB: blender_workspace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://blender_test:ci-password-not-for-production@127.0.0.1:5432/blender_workspace_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: service
+        run: npm install --no-audit --no-fund
+      - name: Compile and run all tests against PostgreSQL
+        working-directory: service
+        run: npm run check
+      - name: Run migration CLI against PostgreSQL
+        working-directory: service
+        run: DATABASE_URL="$TEST_DATABASE_URL" npm run db:migrate
+      - name: Build production service image
+        run: docker build -f service/Dockerfile -t blender-workspace-mcp:dev004 service
