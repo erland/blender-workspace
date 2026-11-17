@@ -15,9 +15,19 @@ completed_steps:
 verification:
   dev008:
     status: PENDING
-    reason: Google identity provider adapter, internal OAuth authorization server, PKCE and client registration require CI and live acceptance
+    google_implementation:
+      status: PASS
+      source_sha: 845120cb0b7ba7d3ac2e6525c9fefeb8bad0e636
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44171296914
+      evidence: 24 tests passed including PKCE, simulated Google sign-in, DCR, PostgreSQL, tokens, refresh rotation and MCP
+    regressions:
+      status: PASS
+      evidence: All 8 CI workflows passed, including Blender and Modal worker builds
+    live_acceptance:
+      status: PENDING
+      reason: Google Cloud OAuth client, real browser login, consent and ChatGPT redirect against Coolify not verified
 next:
   recommended: REPAIR-DEV-008
-  reason: Verify code and simulated Google sign-in in CI, then configure real Google Cloud OAuth and ChatGPT connection before completion
+  reason: Merge PR #12 and configure Google Cloud OAuth and Coolify; then verify real Google and ChatGPT login before marking DEV-008 complete
 blockers:
-  - Real Google sign-in, consent and ChatGPT OAuth callback not verified against deployed Coolify service
+  - Real Google identity provider and ChatGPT callback live verification pending
