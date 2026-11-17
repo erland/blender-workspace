@@ -21,6 +21,8 @@ export function createApp(config:ServiceConfig,
  if(config.oauth) app.get('/.well-known/oauth-protected-resource',
    async()=>protectedResourceMetadata(config.oauth!));
  if(options?.google){
+   app.addContentTypeParser('application/x-www-form-urlencoded',
+     {parseAs:'string'},(_request,body,done)=>done(null,body));
    const google=options.google;
    app.get('/.well-known/oauth-authorization-server',async()=>google.metadata());
    app.get('/jwks',async(_request,reply)=>{
