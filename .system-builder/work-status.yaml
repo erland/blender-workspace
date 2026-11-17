@@ -1,21 +1,22 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: ready_for_next_step
 mode: CREATE
-selected_step: DEV-006
-in_progress: DEV-006
+selected_step: null
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
   - DEV-003
   - DEV-004
   - DEV-005
+  - DEV-006
 verification:
   dev005:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/43952685684
   dev006:
-    status: PENDING
+    status: PASS
     implementation_sha: 4704fffb7f6b6282b66d3b30b494b342f589227d
     ci:
       status: PASS
@@ -23,10 +24,11 @@ verification:
       tests: 18
       result: PostgreSQL job journal, recovery, concurrent revision protection, MCP image and Modal worker image passed
     live_modal:
-      status: PENDING
-      reason: Live run 43962004046 generated artifacts but host runner could not read mode-0700 project directory; rerun with CI ownership repair required
+      status: PASS
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44007363798
+      source_sha: e2966c31763e9df1a9f6de797894ecf080582e0f
+      result: Authenticated Modal job, PostgreSQL migration and completed job journal, immutable artifacts, SHA-256 verification, and evidence upload passed
 next:
-  recommended: REPAIR-DEV-006
-  reason: Merge permission fix PR, run DEV-006 Modal live again on main, inspect artifacts and mark complete only after PASS
-blockers:
-  - Real Modal worker orchestration integration verification pending
+  recommended: DEV-007
+  reason: Implement MCP tools for authenticated project and job operations without bypassing owner isolation
+blockers: []
