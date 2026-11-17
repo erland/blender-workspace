@@ -24,9 +24,9 @@ verification:
       result: PostgreSQL job journal, recovery, concurrent revision protection, MCP image and Modal worker image passed
     live_modal:
       status: PENDING
-      reason: Authenticated end-to-end Modal to PostgreSQL to persistent storage run must pass after merge
+      reason: Live run 43962004046 generated artifacts but host runner could not read mode-0700 project directory; rerun with CI ownership repair required
 next:
   recommended: REPAIR-DEV-006
-  reason: Merge PR #7 then run DEV-006 Modal live workflow on main; inspect artifacts and mark completion only after PASS
+  reason: Merge permission fix PR, run DEV-006 Modal live again on main, inspect artifacts and mark complete only after PASS
 blockers:
   - Real Modal worker orchestration integration verification pending
