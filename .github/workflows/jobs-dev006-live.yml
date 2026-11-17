@@ -49,6 +49,14 @@ jobs:
             -e MODAL_TOKEN_SECRET="$MODAL_TOKEN_SECRET" \
             -v "$PWD/out-live:/data/blender-workspace" \
             blender-workspace-worker:dev006 create internal-live-test "Cube monster"
+      - name: Restore runner access to test evidence
+        if: always()
+        run: |
+          # The worker creates project folders with mode 0700 for confidentiality.
+          # Keep those production permissions; only transfer ownership in CI.
+          sudo chown -R "$(id -u):$(id -g)" out-live
+          find out-live -type d -exec chmod u+rwx {} +
+          find out-live -type f -exec chmod u+rw {} +
       - name: Validate stored immutable artifacts
         run: |
           python3 - <<'PY'
