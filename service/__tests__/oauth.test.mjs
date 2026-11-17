@@ -68,4 +68,6 @@ test('OAuth MCP endpoint advertises metadata and challenges bad tokens',async t=
  const good=await request(await f.issue());
  assert.equal(good.status,200,good.text);
  assert.match(good.text,/workspace_list_projects/);
+ assert.match(good.text,/securitySchemes/);
+ assert.match(good.text,/workspace:write/);
 });
