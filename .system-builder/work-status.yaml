@@ -1,7 +1,7 @@
 schema_version: 1
 project: blender-workspace
 status: verification_pending
-mode: CREATE
+mode: REPAIR
 selected_step: DEV-008
 in_progress: DEV-008
 completed_steps:
@@ -13,27 +13,11 @@ completed_steps:
   - DEV-006
   - DEV-007
 verification:
-  dev006:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/44007363798
-  dev007:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/44008353668
   dev008:
     status: PENDING
-    implementation_sha: 4674bc3adafa5a3da41f18e7999f1440ce8e1d7c
-    code_ci:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44009573427
-      checks: 23 authenticated JWT and MCP/PostgreSQL tests plus Docker image
-    regressions:
-      status: PASS
-      result: Blender, jobs, metadata, artifact storage and previous MCP workflows passed
-    external_oauth:
-      status: PENDING
-      reason: Real authorization server, PKCE client registration, token audience and ChatGPT callback not yet configured or tested
+    reason: Google identity provider adapter, internal OAuth authorization server, PKCE and client registration require CI and live acceptance
 next:
   recommended: REPAIR-DEV-008
-  reason: Merge OAuth resource-server PR, configure compatible external provider and test ChatGPT OAuth flow before marking DEV-008 complete
+  reason: Verify code and simulated Google sign-in in CI, then configure real Google Cloud OAuth and ChatGPT connection before completion
 blockers:
-  - External authorization server and live ChatGPT login/consent verification pending
+  - Real Google sign-in, consent and ChatGPT OAuth callback not verified against deployed Coolify service

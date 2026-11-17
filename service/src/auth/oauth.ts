@@ -23,7 +23,7 @@ export function remoteJwks(settings:OAuthSettings):Jwks {
 export async function verifyOAuthAccessToken(token:string,settings:OAuthSettings,keys:Jwks):Promise<Principal> {
   // Asymmetric signatures only; fail closed on audience, issuer, lifetime and scopes.
   const {payload}=await jwtVerify(token,keys,{issuer:settings.issuer,
-    audience:settings.resource,algorithms:['RS256','ES256'],clockTolerance:5});
+    audience:settings.resource,algorithms:['RS256','ES256','EdDSA'],clockTolerance:5});
   if (!payload.sub || typeof payload.sub!=='string' || payload.sub.length>512 ||
       typeof payload.exp!=='number' || !Number.isSafeInteger(payload.exp))
     throw new Error('Missing subject or expiration');
