@@ -1,6 +1,6 @@
 import {createHash,createHmac,createPrivateKey,createPublicKey,randomBytes,timingSafeEqual,
  type KeyObject} from 'node:crypto';
-import {createLocalJWKSet,createRemoteJWKSet,jwtVerify,SignJWT} from 'jose';
+import {createLocalJWKSet,createRemoteJWKSet,jwtVerify,SignJWT,type JWK} from 'jose';
 import type {Pool} from 'pg';
 import {GoogleOAuthStore,type OAuthClient,type GrantRecord,type RefreshRecord} from './google-store.js';
 import {READ_SCOPE,WRITE_SCOPE} from './oauth.js';
@@ -74,7 +74,7 @@ export class GoogleOAuthServer {
     const pub=createPublicKey(this.key).export({format:'jwk'}) as Record<string,unknown>;
     const jwk={...pub,alg:'EdDSA',use:'sig',kid:'bw-oauth-1'};
     this.jwks={keys:[jwk]};
-    this.verifierKeys=createLocalJWKSet(this.jwks as {keys:JsonWebKey[]});
+    this.verifierKeys=createLocalJWKSet(this.jwks as {keys:JWK[]});
     this.provider=provider??new LiveGoogleProvider(config);
   }
   get issuer(){return this.config.publicOrigin;}
