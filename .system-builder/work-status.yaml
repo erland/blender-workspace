@@ -21,9 +21,19 @@ verification:
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/44008353668
   dev008:
     status: PENDING
-    reason: Await authenticated JWT/MCP/PostgreSQL CI and external OAuth-provider configuration/ChatGPT verification
+    implementation_sha: 4674bc3adafa5a3da41f18e7999f1440ce8e1d7c
+    code_ci:
+      status: PASS
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44009573427
+      checks: 23 authenticated JWT and MCP/PostgreSQL tests plus Docker image
+    regressions:
+      status: PASS
+      result: Blender, jobs, metadata, artifact storage and previous MCP workflows passed
+    external_oauth:
+      status: PENDING
+      reason: Real authorization server, PKCE client registration, token audience and ChatGPT callback not yet configured or tested
 next:
   recommended: REPAIR-DEV-008
-  reason: Complete OAuth CI and then test external authorization server integration without lowering scope or audience restrictions
+  reason: Merge OAuth resource-server PR, configure compatible external provider and test ChatGPT OAuth flow before marking DEV-008 complete
 blockers:
-  - Real external authorization-server PKCE, consent and ChatGPT callback not yet configured
+  - External authorization server and live ChatGPT login/consent verification pending
