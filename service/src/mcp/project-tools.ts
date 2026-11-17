@@ -31,12 +31,17 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 }
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
- permissions?:ReadonlySet<string>,oauth=false):void {
+ permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
   const {ownerKey,projects,jobs}=deps;
   const allowed=permissions??new Set([READ_SCOPE,WRITE_SCOPE]);
-  const denied=(scope:string)=>allowed.has(scope)?null:
-    {isError:true,content:[{type:'text' as const,text:'Insufficient OAuth scope'}]};
-  const schemes=(scope:string)=>oauth?{securitySchemes:[{type:'oauth2' as const,scopes:[scope]}]}:{};
+  const denied=(scope:string)=>allowed.has(scope)?null:{
+    isError:true,
+    content:[{type:'text' as const,text:'Insufficient OAuth scope'}],
+    ...(oauth&&resource?{_meta:{'mcp/www_authenticate':[
+      'Bearer resource_metadata="'+resource+'/.well-known/oauth-protected-resource", error="insufficient_scope", error_description="Required scope: '+scope+'"'
+    ]}}:{})
+  };
+  const schemes=(scope:string)=>oauth?{_meta:{securitySchemes:[{type:'oauth2' as const,scopes:[scope]}]}}:{};
 
   server.registerTool('workspace_list_projects', {
     description: 'List Blender Workspace projects owned by this configured workspace identity.',
