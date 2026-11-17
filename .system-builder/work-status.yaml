@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: ready_for_next_step
+status: verification_pending
 mode: CREATE
-selected_step: null
-in_progress: null
+selected_step: DEV-007
+in_progress: DEV-007
 completed_steps:
   - DEV-001
   - DEV-002
@@ -12,23 +12,13 @@ completed_steps:
   - DEV-005
   - DEV-006
 verification:
-  dev005:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43952685684
   dev006:
     status: PASS
-    implementation_sha: 4704fffb7f6b6282b66d3b30b494b342f589227d
-    ci:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43957315378
-      tests: 18
-      result: PostgreSQL job journal, recovery, concurrent revision protection, MCP image and Modal worker image passed
-    live_modal:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44007363798
-      source_sha: e2966c31763e9df1a9f6de797894ecf080582e0f
-      result: Authenticated Modal job, PostgreSQL migration and completed job journal, immutable artifacts, SHA-256 verification, and evidence upload passed
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/44007363798
+  dev007:
+    status: PENDING
+    reason: Await real MCP HTTP and PostgreSQL integration tests, owner isolation and Docker build
 next:
-  recommended: DEV-007
-  reason: Implement MCP tools for authenticated project and job operations without bypassing owner isolation
+  recommended: REPAIR-DEV-007
+  reason: Complete verification and fix any CI failures before advancing
 blockers: []
