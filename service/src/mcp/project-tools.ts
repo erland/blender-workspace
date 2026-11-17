@@ -29,9 +29,7 @@ function safeProject(p: {id:string;name:string;description:string;current_revisi
 function safeJob(j: {id:string;project_id:string;status:string;requested_revision:number;created_at?:Date}) {
   return {id:j.id,projectId:j.project_id,status:j.status,requestedRevision:j.requested_revision};
 }
-/** Single tenant prototype: a trusted bearer token maps to one fixed server-side owner key.
- * Never accept caller-specified owner identity; replace this with OAuth scopes in DEV-008.
- */
+/** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false):void {
   const {ownerKey,projects,jobs}=deps;
@@ -96,7 +94,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
   });
   server.registerTool('workspace_get_job', {
     description: 'Check the status of a Blender job owned by this workspace.',
-    inputSchema: {jobId:uuid},annotations:{readOnlyHint:true}
+    inputSchema: {jobId:uuid},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
   }, async ({jobId}) => {
     const block=denied(READ_SCOPE);if(block)return block;
     try {const j=await jobs.get(ownerKey,jobId);
