@@ -2,12 +2,16 @@ import Fastify from 'fastify';
 import { McpServer } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { authorized, type ServiceConfig } from './config.js';
+import { registerProjectTools, type ProjectServices } from './mcp/project-tools.js';
 
-export function createApp(config: ServiceConfig) {
+export function createApp(config: ServiceConfig, services?: ProjectServices) {
+  if (services && (!config.ownerKey || services.ownerKey !== config.ownerKey)) {
+    throw new Error('Configured owner identity must match database service scope');
+  }
   const app = Fastify({ logger: { level: 'info' }, bodyLimit: 256 * 1024, trustProxy: false });
 
   app.get('/health/live', async () => ({ status: 'alive', service: 'blender-workspace' }));
-  app.get('/health/ready', async () => ({ status: 'ready', service: 'blender-workspace', integrations: 'not_configured' }));
+  app.get('/health/ready', async () => ({ status: 'ready', service: 'blender-workspace', integrations: services ? 'project_metadata' : 'not_configured' }));
 
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.split('?')[0].startsWith('/mcp')) return;
@@ -25,14 +29,15 @@ export function createApp(config: ServiceConfig) {
 
   app.post('/mcp', async (request, reply) => {
     // One isolated, stateless MCP server and transport for each request.
-    const server = new McpServer({ name: 'blender-workspace', version: '0.3.0' });
+    const server = new McpServer({ name: 'blender-workspace', version: '0.7.0' });
     server.registerTool('workspace_status', {
       title: 'Blender Workspace status',
-      description: 'Read the MCP service status. This scaffold does not yet run Blender or access projects.',
+      description: 'Read Blender Workspace service and capabilities. The Modal worker is separate.',
       inputSchema: {}
     }, async () => ({
-      content: [{ type: 'text' as const, text: JSON.stringify({ service: 'blender-workspace', stage: 'DEV-003', blender_jobs_available: false }) }]
+      content: [{ type: 'text' as const, text: JSON.stringify({ service: 'blender-workspace', stage: 'DEV-007', project_tools_available: !!services, blender_jobs_available: false }) }]
     }));
+    if (services) registerProjectTools(server, services);
     const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     let closed = false;
     const close = () => {

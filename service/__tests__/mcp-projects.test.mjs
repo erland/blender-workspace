@@ -37,7 +37,6 @@ function output(reply) {
 }
 test('authenticated MCP project tools, owner isolation and queued job', {skip:!process.env.TEST_DATABASE_URL}, async t => {
   const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:6});
-  t.after(()=>pool.end());
   await applyMigrations(pool);
   const owner='mcp-test-'+randomUUID(),other='mcp-other-'+randomUUID();
   const call=await start(t,owner,pool),otherCall=await start(t,other,pool);
@@ -49,9 +48,11 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   const created=output(await call('tools/call',{name:'workspace_create_project',arguments:{name:'Cube monster'}}));
   const id=created.project.id;
   t.after(async()=>{
-    await pool.query('DELETE FROM bw_jobs WHERE project_id=$1',[id]);
-    await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[id]);
-    await pool.query('DELETE FROM bw_projects WHERE id=$1',[id]);
+    try {
+      await pool.query('DELETE FROM bw_jobs WHERE project_id=$1',[id]);
+      await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[id]);
+      await pool.query('DELETE FROM bw_projects WHERE id=$1',[id]);
+    } finally { await pool.end(); }
   });
   assert.equal(created.project.name,'Cube monster');
   assert.equal(output(await call('tools/call',{name:'workspace_list_projects',arguments:{}})).projects.some(p=>p.id===id),true);
