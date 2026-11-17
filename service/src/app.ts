@@ -53,7 +53,7 @@ export function createApp(config:ServiceConfig,
      title:'Blender Workspace status',
      description:'Read service capabilities; Modal jobs run in a separate worker.',
      inputSchema:{},
-     ...(config.oauth?{securitySchemes:[{type:'oauth2' as const,scopes:[READ_SCOPE]}]}:{})
+     ...(config.oauth?{_meta:{securitySchemes:[{type:'oauth2' as const,scopes:[READ_SCOPE]}]}}:{})
    },async()=>({content:[{type:'text' as const,text:JSON.stringify({
      service:'blender-workspace',stage:'DEV-008',
      project_tools_available:Boolean(services),blender_jobs_available:false})}]}));
@@ -61,7 +61,7 @@ export function createApp(config:ServiceConfig,
      const principal=principals.get(request);
      if(!principal){reply.code(401).send({error:'unauthorized'});return;}
      registerProjectTools(server,{ownerKey:principal.ownerKey,
-       projects:services.projects,jobs:services.jobs},principal.scopes,Boolean(config.oauth));
+       projects:services.projects,jobs:services.jobs},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
    }
    const transport=new NodeStreamableHTTPServerTransport({sessionIdGenerator:undefined});
    let closed=false;
