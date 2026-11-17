@@ -59,7 +59,9 @@ test('OAuth users stay isolated and read-only grants cannot create or queue', {s
  assert.ok(!output(await call(bob,'workspace_list_projects')).projects.some(p=>p.id===createdId));
  assert.equal((await call(bob,'workspace_get_project',{projectId:createdId})).isError,true);
  assert.equal((await call(bob,'workspace_queue_demo',{projectId:createdId})).isError,true);
- assert.equal((await call(readonly,'workspace_create_project',{name:'Forbidden'})).isError,true);
+ const forbidden=await call(readonly,'workspace_create_project',{name:'Forbidden'});
+ assert.equal(forbidden.isError,true);
+ assert.match(JSON.stringify(forbidden._meta??{}),/insufficient_scope/);
  assert.equal((await call(readonly,'workspace_queue_demo',{projectId:createdId})).isError,true);
  assert.equal(output(await call(readonly,'workspace_get_project',{projectId:createdId})).project.id,createdId);
  const queued=output(await call(alice,'workspace_queue_demo',{projectId:createdId})).job;
