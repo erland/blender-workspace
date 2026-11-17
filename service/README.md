@@ -1,26 +1,25 @@
-# Blender Workspace – MCP, PostgreSQL och beständiga artefakter
+# Blender Workspace MCP Service
 
-DEV-003: TypeScript/MCP-HTTP. DEV-004: PostgreSQL-projektmetadata. DEV-005: intern, filbaserad versionslagring. Tjänsten erbjuder fortfarande bara `workspace_status` via MCP: projektfunktioner, OAuth och Modal-jobb orkestreras i senare steg.
+DEV-003–006 established Streamable HTTP, PostgreSQL, immutable artifact storage and a separately hosted Modal job worker. DEV-007 exposes owner-scoped project and job metadata tools through MCP.
 
-## Databas och migrationer
-Använd en separat databas och dedikerad användare på befintlig PostgreSQL-server. Kör `npm run db:migrate` efter `npm run build` med `DATABASE_URL` inställt. Migrationer har checksummor, transaktionslås och körs separat från appens start.
+See [DEV-007 MCP tools](docs/dev-007-mcp-tools.md) for the seven tools, single-tenant security model, work queue behavior and how to operate the separate worker.
 
-## Beständig projektlagring
+## Local development and tests
 
-`LocalArtifactStore` i `src/storage/artifact-store.ts` skriver verifierade och oföränderliga versioner till en persistent volym. Läs [lagringsbeskrivningen](docs/artifact-storage.md) för formaten, begränsningarna, återställning och Coolify-konfiguration. Rekommenderad monteringspunkt är `/data/blender-workspace`, med skrivbehörighet för containerns Node-användare.
-
-OBS: Lagringsklassen är ännu bara ett internt gränssnitt. Kopplingen till PostgreSQL-revisioner och Modal-jobb kommer i DEV-006. Den är ännu inte tillgänglig som MCP-verktyg.
-
-## Verifiering
-
-```bash
+```sh
 cd service
 npm install
 npm run check
 ```
 
-GitHub Actions kör lagringens enhetstester och Docker-bygge. PostgreSQL-integrationstester körs i separat workflow med en tillfällig PostgreSQL 16-server.
+GitHub Actions runs the full HTTP/MCP/TypeScript test suite with PostgreSQL 16 and builds the production Docker image. Migration command: `npm run db:migrate` with `DATABASE_URL` configured.
 
-## Säkerhet
+## Coolify
 
-Den befintliga Bearer-token är enbart ett tillfälligt internt skydd. Tjänsten är **inte redo för publik ChatGPT-anslutning** innan OAuth, ägaridentifiering och verktygsåtkomst är implementerade. Lämna inte ut lokala filvägar till okända klienter.
+Set Dockerfile `service/Dockerfile` with build context `service/`. Use a dedicated HTTPS origin and a dedicated PostgreSQL user/database, and configure `PUBLIC_ORIGIN`, `MCP_ACCESS_TOKEN`, `DATABASE_URL` and `MCP_OWNER_KEY` as secrets. Health endpoint: `/health/live`.
+
+**Not publicly connectable to ChatGPT yet.** Bearer auth is temporary and represents a single internal workspace. OAuth, per-user identity, user consent and authorization are required before exposing this externally.
+
+## Storage and worker
+
+The separate Modal worker remains in `job-worker/`. `workspace_queue_demo` only reserves a database job, not a Modal invocation. The current worker supports a trusted `run OWNER JOB_ID` command. There is still no automatic job polling/dispatcher. More general Blender modeling and project revision editing remain subsequent work.

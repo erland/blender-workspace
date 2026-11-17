@@ -5,6 +5,7 @@ export interface ServiceConfig {
   port: number;
   accessToken: string;
   publicOrigin: string;
+  ownerKey?: string;
 }
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
   const accessToken = env.MCP_ACCESS_TOKEN ?? '';
@@ -19,7 +20,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
   }
   const port = Number(env.PORT ?? '3000');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
-  return { host: env.HOST ?? '0.0.0.0', port, accessToken, publicOrigin: url.origin };
+  const ownerKey = env.MCP_OWNER_KEY;
+  if (ownerKey !== undefined && (!ownerKey.trim() || ownerKey.length > 200)) {
+    throw new Error('MCP_OWNER_KEY must be a nonempty internal owner identity (max 200 characters)');
+  }
+  return { host: env.HOST ?? '0.0.0.0', port, accessToken, publicOrigin: url.origin,
+    ownerKey };
 }
 export function authorized(header: string | undefined, token: string): boolean {
   const value = header?.startsWith('Bearer ') ? header.slice(7) : '';

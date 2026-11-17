@@ -11,24 +11,17 @@ completed_steps:
   - DEV-004
   - DEV-005
   - DEV-006
+  - DEV-007
 verification:
-  dev005:
-    status: PASS
-    workflow_run: https://github.com/erland/blender-workspace/actions/runs/43952685684
   dev006:
     status: PASS
-    implementation_sha: 4704fffb7f6b6282b66d3b30b494b342f589227d
-    ci:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/43957315378
-      tests: 18
-      result: PostgreSQL job journal, recovery, concurrent revision protection, MCP image and Modal worker image passed
-    live_modal:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44007363798
-      source_sha: e2966c31763e9df1a9f6de797894ecf080582e0f
-      result: Authenticated Modal job, PostgreSQL migration and completed job journal, immutable artifacts, SHA-256 verification, and evidence upload passed
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/44007363798
+  dev007:
+    status: PASS
+    workflow_run: https://github.com/erland/blender-workspace/actions/runs/44008353668
+    source_sha: 5d422c593c4729144c0d741045232e85b632ba93
+    result: 19 MCP, PostgreSQL, access isolation, queued job and regression tests; production Docker image PASS
 next:
-  recommended: DEV-007
-  reason: Implement MCP tools for authenticated project and job operations without bypassing owner isolation
+  recommended: DEV-008
+  reason: Implement OAuth and user-scoped authorization for safe external ChatGPT connection
 blockers: []

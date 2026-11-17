@@ -14,12 +14,15 @@ const projects=new ProjectRepository(pool);
 const jobs=new JobRepository(pool);
 const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),new ModalPythonExecutor(worker));
 const [command,owner,argument]=process.argv.slice(2);
-if(!owner||!argument)throw new Error('Usage: create OWNER PROJECT_NAME | recover OWNER JOB_ID');
+if(!owner||!argument)throw new Error('Usage: create OWNER PROJECT_NAME | run OWNER JOB_ID | recover OWNER JOB_ID');
 try {
   if(command==='create'){
     const project=await projects.create(owner,argument);
     const job=await workflow.createDemo(owner,project.id);
     console.log(JSON.stringify({projectId:project.id,jobId:job.id,status:job.status}));
+  } else if(command==='run'){
+    const job=await workflow.execute(owner,argument);
+    console.log(JSON.stringify({jobId:job.id,status:job.status}));
   } else if(command==='recover'){
     const job=await workflow.recover(owner,argument);
     console.log(JSON.stringify({jobId:job.id,status:job.status}));

@@ -1,0 +1,47 @@
+name: DEV-007 MCP project and job tools
+on:
+  pull_request:
+    paths:
+      - 'service/**'
+      - '.github/workflows/mcp-dev007.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'service/**'
+      - '.github/workflows/mcp-dev007.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mcp-project-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: blender_test
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: blender_workspace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://blender_test:ci-only-password@127.0.0.1:5432/blender_workspace_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: service
+        run: npm install --no-audit --no-fund
+      - name: Run real MCP HTTP and database integration tests
+        working-directory: service
+        run: npm run check
+      - name: Check production service Docker image
+        run: docker build -f service/Dockerfile -t blender-workspace-mcp:dev007 service
