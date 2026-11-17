@@ -1,34 +1,44 @@
-import { timingSafeEqual } from 'node:crypto';
+import {timingSafeEqual} from 'node:crypto';
+import type {OAuthSettings} from './auth/oauth.js';
 
 export interface ServiceConfig {
-  host: string;
-  port: number;
-  accessToken: string;
-  publicOrigin: string;
-  ownerKey?: string;
+  host:string; port:number; accessToken:string;publicOrigin:string;ownerKey?:string;
+  authMode:'internal'|'oauth';oauth?:OAuthSettings;
 }
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
-  const accessToken = env.MCP_ACCESS_TOKEN ?? '';
-  if (accessToken.length < 32) throw new Error('MCP_ACCESS_TOKEN must contain at least 32 characters');
-  const publicOrigin = env.PUBLIC_ORIGIN ?? '';
-  if (!publicOrigin) throw new Error('PUBLIC_ORIGIN required (for example https://blender.example.org)');
-  const url = new URL(publicOrigin);
-  if (url.pathname !== '/' || url.search || url.hash || url.username || url.password ||
-      !['https:', 'http:'].includes(url.protocol) ||
-      (url.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(url.hostname))) {
-    throw new Error('PUBLIC_ORIGIN must be an HTTPS origin, or localhost HTTP for tests');
-  }
-  const port = Number(env.PORT ?? '3000');
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
-  const ownerKey = env.MCP_OWNER_KEY;
-  if (ownerKey !== undefined && (!ownerKey.trim() || ownerKey.length > 200)) {
-    throw new Error('MCP_OWNER_KEY must be a nonempty internal owner identity (max 200 characters)');
-  }
-  return { host: env.HOST ?? '0.0.0.0', port, accessToken, publicOrigin: url.origin,
-    ownerKey };
+function validateUrl(value:string,label:string,allowLocal=false):string {
+  const url=new URL(value);
+  if(url.username||url.password||url.search||url.hash||
+      (label==='PUBLIC_ORIGIN'&&url.pathname!=='/'))
+    throw new Error(label+' invalid URL');
+  if(url.protocol!=='https:'&&!(allowLocal&&url.protocol==='http:'&&
+      ['localhost','127.0.0.1','[::1]'].includes(url.hostname)))
+    throw new Error(label+' must use HTTPS');
+  return label==='PUBLIC_ORIGIN'?url.origin:value.replace(/\/$/,'');
 }
-export function authorized(header: string | undefined, token: string): boolean {
-  const value = header?.startsWith('Bearer ') ? header.slice(7) : '';
-  const a = Buffer.from(value), b = Buffer.from(token);
-  return a.length === b.length && timingSafeEqual(a,b);
+export function loadConfig(env:NodeJS.ProcessEnv=process.env):ServiceConfig {
+  const authMode=env.MCP_AUTH_MODE??'internal';
+  if(authMode!=='oauth'&&authMode!=='internal')throw new Error('Invalid MCP_AUTH_MODE');
+  const allowLocal=env.OAUTH_ALLOW_LOCAL_TEST==='true'&&env.NODE_ENV==='test';
+  const publicOrigin=validateUrl(env.PUBLIC_ORIGIN??'','PUBLIC_ORIGIN',authMode==='internal'||allowLocal);
+  const port=Number(env.PORT??'3000');
+  if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT');
+  const accessToken=env.MCP_ACCESS_TOKEN??'';
+  const ownerKey=env.MCP_OWNER_KEY;
+  if(ownerKey!==undefined&&(!ownerKey.trim()||ownerKey.length>200))
+    throw new Error('Invalid MCP_OWNER_KEY');
+  if(authMode==='internal'){
+    if(accessToken.length<32)throw new Error('MCP_ACCESS_TOKEN must contain at least 32 characters');
+    return {host:env.HOST??'0.0.0.0',port,accessToken,publicOrigin,ownerKey,authMode};
+  }
+  if(ownerKey||accessToken)throw new Error('Legacy owner or token prohibited in OAuth mode');
+  if(!env.OAUTH_ISSUER||!env.OAUTH_JWKS_URI)throw new Error('OAuth issuer and JWKS URI required');
+  const issuer=validateUrl(env.OAUTH_ISSUER,'OAUTH_ISSUER',allowLocal);
+  const jwksUri=validateUrl(env.OAUTH_JWKS_URI,'OAUTH_JWKS_URI',allowLocal);
+  return {host:env.HOST??'0.0.0.0',port,accessToken:'',publicOrigin,authMode,
+    oauth:{issuer,jwksUri,resource:publicOrigin}};
+}
+export function authorized(header:string|undefined,token:string):boolean {
+  const value=header?.startsWith('Bearer ')?header.slice(7):'';
+  const a=Buffer.from(value),b=Buffer.from(token);
+  return a.length===b.length&&timingSafeEqual(a,b);
 }

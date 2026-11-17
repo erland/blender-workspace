@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: ready_for_next_step
+status: verification_pending
 mode: CREATE
-selected_step: null
-in_progress: null
+selected_step: DEV-008
+in_progress: DEV-008
 completed_steps:
   - DEV-001
   - DEV-002
@@ -19,9 +19,11 @@ verification:
   dev007:
     status: PASS
     workflow_run: https://github.com/erland/blender-workspace/actions/runs/44008353668
-    source_sha: 5d422c593c4729144c0d741045232e85b632ba93
-    result: 19 MCP, PostgreSQL, access isolation, queued job and regression tests; production Docker image PASS
+  dev008:
+    status: PENDING
+    reason: Await authenticated JWT/MCP/PostgreSQL CI and external OAuth-provider configuration/ChatGPT verification
 next:
-  recommended: DEV-008
-  reason: Implement OAuth and user-scoped authorization for safe external ChatGPT connection
-blockers: []
+  recommended: REPAIR-DEV-008
+  reason: Complete OAuth CI and then test external authorization server integration without lowering scope or audience restrictions
+blockers:
+  - Real external authorization-server PKCE, consent and ChatGPT callback not yet configured

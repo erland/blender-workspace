@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ProjectRepository } from '../db/projects.js';
-import { JobConflict, type JobRepository } from '../jobs/job-repository.js';
+import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
+import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 
 export interface ProjectServices {
   ownerKey: string;
@@ -31,41 +32,52 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 /** Single tenant prototype: a trusted bearer token maps to one fixed server-side owner key.
  * Never accept caller-specified owner identity; replace this with OAuth scopes in DEV-008.
  */
-export function registerProjectTools(server: McpServer, deps: ProjectServices): void {
-  const {ownerKey,projects,jobs} = deps;
+export function registerProjectTools(server:McpServer,deps:ProjectServices,
+ permissions?:ReadonlySet<string>,oauth=false):void {
+  const {ownerKey,projects,jobs}=deps;
+  const allowed=permissions??new Set([READ_SCOPE,WRITE_SCOPE]);
+  const denied=(scope:string)=>allowed.has(scope)?null:
+    {isError:true,content:[{type:'text' as const,text:'Insufficient OAuth scope'}]};
+  const schemes=(scope:string)=>oauth?{securitySchemes:[{type:'oauth2' as const,scopes:[scope]}]}:{};
+
   server.registerTool('workspace_list_projects', {
     description: 'List Blender Workspace projects owned by this configured workspace identity.',
     inputSchema: {limit: z.number().int().min(1).max(100).optional()},
-    annotations: {readOnlyHint:true}
+    annotations: {readOnlyHint:true},...schemes(READ_SCOPE)
   }, async ({limit}) => {
+    const block=denied(READ_SCOPE);if(block)return block;
     try { return result({projects:(await projects.list(ownerKey,limit??50)).map(safeProject)}); }
     catch(e) { return failure(e); }
   });
   server.registerTool('workspace_create_project', {
     description: 'Create an empty Blender Workspace project. Does not run Blender.',
-    inputSchema: {name:cleanName, description:cleanDescription.optional()}
+    inputSchema: {name:cleanName, description:cleanDescription.optional()},...schemes(WRITE_SCOPE)
   }, async ({name,description}) => {
+    const block=denied(WRITE_SCOPE);if(block)return block;
     try { return result({project:safeProject(await projects.create(ownerKey,name,description??''))}); }
     catch(e) { return failure(e); }
   });
   server.registerTool('workspace_get_project', {
     description: 'Read metadata for a project you own.',
-    inputSchema: {projectId:uuid}, annotations: {readOnlyHint:true}
+    inputSchema: {projectId:uuid}, annotations: {readOnlyHint:true},...schemes(READ_SCOPE)
   }, async ({projectId}) => {
+    const block=denied(READ_SCOPE);if(block)return block;
     try { const p=await projects.get(ownerKey,projectId);return p?result({project:safeProject(p)}):failure(new JobConflict('Project not found')); }
     catch(e) { return failure(e); }
   });
   server.registerTool('workspace_rename_project', {
     description: 'Rename an existing Blender Workspace project you own.',
-    inputSchema: {projectId:uuid,name:cleanName}
+    inputSchema: {projectId:uuid,name:cleanName},...schemes(WRITE_SCOPE)
   }, async ({projectId,name}) => {
+    const block=denied(WRITE_SCOPE);if(block)return block;
     try {const p=await projects.rename(ownerKey,projectId,name);return p?result({project:safeProject(p)}):failure(new JobConflict('Project not found')); }
     catch(e) {return failure(e);}
   });
   server.registerTool('workspace_list_revisions', {
     description: 'List saved Blender project revisions for a project you own.',
-    inputSchema: {projectId:uuid}, annotations: {readOnlyHint:true}
+    inputSchema: {projectId:uuid}, annotations: {readOnlyHint:true},...schemes(READ_SCOPE)
   }, async ({projectId}) => {
+    const block=denied(READ_SCOPE);if(block)return block;
     try { const p=await projects.get(ownerKey,projectId);
       if(!p)return failure(new JobConflict('Project not found'));
       const versions=await projects.revisions(ownerKey,projectId);
@@ -74,8 +86,9 @@ export function registerProjectTools(server: McpServer, deps: ProjectServices): 
   });
   server.registerTool('workspace_queue_demo', {
     description: 'Queue the first cube-monster demonstration revision. This does not start Modal immediately; an internal worker must execute the pending job.',
-    inputSchema: {projectId:uuid,note:note.optional()}
+    inputSchema: {projectId:uuid,note:note.optional()},...schemes(WRITE_SCOPE)
   }, async ({projectId,note:jobNote}) => {
+    const block=denied(WRITE_SCOPE);if(block)return block;
     try {
       const job=await jobs.reserve(ownerKey,projectId,0,jobNote??'Create cube monster');
       return result({job:safeJob(job),message:'Queued; awaiting worker execution'});
@@ -85,6 +98,7 @@ export function registerProjectTools(server: McpServer, deps: ProjectServices): 
     description: 'Check the status of a Blender job owned by this workspace.',
     inputSchema: {jobId:uuid},annotations:{readOnlyHint:true}
   }, async ({jobId}) => {
+    const block=denied(READ_SCOPE);if(block)return block;
     try {const j=await jobs.get(ownerKey,jobId);
       return j?result({job:safeJob(j)}):failure(new JobConflict('Job not found'));
     } catch(e){return failure(e);}

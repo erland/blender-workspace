@@ -1,25 +1,17 @@
-# Blender Workspace MCP Service
+# Blender Workspace MCP
 
-DEV-003–006 established Streamable HTTP, PostgreSQL, immutable artifact storage and a separately hosted Modal job worker. DEV-007 exposes owner-scoped project and job metadata tools through MCP.
+The service exposes MCP over Streamable HTTP and uses PostgreSQL for project metadata. DEV-008 adds a resource-server OAuth 2.1 mode with JWT validation and per-user owner scoping.
 
-See [DEV-007 MCP tools](docs/dev-007-mcp-tools.md) for the seven tools, single-tenant security model, work queue behavior and how to operate the separate worker.
+Read [OAuth resource server instructions](docs/dev-008-oauth.md) before configuring an identity provider or publishing any endpoint. This service **does not issue OAuth tokens**. A compatible external authorization server (for example an appropriately configured OpenID Connect provider) is required.
 
-## Local development and tests
+Commands from `service/`:
 
 ```sh
-cd service
 npm install
 npm run check
+DATABASE_URL=... npm run db:migrate
 ```
 
-GitHub Actions runs the full HTTP/MCP/TypeScript test suite with PostgreSQL 16 and builds the production Docker image. Migration command: `npm run db:migrate` with `DATABASE_URL` configured.
+For Coolify, use Dockerfile `service/Dockerfile` with build context `service/`, enable HTTPS and set the configuration secrets documented in `docs/dev-008-oauth.md`. The separate Modal worker remains in `job-worker/`.
 
-## Coolify
-
-Set Dockerfile `service/Dockerfile` with build context `service/`. Use a dedicated HTTPS origin and a dedicated PostgreSQL user/database, and configure `PUBLIC_ORIGIN`, `MCP_ACCESS_TOKEN`, `DATABASE_URL` and `MCP_OWNER_KEY` as secrets. Health endpoint: `/health/live`.
-
-**Not publicly connectable to ChatGPT yet.** Bearer auth is temporary and represents a single internal workspace. OAuth, per-user identity, user consent and authorization are required before exposing this externally.
-
-## Storage and worker
-
-The separate Modal worker remains in `job-worker/`. `workspace_queue_demo` only reserves a database job, not a Modal invocation. The current worker supports a trusted `run OWNER JOB_ID` command. There is still no automatic job polling/dispatcher. More general Blender modeling and project revision editing remain subsequent work.
+**Not yet externally end-to-end verified:** The application verifies locally generated signed access tokens and full database isolation in CI, but a real identity provider, consent flow and ChatGPT OAuth redirect still require deployment and tests. Never expose the development-only shared-token mode publicly.
