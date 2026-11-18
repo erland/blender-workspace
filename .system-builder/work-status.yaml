@@ -20,9 +20,9 @@ verification:
     status: PENDING
     code_ci:
       status: PASS
-      source_sha: d21775434eb0a5d7f39f30f1806088b2bcbe39b4
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44235592278
-      result: 28 automated tests PASS, both Docker images built; Google settings and PostgreSQL tested with simulated providers
+      source_sha: 3b7dad3fa2061803e2fb84e771592719a74d5592
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44235945997
+      result: 28 automated tests PASS, both Docker images built; Google settings, AES-256-GCM, PostgreSQL, owner routing and transient Modal failures verified with simulated providers
     live_modal:
       status: DEFERRED
       reason: No real personal Modal account verification, user-specific execution or billing test performed
