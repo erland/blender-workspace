@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-024
-in_progress: DEV-024
+selected_step: DEV-025
+in_progress: DEV-025
 completed_steps:
   - DEV-001
   - DEV-002
@@ -132,15 +132,25 @@ verification:
       status: DEFERRED
       reason: Real Google/ChatGPT, browser and personal Modal acceptance still deferred
   dev024:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: Bounded custom geometry and actual Blender GLB export require PR CI
+      status: PASS
+      source_sha: fd96b4b2099a1414ca6155f464f05da07399cfac
+      result: All 15 PR workflow checks passed including real custom mesh Blender/GLB export
+      workflow_run: https://github.com/erland/blender-workspace/pull/29/checks
     live_acceptance:
       status: DEFERRED
       reason: Real Google/ChatGPT and personal Modal execution deferred
+  dev025:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: Applied mesh bevel, subdivision, Boolean and GLB topology require full CI
+    live_acceptance:
+      status: DEFERRED
+      reason: Live Google/ChatGPT and personal Modal billing remain unverified
 next:
-  recommended: VERIFY_DEV-024
-  reason: Verify custom mesh generation with real Blender, then plan bounded mesh editing and modifiers
+  recommended: VERIFY_DEV-025
+  reason: Verify real applied mesh modifiers and GLB regression; next plan extrusion/mirror/array or PBR based on demonstrated gaps
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
