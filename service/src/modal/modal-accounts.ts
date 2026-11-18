@@ -71,8 +71,8 @@ export class ModalAccountManager {
     const who=principal(owner),token=await this.requireConnected(who);
     try{await this.verifier.verify(token);}
     catch{
-      await this.pool.query(`UPDATE bw_modal_accounts SET status='revoked',updated_at=now()
-        WHERE owner_key=$1`,[who]);
+      // Authentication failure and transient provider/network errors cannot yet be
+      // distinguished reliably. Do not destroy or revoke stored credentials.
       throw new ModalAccountError('Modal connection validation failed');
     }
   }
