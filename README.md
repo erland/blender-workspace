@@ -71,3 +71,6 @@ The authoritative development state is
 
 Custom mesh geometry (`add_mesh`) is bounded and validates indices, finite coordinates
 and polygon size. See [DEV-024 custom mesh](service/docs/dev-024-custom-mesh.md).
+
+DEV-025 adds bounded, applied mesh bevel, subdivision and Boolean edits,
+addressed by stable object UUID or name. See [mesh modifiers](service/docs/dev-025-mesh-modifiers.md).
