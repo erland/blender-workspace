@@ -3,7 +3,9 @@ import { LocalArtifactStore } from '../storage/artifact-store.js';
 import { ProjectRepository } from '../db/projects.js';
 import { JobRepository } from './job-repository.js';
 import { JobOrchestrator } from './orchestrator.js';
-import { ModalPythonExecutor } from './modal-executor.js';
+import {ModalPythonExecutor} from './modal-executor.js';
+import {ModalAccountManager} from '../modal/modal-accounts.js';
+import {ModalCliTokenVerifier} from '../modal/modal-token-verifier.js';
 
 const url=process.env.DATABASE_URL;
 const root=process.env.ARTIFACT_ROOT;
@@ -12,9 +14,16 @@ if(!url||!root||!worker)throw new Error('DATABASE_URL, ARTIFACT_ROOT and MODAL_W
 const pool=new pg.Pool({connectionString:url,max:5,connectionTimeoutMillis:5000});
 const projects=new ProjectRepository(pool);
 const jobs=new JobRepository(pool);
-const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),new ModalPythonExecutor(worker));
+const key=process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY;
+const accounts=key?ModalAccountManager.fromBase64(pool,key,new ModalCliTokenVerifier()):undefined;
+const legacy=process.env.MODAL_EXECUTION_MODE==='legacy';
+if(!accounts&&!legacy)throw new Error('Personal Modal credentials required; legacy mode must be explicit');
+const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),
+  new ModalPythonExecutor(worker,18*60_000,accounts,legacy));
 const [command,owner,argument]=process.argv.slice(2);
-if(!owner||!argument)throw new Error('Usage: create OWNER PROJECT_NAME | run OWNER JOB_ID | recover OWNER JOB_ID');
+if(!owner || (!argument&&!['modal-status','modal-test','modal-disconnect','modal-connect'].includes(command)))
+  throw new Error('Usage: create/run/recover OWNER ARG | modal-connect/status/test/disconnect OWNER');
+
 try {
   if(command==='create'){
     const project=await projects.create(owner,argument);
@@ -26,5 +35,27 @@ try {
   } else if(command==='recover'){
     const job=await workflow.recover(owner,argument);
     console.log(JSON.stringify({jobId:job.id,status:job.status}));
+  } else if(command==='modal-status'){
+    if(!accounts)throw new Error('Modal account store not configured');
+    console.log(JSON.stringify(await accounts.status(owner)));
+  } else if(command==='modal-test'){
+    if(!accounts)throw new Error('Modal account store not configured');
+    await accounts.test(owner); console.log(JSON.stringify({status:'verified'}));
+  } else if(command==='modal-disconnect'){
+    if(!accounts)throw new Error('Modal account store not configured');
+    await accounts.disconnect(owner); console.log(JSON.stringify({connected:false}));
+  } else if(command==='modal-connect'){
+    if(!accounts)throw new Error('Modal account store not configured');
+    const {stdin}=process;
+    // Read credentials only through stdin, never CLI arguments or logs.
+    const parts:Buffer[]=[];let total=0;
+    for await(const part of stdin){
+      const chunk=Buffer.isBuffer(part)?part:Buffer.from(part);total+=chunk.length;
+      if(total>4096)throw new Error('Credential input too large');
+      parts.push(chunk);
+    }
+    const parsed=JSON.parse(Buffer.concat(parts).toString('utf8')) as {tokenId:string;tokenSecret:string};
+    await accounts.saveAndTest(owner,parsed.tokenId,parsed.tokenSecret);
+    console.log(JSON.stringify({connected:true}));
   } else throw new Error('Unknown command');
 }finally{await pool.end();}

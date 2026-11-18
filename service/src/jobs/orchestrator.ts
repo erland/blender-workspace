@@ -6,7 +6,7 @@ import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-s
 
 export interface BlenderExecutor {
   /** Produce trusted outputs for the current demo. DEV-006 only creates revision 1. */
-  createDemo(outDir:string):Promise<void>;
+  createDemo(outDir:string,owner:string):Promise<void>;
 }
 const FILES=['monster_v1.blend','monster_v1.glb','monster_v1.json'] as const;
 export class JobOrchestrator {
@@ -27,7 +27,7 @@ export class JobOrchestrator {
     const temp=await mkdtemp(path.join(os.tmpdir(),'bw-job-'));
     let published=false;
     try {
-      await this.executor.createDemo(temp);
+      await this.executor.createDemo(temp,job.owner_key);
       const artifacts:IncomingArtifact[]=FILES.map(name=>({name,sourcePath:path.join(temp,name)}));
       await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
         expectedPreviousRevision:job.expected_revision,artifacts});

@@ -8,7 +8,8 @@ import {bearerChallenge,protectedResourceMetadata,remoteJwks,verifyOAuthAccessTo
  READ_SCOPE,WRITE_SCOPE,type Principal,type Jwks} from './auth/oauth.js';
 
 export function createApp(config:ServiceConfig,
- services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs']},
+ services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs'];
+  modalAccounts?:ProjectServices['modalAccounts']},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
@@ -27,6 +28,93 @@ export function createApp(config:ServiceConfig,
    app.addContentTypeParser('application/x-www-form-urlencoded',
      {parseAs:'string'},(_request,body,done)=>done(null,body));
    const google=options.google;
+   // Account settings are only available after an independent Google browser login.
+   // MCP bearer tokens are never passed into the browser or stored in its cookies.
+   if(services?.modalAccounts){
+     const accounts=services.modalAccounts;
+     const secure=(reply:any)=>{
+       reply.header('cache-control','no-store')
+         .header('content-security-policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+         .header('x-content-type-options','nosniff')
+         .header('referrer-policy','no-referrer');
+       return reply;
+     };
+     const escape=(v:string)=>v.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+       .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+     const page=(csrf:string,status:string,message:string)=>`<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blender Workspace – Modal</title>
+<style>body{font-family:system-ui,sans-serif;max-width:660px;margin:48px auto;padding:0 20px}
+section{border:1px solid #bbb;border-radius:12px;padding:20px}
+label{display:block;margin-top:12px}input{box-sizing:border-box;width:100%;padding:12px}
+button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
+<section><h1>Modal – Blender Workspace</h1><p>Kontostatus: ${escape(status)}</p>
+<p>${escape(message)}</p><p>Dina Modal-uppgifter lagras krypterat och visas aldrig i ChatGPT.</p>
+<form method="post" action="/settings/modal/save">
+<input type="hidden" name="csrf" value="${escape(csrf)}">
+<label>Modal Token ID<input name="tokenId" autocomplete="off" required maxlength="500"></label>
+<label>Modal Token Secret<input name="tokenSecret" type="password" autocomplete="off" required maxlength="1000"></label>
+<button type="submit">Anslut eller ersätt</button></form>
+<form method="post" action="/settings/modal/test"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>Testa anslutning</button></form>
+<form method="post" action="/settings/modal/disconnect"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>Koppla bort</button></form>
+<form method="post" action="/settings/logout"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>Logga ut</button></form>
+</section></body></html>`;
+     app.get('/',async(_request,reply)=>{
+       secure(reply).type('text/html; charset=utf-8');
+       return '<!doctype html><html lang="sv"><meta charset="utf-8"><title>Blender Workspace</title><p><a href="/settings/login">Logga in med Google för att hantera Modal</a></p></html>';
+     });
+     app.get('/settings/login',async(_request,reply)=>{
+       const response=await google.beginSettingsLogin();
+       for(const [key,value] of Object.entries(response.headers))reply.header(key,value);
+       reply.code(response.status);return response.body;
+     });
+     app.get('/settings',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       if(!session)return secure(reply).redirect('/settings/login');
+       const status=await accounts.status(session.ownerKey);
+       const msg=(request.query as {message?:string}).message;
+       const safeMessage=msg==='connected'?'Modal-kontot är anslutet.':
+         msg==='verified'?'Modal-anslutningen fungerar.':
+         msg==='disconnected'?'Modal-kontot har kopplats bort.':
+         msg==='error'?'Åtgärden kunde inte genomföras.':'';
+       secure(reply).type('text/html; charset=utf-8');
+       return page(session.csrf,status.connected?'Ansluten':status.needsRenewal?'Behöver förnyas':'Ej ansluten',safeMessage);
+     });
+     for(const action of ['save','test','disconnect','logout'] as const){
+       app.post('/settings/'+(action==='logout'?'logout':'modal/'+action),
+         {bodyLimit:4096},async(request,reply)=>{
+         const session=google.settingsSession(request.headers.cookie);
+         if(!session)return secure(reply).code(401).send('Unauthorized');
+         if(request.headers.origin!==config.publicOrigin)
+           return secure(reply).code(403).send('Forbidden');
+         if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+           return secure(reply).code(415).send('Unsupported Media Type');
+         const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
+         if(form.get('csrf')!==session.csrf)return secure(reply).code(403).send('Forbidden');
+         if(action==='logout'){
+           const response=google.logoutSettings();
+           for(const [key,value] of Object.entries(response.headers))reply.header(key,value);
+           reply.code(response.status);return response.body;
+         }
+         let message='error';
+         try{
+           if(action==='save'){
+             await accounts.saveAndTest(session.ownerKey,form.get('tokenId')??'',form.get('tokenSecret')??'');
+             message='connected';
+           }else if(action==='test'){
+             await accounts.test(session.ownerKey);
+             message='verified';
+           }else if(action==='disconnect'){
+             await accounts.disconnect(session.ownerKey);
+             message='disconnected';
+           }
+         }catch{
+           // Never expose credential text, Modal errors or stack traces in HTML.
+         }
+         return secure(reply).code(303).header('location','/settings?message='+message).send();
+       });
+     }
+   }
    app.get('/.well-known/oauth-authorization-server',async()=>google.metadata());
    app.get('/jwks',async(_request,reply)=>{
      reply.header('cache-control','public, max-age=300');return google.jwks;
@@ -98,7 +186,8 @@ export function createApp(config:ServiceConfig,
      const principal=principals.get(request);
      if(!principal){reply.code(401).send({error:'unauthorized'});return;}
      registerProjectTools(server,{ownerKey:principal.ownerKey,
-       projects:services.projects,jobs:services.jobs},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
+       projects:services.projects,jobs:services.jobs,
+       ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{})},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
    }
    const transport=new NodeStreamableHTTPServerTransport({sessionIdGenerator:undefined});
    let closed=false;

@@ -47,6 +47,7 @@ jobs:
             -e DATABASE_URL="$DATABASE_URL" \
             -e MODAL_TOKEN_ID="$MODAL_TOKEN_ID" \
             -e MODAL_TOKEN_SECRET="$MODAL_TOKEN_SECRET" \
+            -e MODAL_EXECUTION_MODE=legacy \
             -v "$PWD/out-live:/data/blender-workspace" \
             blender-workspace-worker:dev006 create internal-live-test "Cube monster"
       - name: Restore runner access to test evidence

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash,generateKeyPairSync} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomBytes} from 'node:crypto';
 import pg from 'pg';
 import {createApp} from '../dist/app.js';
 import {loadConfig} from '../dist/config.js';
@@ -8,6 +8,7 @@ import {GoogleOAuthServer} from '../dist/auth/google-server.js';
 import {applyMigrations} from '../dist/db/migrations.js';
 import {ProjectRepository} from '../dist/db/projects.js';
 import {JobRepository} from '../dist/jobs/job-repository.js';
+import {ModalAccountManager} from '../dist/modal/modal-accounts.js';
 
 test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and identity isolation',
   {skip:!process.env.TEST_DATABASE_URL},async t=>{
@@ -42,14 +43,19 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
     }
   };
   const google=new GoogleOAuthServer(config.google,pool,provider);
+  const accounts=new ModalAccountManager(pool,randomBytes(32),{async verify(token){
+    if(token.tokenSecret==='invalid')throw new Error('Modal refused credentials');
+  }});
   const app=createApp(config,{
-    projects:new ProjectRepository(pool),jobs:new JobRepository(pool)
+    projects:new ProjectRepository(pool),jobs:new JobRepository(pool),modalAccounts:accounts
   },{google});
   await app.listen({host:'127.0.0.1',port:0});
   const base='http://127.0.0.1:'+app.server.address().port;
   const projects=[];
+  const settingsOwner='oauth:'+createHash('sha256').update(config.publicOrigin+String.fromCharCode(0)+'google-alice').digest('hex');
   t.after(async()=>{
     try{
+      await pool.query('DELETE FROM bw_modal_accounts WHERE owner_key=$1',[settingsOwner]);
       for(const projectId of projects){
         await pool.query('DELETE FROM bw_jobs WHERE project_id=$1',[projectId]);
         await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[projectId]);
@@ -125,6 +131,49 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
     assert.equal(replay.status,400);
     return exchanged.data;
   }
+  // Interactive settings flow: signed Google session, CSRF and no credential disclosure.
+  const settingsStart=await get('/settings/login');
+  assert.equal(settingsStart.status,302);
+  const settingsGoogle=new URL(settingsStart.headers.get('location'));
+  const loginCookie=settingsStart.headers.get('set-cookie').split(';')[0];
+  const settingsCallback=await get('/auth/google/callback?'+new URLSearchParams({
+    state:settingsGoogle.searchParams.get('state'),code:'alice'
+  }),{headers:{cookie:loginCookie}});
+  assert.equal(settingsCallback.status,302);
+  assert.equal(settingsCallback.headers.get('location'),'/settings');
+  const sessionSetCookie=settingsCallback.headers.get('set-cookie');
+  const sessionValue=sessionSetCookie.match(/bw_modal_settings=([^;]+)/)?.[1];
+  assert.ok(sessionValue,'missing signed Google settings session');
+  const sessionCookie='bw_modal_settings='+sessionValue;
+  const settingsPage=await get('/settings',{headers:{cookie:sessionCookie}});
+  assert.equal(settingsPage.status,200);
+  const html=await settingsPage.text();
+  assert.match(html,/Ej ansluten/);
+  const csrf=html.match(/name="csrf" value="([^"]+)"/)?.[1];
+  assert.ok(csrf);
+  const submit=async(action,form,headers={})=>get('/settings/'+action,{
+    method:'POST',headers:{cookie:sessionCookie,origin:config.publicOrigin,
+      'content-type':'application/x-www-form-urlencoded',...headers},
+    body:new URLSearchParams({csrf,...form})
+  });
+  assert.equal((await submit('modal/save',{tokenId:'ak-alice',tokenSecret:'as-alice'},
+    {origin:'https://attacker.invalid'})).status,403);
+  assert.equal((await submit('modal/save',{csrf:'invalid',tokenId:'ak-alice',tokenSecret:'as-alice'})).status,403);
+  const invalidAccount=await submit('modal/save',{tokenId:'bad',tokenSecret:'invalid'});
+  assert.equal(invalidAccount.status,303);
+  assert.equal((await accounts.status(settingsOwner)).connected,false);
+  const connected=await submit('modal/save',{tokenId:'ak-alice',tokenSecret:'as-alice'});
+  assert.equal(connected.status,303);
+  assert.equal((await accounts.status(settingsOwner)).connected,true);
+  const connectedPage=await get('/settings',{headers:{cookie:sessionCookie}});
+  const connectedText=await connectedPage.text();
+  assert.match(connectedText,/Ansluten/);
+  assert.ok(!connectedText.includes('as-alice'),'Modal secret must not appear in browser HTML');
+  assert.equal((await submit('modal/test',{})).status,303);
+  assert.equal((await submit('modal/disconnect',{})).status,303);
+  assert.equal((await accounts.status(settingsOwner)).connected,false);
+  assert.equal((await submit('logout',{})).status,303);
+
   await login('blocked');
   const alice=await login('alice');
   const bob=await login('bob');

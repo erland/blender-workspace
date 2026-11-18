@@ -3,11 +3,13 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { ProjectRepository } from '../db/projects.js';
 import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
+import type {ModalAccountManager} from '../modal/modal-accounts.js';
 
 export interface ProjectServices {
   ownerKey: string;
   projects: ProjectRepository;
   jobs: JobRepository;
+  modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
 }
 const uuid = z.string().uuid();
 const cleanName = z.string().trim().min(1).max(200);
@@ -32,7 +34,7 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
-  const {ownerKey,projects,jobs}=deps;
+  const {ownerKey,projects,jobs,modalAccounts}=deps;
   const allowed=permissions??new Set([READ_SCOPE,WRITE_SCOPE]);
   const denied=(scope:string)=>allowed.has(scope)?null:{
     isError:true,
@@ -93,10 +95,38 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
   }, async ({projectId,note:jobNote}) => {
     const block=denied(WRITE_SCOPE);if(block)return block;
     try {
+      if(modalAccounts && !(await modalAccounts.status(ownerKey)).connected)
+        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
       const job=await jobs.reserve(ownerKey,projectId,0,jobNote??'Create cube monster');
       return result({job:safeJob(job),message:'Queued; awaiting worker execution'});
     } catch(e) {return failure(e);}
   });
+  if(modalAccounts){
+    server.registerTool('workspace_modal_status',{
+      description:'Read whether your own Modal account is connected; never returns credentials.',
+      inputSchema:{},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+    },async()=>{
+      const block=denied(READ_SCOPE);if(block)return block;
+      try{return result({modal:await modalAccounts.status(ownerKey)});}
+      catch{return failure(new Error('Modal account lookup failed'));}
+    });
+    server.registerTool('workspace_modal_test',{
+      description:'Reverify your connected Modal account with Modal, without revealing secrets.',
+      inputSchema:{},...schemes(WRITE_SCOPE)
+    },async()=>{
+      const block=denied(WRITE_SCOPE);if(block)return block;
+      try{await modalAccounts.test(ownerKey);return result({verified:true});}
+      catch{return failure(new Error('Modal account verification failed'));}
+    });
+    server.registerTool('workspace_modal_disconnect',{
+      description:'Disconnect and delete only your own saved Modal account credentials.',
+      inputSchema:{},...schemes(WRITE_SCOPE)
+    },async()=>{
+      const block=denied(WRITE_SCOPE);if(block)return block;
+      try{await modalAccounts.disconnect(ownerKey);return result({connected:false});}
+      catch{return failure(new Error('Modal account disconnect failed'));}
+    });
+  }
   server.registerTool('workspace_get_job', {
     description: 'Check the status of a Blender job owned by this workspace.',
     inputSchema: {jobId:uuid},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)

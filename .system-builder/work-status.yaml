@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
 status: verification_pending
-mode: REPAIR
-selected_step: DEV-008
-in_progress: DEV-008
+mode: CHANGE
+selected_step: DEV-009
+in_progress: DEV-009
 completed_steps:
   - DEV-001
   - DEV-002
@@ -14,20 +14,24 @@ completed_steps:
   - DEV-007
 verification:
   dev008:
+    status: DEFERRED
+    reason: Code merged and CI green; real Google OAuth/ChatGPT acceptance explicitly deferred
+  dev009:
     status: PENDING
-    google_implementation:
+    code_ci:
       status: PASS
-      source_sha: 845120cb0b7ba7d3ac2e6525c9fefeb8bad0e636
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44171296914
-      evidence: 24 tests passed including PKCE, simulated Google sign-in, DCR, PostgreSQL, tokens, refresh rotation and MCP
-    regressions:
-      status: PASS
-      evidence: All 8 CI workflows passed, including Blender and Modal worker builds
-    live_acceptance:
-      status: PENDING
-      reason: Google Cloud OAuth client, real browser login, consent and ChatGPT redirect against Coolify not verified
+      source_sha: 3b7dad3fa2061803e2fb84e771592719a74d5592
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44235945997
+      result: 28 automated tests PASS, both Docker images built; Google settings, AES-256-GCM, PostgreSQL, owner routing and transient Modal failures verified with simulated providers
+    live_modal:
+      status: DEFERRED
+      reason: No real personal Modal account verification, user-specific execution or billing test performed
+    live_google:
+      status: DEFERRED
+      reason: No external ChatGPT/Google callback against Coolify performed
 next:
-  recommended: REPAIR-DEV-008
-  reason: Merge PR #12 and configure Google Cloud OAuth and Coolify; then verify real Google and ChatGPT login before marking DEV-008 complete
+  recommended: DEV-010
+  reason: Proceed with opt-in job dispatcher using owner-scoped Modal credentials; retain outstanding live security acceptance gates
 blockers:
-  - Real Google identity provider and ChatGPT callback live verification pending
+  - DEV-008 external Google OAuth/ChatGPT verification intentionally deferred
+  - DEV-009 live per-owner Modal integration and billing verification deferred
