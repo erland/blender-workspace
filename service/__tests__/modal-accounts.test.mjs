@@ -74,7 +74,7 @@ test('Modal executor denies missing connected account before starting subprocess
 
 test('orchestrator passes claimed job owner to executor, never caller override',async()=>{
   const fakeJobs={async claim(){return {id:'job',project_id:'project',owner_key:'owner-from-job',
-    expected_revision:0,requested_revision:1};},
+    expected_revision:0,requested_revision:1,status:'running'};},
     async finalize(){return {status:'completed'};}};
   let calledOwner;
   const executor={async createDemo(_dir,owner){calledOwner=owner;}};
