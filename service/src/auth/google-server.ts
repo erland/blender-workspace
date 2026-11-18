@@ -118,7 +118,7 @@ export class GoogleOAuthServer {
     }};
   }
   private settingsCookie(value:string,maxAge:number):string{
-    return 'bw_modal_settings='+value+'; Path=/settings; HttpOnly; SameSite=Lax; Secure; Max-Age='+maxAge;
+    return 'bw_modal_settings='+value+'; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age='+maxAge;
   }
   settingsSession(cookie:string|undefined):SettingsSession|undefined {
     const value=cookie?.split(';').map(x=>x.trim())
