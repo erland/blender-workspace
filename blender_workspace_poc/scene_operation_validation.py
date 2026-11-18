@@ -2,7 +2,7 @@
 import math
 import re
 from blender_workspace_poc.object_identity import valid_object_id
-KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh','bevel_mesh','subdivide_mesh','boolean_mesh','extrude_face','mirror_mesh','array_mesh')
+KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh','bevel_mesh','subdivide_mesh','boolean_mesh','extrude_face','mirror_mesh','array_mesh','set_pbr_material')
 PRIMITIVES=('cube','sphere','cylinder','cone','torus')
 def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
@@ -29,6 +29,7 @@ def validate_operation(value):
              'add_mesh':{'kind','name','vertices','faces','location','scale','rotation','color'},
              'set_transform':{'kind','name','objectId','location','scale','rotation'},
              'set_color':{'kind','name','objectId','color'},
+             'set_pbr_material':{'kind','name','objectId','baseColor','metallic','roughness','opacity','emissionColor','emissionStrength'},
              'delete_object':{'kind','name','objectId'},
              'rename_object':{'kind','name','objectId','newName'},
              'set_parent':{'kind','name','objectId','parentId'},
@@ -72,6 +73,13 @@ def validate_operation(value):
             raise ValueError('Invalid parent object ID')
         if object_id is not None and object_id==parent_id:
             raise ValueError('Self parenting forbidden')
+    if kind=='set_pbr_material':
+        if not _vector(value.get('baseColor'),0,1) or not _vector(value.get('emissionColor'),0,1):
+            raise ValueError('PBR colors must be finite RGB components between 0 and 1')
+        for key in ('metallic','roughness','opacity','emissionStrength'):
+            v=value.get(key)
+            if type(v) not in (float,int) or not math.isfinite(v) or not 0<=v<=1:
+                raise ValueError('Invalid PBR '+key)
     if kind=='bevel_mesh':
         width=value.get('width')
         segments=value.get('segments')

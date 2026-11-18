@@ -443,3 +443,25 @@ test('DEV-026 mesh extrude, mirror and array reject unsafe inputs',()=>{
     {kind:'mirror_mesh',name:'Panel',objectId:id,axis:'x'},
   ])assert.throws(()=>parseSceneOperation(bad));
 });
+
+test('DEV-027 PBR material operation validates bounds and excludes executable fields',()=>{
+  const valid={kind:'set_pbr_material',objectId:'11111111-1111-4111-8111-111111111111',
+    baseColor:[0.1,0.3,0.6],metallic:0.8,roughness:0.2,
+    opacity:0.55,emissionColor:[0.2,0.1,0],emissionStrength:0.4};
+  assert.deepEqual(parseSceneOperation(valid),valid);
+  assert.equal(parseSceneOperation({kind:'batch',operations:[valid]}).operations.length,1);
+  for(const bad of [
+    {...valid,baseColor:[1.2,0,0]},
+    {...valid,baseColor:[NaN,0,0]},
+    {...valid,emissionColor:[0,0]},
+    {...valid,metallic:-0.1},
+    {...valid,roughness:1.1},
+    {...valid,opacity:Infinity},
+    {...valid,emissionStrength:2},
+    {...valid,emissionStrength:'0.5'},
+    {...valid,objectId:'invalid'},
+    {...valid,name:'Other'},
+    {...valid,python:'evil'},
+    (({roughness,...rest})=>rest)(valid)
+  ])assert.throws(()=>parseSceneOperation(bad));
+});

@@ -183,3 +183,26 @@ class SceneOperationValidationTests(unittest.TestCase):
         ]:
             with self.subTest(bad=bad),self.assertRaises(ValueError):
                 validate_operation(bad)
+
+    def test_dev027_pbr_material_contract(self):
+        valid={'kind':'set_pbr_material','objectId':'11111111-1111-4111-8111-111111111111',
+               'baseColor':[0.1,0.3,0.6],'metallic':0.8,'roughness':0.2,
+               'opacity':0.55,'emissionColor':[0.2,0.1,0.0],'emissionStrength':0.4}
+        self.assertEqual(validate_operation(valid),valid)
+        self.assertEqual(validate_operation({'kind':'batch','operations':[valid]})['kind'],'batch')
+        for bad in [
+            {**valid,'baseColor':[1.2,0,0]},
+            {**valid,'baseColor':[float('nan'),0,0]},
+            {**valid,'emissionColor':[0,0]},
+            {**valid,'metallic':-0.1},
+            {**valid,'roughness':1.1},
+            {**valid,'opacity':float('inf')},
+            {**valid,'emissionStrength':True},
+            {**valid,'emissionStrength':'0.5'},
+            {**valid,'objectId':'invalid'},
+            {**valid,'name':'Other'},
+            {**valid,'python':'print(1)'},
+            {k:v for k,v in valid.items() if k!='roughness'}
+        ]:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                validate_operation(bad)

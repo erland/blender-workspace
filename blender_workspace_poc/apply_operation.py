@@ -85,6 +85,32 @@ def extrude_bounded_face(obj,face_index,offset):
     finally:
         bm.free()
 
+def apply_pbr_material(obj,operation):
+    """Assign a GLB-compatible Principled BSDF without editing shared materials."""
+    if obj.type!='MESH':raise ValueError('PBR material requires a mesh object')
+    if obj.data.users>1:
+        obj.data=obj.data.copy()
+    mat=bpy.data.materials.new('BW PBR '+obj.name)
+    mat.use_nodes=True
+    rgba=tuple(operation['baseColor'])+(operation['opacity'],)
+    mat.diffuse_color=rgba
+    bsdf=mat.node_tree.nodes.get('Principled BSDF')
+    if bsdf is None:raise ValueError('Blender Principled BSDF unavailable')
+    bsdf.inputs['Base Color'].default_value=rgba
+    bsdf.inputs['Metallic'].default_value=operation['metallic']
+    bsdf.inputs['Roughness'].default_value=operation['roughness']
+    bsdf.inputs['Alpha'].default_value=operation['opacity']
+    bsdf.inputs['Emission Color'].default_value=tuple(operation['emissionColor'])+(1.0,)
+    bsdf.inputs['Emission Strength'].default_value=operation['emissionStrength']
+    # Blender 4.2+ glTF exporter recognizes the dithered transparent surface.
+    if operation['opacity']<1:
+        if hasattr(mat,'surface_render_method'):
+            mat.surface_render_method='DITHERED'
+        elif hasattr(mat,'blend_method'):
+            mat.blend_method='BLEND'
+    obj.data.materials.clear()
+    obj.data.materials.append(mat)
+
 def apply_operation(operation):
     kind=operation['kind'];name=operation.get('name')
     existing=bpy.data.objects.get(name) if name is not None else None
@@ -155,6 +181,9 @@ def apply_operation(operation):
     else:
         obj=resolve_target(operation)
         name=obj.name
+        if kind=='set_pbr_material':
+            apply_pbr_material(obj,operation)
+            return
         if kind=='set_parent':
             parent=find_by_id(operation['parentId']) if operation['parentId'] is not None else None
             set_parent_preserving_world(obj,parent)
