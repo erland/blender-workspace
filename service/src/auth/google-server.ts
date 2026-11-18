@@ -206,7 +206,7 @@ export class GoogleOAuthServer {
       (!identity.email||!this.config.allowedEmails.includes(identity.email.toLowerCase())))
       return error('access_denied',403);
     if(pending.kind==='settings'){
-      const ownerKey='oauth:'+hash(this.issuer+'\\0'+identity.subject);
+      const ownerKey='oauth:'+hash(this.issuer+String.fromCharCode(0)+identity.subject);
       const session:SettingsSession={ownerKey,csrf:random(),expires:Date.now()+8*3600_000};
       const encoded=b64(JSON.stringify(session));
       return {status:302,body:'',headers:{
