@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-018
-in_progress: DEV-018
+selected_step: DEV-019
+in_progress: DEV-019
 completed_steps:
   - DEV-001
   - DEV-002
@@ -72,15 +72,25 @@ verification:
       status: DEFERRED
       reason: Real Google/ChatGPT login and user-billed Modal execution postponed
   dev018:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: Authenticated GLB retrieval and owner/integrity tests require PR CI
+      status: PASS
+      source_sha: a15024ffa640fdf3f0ba3843b7edb88a03274520
+      result: All 15 pull-request workflow runs succeeded, including service build and owner/integrity tests
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44318407177
     live_acceptance:
       status: DEFERRED
       reason: Real browser/ChatGPT OAuth and user-specific Modal integration not yet tested
+  dev019:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: Browser GLB viewer, signed-session access and client bundle require PR CI
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google login, browser GPU verification and ChatGPT/Modal integration postponed
 next:
-  recommended: VERIFY_DEV-018
-  reason: Verify GitHub Actions, resolve failures, then implement separate browser 3D viewer step
+  recommended: VERIFY_DEV-019
+  reason: Verify complete CI and production client bundle, then proceed to ChatGPT viewer linking
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred

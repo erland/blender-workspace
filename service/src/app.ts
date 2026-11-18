@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {viewerPage} from './viewer-page.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -144,6 +146,62 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      reply.code(answer.status);return answer.body;
    });
  }
+
+ // The browser uses only the existing signed, HttpOnly Google settings session.
+ // Never expose MCP access tokens to the page or put credentials in the URL.
+ if(options?.google&&services?.artifacts){
+   const google=options.google;
+   const viewerHeaders=(reply:any)=>reply.header('cache-control','private, no-store')
+     .header('x-content-type-options','nosniff')
+     .header('referrer-policy','no-referrer')
+     .header('x-frame-options','DENY')
+     .header('cross-origin-resource-policy','same-origin')
+     .header('vary','Cookie');
+   const validViewerParams=(projectId:string,rev:string)=>
+     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)&&
+     /^[1-9][0-9]{0,7}$/.test(rev);
+   async function ownedRevision(owner:string,projectId:string,revision:number){
+     const project=await services!.projects.get(owner,projectId);
+     if(!project)return false;
+     return (await services!.projects.revisions(owner,projectId))
+       .some(v=>v.revision===revision&&v.artifact_prefix);
+   }
+   app.get('/viewer/assets/viewer.js',async(_request,reply)=>{
+     viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
+     return reply.type('application/javascript; charset=utf-8')
+       .send(createReadStream(fileURLToPath(new URL('./viewer.js',import.meta.url))));
+   });
+   app.get('/viewer/:projectId/revisions/:revision',async(request,reply)=>{
+     viewerHeaders(reply).header('content-security-policy',
+       "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob: data:; base-uri 'none'; frame-ancestors 'none'");
+     const session=google.settingsSession(request.headers.cookie);
+     if(!session)return reply.redirect('/settings/login');
+     const {projectId,revision}=request.params as {projectId:string;revision:string};
+     if(!validViewerParams(projectId,revision))return reply.code(404).send('Not found');
+     try{
+       if(!await ownedRevision(session.ownerKey,projectId,Number(revision)))
+         return reply.code(404).send('Not found');
+       // Credentials never appear in HTML, nor in the bundled JavaScript.
+       return reply.type('text/html; charset=utf-8').send(viewerPage(projectId,Number(revision)));
+     }catch{return reply.code(404).send('Not found');}
+   });
+   app.get('/viewer/api/projects/:projectId/revisions/:revision/scene.glb',async(request,reply)=>{
+     viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const session=google.settingsSession(request.headers.cookie);
+     if(!session)return reply.code(401).send({error:'unauthorized'});
+     const {projectId,revision}=request.params as {projectId:string;revision:string};
+     if(!validViewerParams(projectId,revision))return reply.code(404).send({error:'not_found'});
+     if(request.headers.origin&&request.headers.origin!==config.publicOrigin)
+       return reply.code(403).send({error:'origin_not_allowed'});
+     try{
+       if(!await ownedRevision(session.ownerKey,projectId,Number(revision)))
+         return reply.code(404).send({error:'not_found'});
+       const file=await services.artifacts!.verifiedArtifactPath(projectId,Number(revision),'scene.glb');
+       return reply.type('model/gltf-binary').send(createReadStream(file));
+     }catch{return reply.code(404).send({error:'not_found'});}
+   });
+ }
+
  app.get('/health/live',async()=>({status:'alive',service:'blender-workspace'}));
  app.get('/health/ready',async()=>({status:'ready',service:'blender-workspace',
    integrations:services?'project_metadata':'not_configured'}));
