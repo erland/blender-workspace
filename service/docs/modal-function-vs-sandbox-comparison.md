@@ -27,7 +27,40 @@ metric**: it also includes network transport, subprocess startup, Python and
 Blender initialization. Cold-start and concurrency measurements need a
 separate experiment.
 
-## Running (requires user's own authenticated Modal account)
+## Preferred execution: manual GitHub Actions run
+
+After merging this PR into `main`:
+
+1. Open **GitHub → Actions → Modal Function vs Sandbox benchmark → Run workflow**.
+2. Select the `main` branch. Check **Start billable Modal jobs** (`run_modal: true`).
+3. Choose the number of measured iterations (recommended **3**; range 1–5).
+4. Run the workflow. The regular validation job runs first, then the paid
+   comparison. Read the Action **Summary** and download
+   `modal-function-vs-sandbox-results` under **Artifacts**.
+
+Before starting, create a GitHub Actions environment named
+`modal-benchmark` in the repository settings, preferably protected with
+required reviewers, and configure these **environment secrets**:
+`MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` for a dedicated Modal token
+with minimal workspace permissions. Do not paste tokens into workflow
+inputs, commit them to the repository, or expose them in logs. The environment
+approval is optional but recommended as a second barrier against accidental
+billable runs. If secrets are missing, the paid job fails safely.
+
+**Safety:** On pull requests the workflow only validates syntax, dry-run
+and local Blender. A manual dispatch with `run_modal=false` also performs
+only local validation. **Only** a confirmed manual dispatch with
+`run_modal=true` launches paid Modal jobs. The workflow has read-only GitHub
+permissions, a 35-minute job timeout and a concurrency lock. There are no
+GitHub actions that auto-run the paid job on merge. The Modal cost estimate
+does not impose a hard spend cap: configure a budget in the Modal account.
+
+Note that **GitHub requires a workflow_dispatch workflow to exist on the
+default branch** before it can be started from the standard Actions UI.
+Therefore merge the PR first. A run using an approved GitHub environment
+will pause until the configured reviewer approves.
+
+## Alternative: local execution (requires user's own authenticated Modal account)
 
 From the repository root:
 
