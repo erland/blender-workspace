@@ -1,0 +1,69 @@
+name: DEV-029 isolated Python Blender modeling (offline CI)
+
+on:
+  pull_request:
+    paths:
+      - "blender_workspace_poc/apply_python.py"
+      - "modal_provider/**"
+      - "service/src/jobs/python-script.ts"
+      - "service/src/jobs/orchestrator.ts"
+      - "service/src/jobs/job-repository.ts"
+      - "service/src/jobs/modal-executor.ts"
+      - "service/src/mcp/project-tools.ts"
+      - "service/__tests__/python-sandbox.test.mjs"
+      - "tests/sandbox_python_example.py"
+      - "tests/test_python_sandbox_artifacts.py"
+      - ".github/workflows/sandbox-python-dev029.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-sandbox-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and structural validation unit tests
+        run: |
+          python3 -m py_compile modal_provider/runner.py modal_provider/artifact_validation.py blender_workspace_poc/apply_python.py tests/test_python_sandbox_artifacts.py
+          python3 -m unittest discover -s tests -p 'test_python_sandbox_artifacts.py' -v
+      - name: Build existing Blender worker image
+        run: docker build -f Dockerfile -t blender-dev029:ci .
+      - name: Run arbitrary Python scene creation and saved revision edit in real Blender
+        run: |
+          set -eu
+          mkdir -p dev029-output/first dev029-output/second
+          chmod 777 dev029-output/first dev029-output/second
+          cp tests/sandbox_python_example.py dev029-output/first/model.py
+          docker run --rm -v "$PWD/dev029-output/first:/workspace/out" --entrypoint blender blender-dev029:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- NEW /workspace/out/model.py 1
+          cp dev029-output/first/scene.blend dev029-output/second/input.blend
+          cat > dev029-output/second/model.py <<'PY'
+          import bpy
+          bpy.data.objects['Python Cube'].location.x = 1.5
+          bpy.ops.mesh.primitive_cylinder_add(radius=0.5,depth=2,location=(4,0,0))
+          bpy.context.object.name='Python Cylinder'
+          PY
+          docker run --rm -v "$PWD/dev029-output/second:/workspace/out" --entrypoint blender blender-dev029:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- /workspace/out/input.blend /workspace/out/model.py 2
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from modal_provider.artifact_validation import validate_python_outputs
+          first=Path('dev029-output/first')
+          second=Path('dev029-output/second')
+          assert validate_python_outputs(first)['object_count']==2
+          assert validate_python_outputs(second)['object_count']==3
+          a=json.loads((first/'scene.json').read_text())['scene']['objects']
+          b=json.loads((second/'scene.json').read_text())['scene']['objects']
+          old={x['name']:x['objectId'] for x in a}
+          new={x['name']:x['objectId'] for x in b}
+          assert old['Python Cube']==new['Python Cube']
+          assert old['Python Sphere']==new['Python Sphere']
+          assert new['Python Cylinder'] not in set(old.values())
+          print('BW_SANDBOX_PYTHON CI PASS – revisions, UUIDs, artifacts verified')
+          PY
