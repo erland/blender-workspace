@@ -6,7 +6,7 @@ This adds a **built-in OAuth 2.1 authorization server** to Blender Workspace, ba
 - `MCP_AUTH_MODE=oauth` – external OIDC/OAuth JWT issuer (existing DEV-008)
 - `MCP_AUTH_MODE=google` – **own OAuth server** with Google as upstream identity provider
 
-It does **not** reuse Google access/ID tokens as MCP bearer credentials. Our own Ed25519 JWTs carry `aud=PUBLIC_ORIGIN` and per-user `sub=Google subject` and are verified by the existing MCP resource server. Google access tokens are never persisted.
+It does **not** reuse Google access/ID tokens as MCP bearer credentials. Our own Ed25519 JWTs carry `aud=PUBLIC_ORIGIN/mcp` and per-user `sub=Google subject` and are verified by the existing MCP resource server. Google access tokens are never persisted.
 
 ## Google Cloud configuration
 
@@ -42,7 +42,7 @@ Never put secrets into GitHub or public source. Store the signing key durably: c
 ## OAuth endpoints
 
 - `GET /.well-known/oauth-authorization-server` – issuer metadata
-- `GET /.well-known/oauth-protected-resource` – MCP metadata
+- `GET /.well-known/oauth-protected-resource/mcp` (also root alias) – MCP metadata
 - `POST /register` – dynamic public client registration (restricted to configured redirect origins; bounded registration rate)
 - `GET /authorize` – OAuth code + mandatory PKCE S256 and exact `resource` parameter
 - `GET /auth/google/callback` – Google ID-token signature, audience, issuer, nonce and verified-email checks
@@ -58,3 +58,12 @@ CI runs end-to-end OAuth client registration, PKCE, simulated Google sign-in, ow
 Acceptance still requires a live Google Cloud OAuth client, deployment, real browser sign-in, scope/consent experience, and actual ChatGPT connector test. Do not mark DEV-008 completed or expose it publicly until these tests and an authentication/security review are done. More robust consent, abuse prevention and key rotation remain production hardening work.
 
 Reference implementation inspected: [Agent Workspace OAuth server](https://github.com/erland/agent-workspace/blob/main/src/auth/agent-oauth-server.ts) and [Coolify guide](https://github.com/erland/agent-workspace/blob/main/docs/coolify-deployment.md). This is an adapted, independent implementation, not a shared library.
+
+## Security review (before live deployment)
+
+- HTTP request access logging is disabled inside Fastify so Google callback authorization codes are not logged by default. Disable/redact query strings in **Coolify/Traefik and other upstream request logs** separately.
+- PKCE verifier, client ID, exact redirect URI and optional resource are checked **before** an authorization code is consumed in a single PostgreSQL statement. The same applies to refresh-token resource checking. Replay of consumed codes/refresh tokens is rejected.
+- Client registration accepts redirects only on explicitly trusted HTTPS origins, but does **not** replace a comprehensive public OAuth abuse review or approval/consent UI. Client-registration rate limiting is process-local and not suitable for multiple public replicas.
+- This version has no explicit end-user consent screen for an MCP client beyond the Google sign-in screen. An explicit client-authorization/consent UX and security hardening should be added before public access.
+- The OAuth resource identifier is the canonical `PUBLIC_ORIGIN/mcp`; the Google Cloud callback is `PUBLIC_ORIGIN/auth/google/callback`. These are different endpoints.
+- No automated purge of expired OAuth codes/refresh records, signing-key rotation, logout/revocation endpoints or distributed rate limiting is implemented yet. Treat these as operational acceptance blockers.
