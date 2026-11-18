@@ -2,24 +2,26 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
 import {parseSceneOperation,type SceneOperation} from './scene-operation.js';
+import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
   id:string; project_id:string;owner_key:string; expected_revision:number;
-  requested_revision:number;status:JobStatus;note:string;error_message:string|null;edit_spec:SceneEdit|null;operation_spec:SceneOperation|null;
+  requested_revision:number;status:JobStatus;note:string;error_message:string|null;edit_spec:SceneEdit|null;operation_spec:SceneOperation|PythonScriptSpec|null;
 }
 export class JobConflict extends Error {
   constructor(message:string) {super(message);this.name='JobConflict';}
 }
 export class JobRepository {
   constructor(private readonly pool:Pool) {}
-  async reserve(owner:string, projectId:string, expectedRevision:number, note='',edit?:SceneEdit,operation?:SceneOperation):Promise<Job> {
+  async reserve(owner:string, projectId:string, expectedRevision:number, note='',edit?:SceneEdit,operation?:SceneOperation|PythonScriptSpec):Promise<Job> {
     if (!owner.trim() || owner.length>200 || note.length>5000 || !Number.isSafeInteger(expectedRevision) ||
         expectedRevision<0 || expectedRevision>99999998)
       throw new RangeError('Invalid job input');
     if(edit!==undefined&&operation!==undefined)throw new RangeError('Conflicting edit specifications');
     const safeEdit=edit===undefined?null:parseSceneEdit(edit);
-    const safeOperation=operation===undefined?null:parseSceneOperation(operation);
+    const safeOperation=operation===undefined?null:operation.kind==='python_script'?
+      parsePythonScript(operation):parseSceneOperation(operation);
     const client=await this.pool.connect();
     try {
       await client.query('BEGIN');
