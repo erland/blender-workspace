@@ -369,3 +369,27 @@ test('DEV-023 ID-addressed operations and safe parenting validate strictly',()=>
     {kind:'delete_object',objectId:'../path'}
   ]) assert.throws(()=>parseSceneOperation(bad),JSON.stringify(bad));
 });
+
+test('DEV-024 bounded custom mesh schema rejects unsafe indices and payloads',()=>{
+  const mesh={kind:'add_mesh',name:'Custom part',
+    vertices:[[0,0,0],[2,0,0],[0,2,0],[0,0,1]],
+    faces:[[0,1,2],[0,2,3]],color:[0.3,0.5,0.8]};
+  assert.deepEqual(parseSceneOperation(mesh),mesh);
+  assert.equal(parseSceneOperation({kind:'batch',operations:[mesh]}).operations.length,1);
+  for(const invalid of [
+    {...mesh,vertices:[[0,0,0],[1,0,0]]},
+    {...mesh,vertices:[[0,0,0],[1,0,0],[Infinity,1,0]]},
+    {...mesh,vertices:[[0,0,0],[1,0,0],[101,1,0]]},
+    {...mesh,faces:[]},
+    {...mesh,faces:[[0,1]]},
+    {...mesh,faces:[[0,1,1]]},
+    {...mesh,faces:[[0,1,5]]},
+    {...mesh,faces:[[0,1,-1]]},
+    {...mesh,faces:[[0,1,1.5]]},
+    {...mesh,faces:[[0,1,2,3,0]]},
+    {...mesh,faces:Array.from({length:2049},()=>[0,1,2])},
+    {...mesh,vertices:Array.from({length:1025},()=>[0,0,0])},
+    {...mesh,python:'unsafe'},
+    {...mesh,color:[2,0,0]}
+  ])assert.throws(()=>parseSceneOperation(invalid),JSON.stringify(invalid).slice(0,180));
+});
