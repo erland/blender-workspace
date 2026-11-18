@@ -34,9 +34,19 @@ verification:
       status: DEFERRED
   dev013:
     status: PENDING
-    reason: Await generic scene/object report contract, owner-scoped MCP inspect, SHA verification and regressions
+    code_ci:
+      status: PASS
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44245026502
+      source_sha: 64e8854c4ed37535825ce4e564b1e543b32c8f15
+      result: 38/38 Node/PostgreSQL tests; generic saved scene inspection, owner isolation, tamper detection, Docker build
+    regressions:
+      status: PASS
+      result: All 13 CI workflows passed, including Blender, Modal and OAuth
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT login and Modal user execution intentionally postponed
 next:
-  recommended: REPAIR-DEV-013
-  reason: Verify CI, then implement general typed creation/edit operations in a separate step
+  recommended: DEV-014
+  reason: Merge PR #17, then implement generic scene creation/manipulation operations using the new scene object contract
 blockers:
   - Live Google/ChatGPT and owner-specific Modal acceptance deferred
