@@ -89,19 +89,27 @@ async function load(rev,viewport){
   viewport.scene.add(model);
   viewport.fit();
 }
-function namedObject(hit){
-  // glTF mesh nodes carry Blender object names when exported. If a primitive
-  // has no name, use its first named ancestor. This is a label, not a stable ID.
+function selectedIdentity(hit){
+  // Blender custom properties are exported as glTF node extras by DEV-022.
+  // GLTFLoader maps glTF extras into Object3D.userData.
   let obj=hit;
   while(obj&&obj!==main.model){
-    if(obj.name&&obj.name.trim())return obj.name;
+    const id=obj.userData?.bw_object_id;
+    if(typeof id==='string'&&/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))
+      return {name:obj.name||hit.name||'Namnlöst objekt',id};
     obj=obj.parent;
   }
-  return hit.name||'Namnlöst objekt';
+  // Older revisions have names only; do not invent an ID.
+  obj=hit;
+  while(obj&&obj!==main.model){
+    if(obj.name?.trim())return {name:obj.name,id:null};
+    obj=obj.parent;
+  }
+  return {name:hit.name||'Namnlöst objekt',id:null};
 }
-let chosen='';
+let chosen=null;
 function clearSelection(){
-  chosen='';
+  chosen=null;
   selected.textContent='Inget objekt markerat';
   copyButton.disabled=true;
   if(main.selectionHelper){
@@ -128,8 +136,9 @@ main.canvas.addEventListener('pointerup',event=>{
   clearSelection();
   if(!hits.length)return;
   const obj=hits[0].object;
-  chosen=namedObject(obj);
-  selected.textContent='Markerat objekt: '+chosen;
+  chosen=selectedIdentity(obj);
+  selected.textContent='Markerat objekt: '+chosen.name+
+    (chosen.id?' (ID: '+chosen.id+')':' (äldre revision: saknar stabilt ID)');
   copyButton.disabled=false;
   main.selectionHelper=new THREE.BoxHelper(obj,0x2563eb);
   main.scene.add(main.selectionHelper);
@@ -137,7 +146,8 @@ main.canvas.addEventListener('pointerup',event=>{
 main.canvas.addEventListener('pointercancel',()=>{pointerDown=null;});
 copyButton.addEventListener('click',async()=>{
   if(!chosen)return;
-  const reference='Projekt '+projectId+', revision '+revision+', objekt "'+chosen+'"';
+  const reference='Projekt '+projectId+', revision '+revision+', objekt "'+chosen.name+'"'+
+    (chosen.id?', objekt-ID '+chosen.id:' (äldre revision utan objekt-ID)');
   try{await navigator.clipboard.writeText(reference);status.textContent='Objektreferens kopierad';}
   catch{status.textContent='Kunde inte kopiera objektreferensen';}
 });
