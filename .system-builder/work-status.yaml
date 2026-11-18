@@ -3,7 +3,7 @@ project: blender-workspace
 status: verification_pending
 mode: CHANGE
 selected_step: DEV-017
-in_progress: DEV-017
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
@@ -62,15 +62,17 @@ verification:
       status: DEFERRED
       reason: Real Google/ChatGPT and user-billed Modal execution postponed
   dev017:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: Rename operation implementation and tests awaiting pull-request CI
+      status: PASS
+      source_sha: 3d81505dcd86a67311878a17337345807c7d9033
+      result: All 15 pull request GitHub Actions workflows succeeded, including real headless Blender regression
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44259589907
     live_acceptance:
       status: DEFERRED
       reason: Real Google/ChatGPT login and user-billed Modal execution postponed
 next:
-  recommended: VERIFY_DEV-017
-  reason: Run and inspect all required CI, repair failures, then record verified revision
+  recommended: DEV-018
+  reason: Continue bounded generic 3D scene capabilities; before production release perform the deferred live Google/ChatGPT and personal Modal acceptance checks
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
