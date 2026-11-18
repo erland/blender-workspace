@@ -5,7 +5,7 @@ TypeScript/Node 22 MCP service using PostgreSQL for owner-isolated project metad
 ## Current work
 
 - [Google OAuth login – DEV-008](docs/dev-008-google.md), code verified; real Google/ChatGPT/Coolify deployment acceptance deferred
-- [Personal Modal accounts – DEV-009](docs/dev-009-modal-accounts.md), account encryption and per-owner worker core; Google-authenticated self-service settings UI and live verification not yet available
+- [Personal Modal accounts – DEV-009](docs/dev-009-modal-accounts.md), account encryption and per-owner worker core; Google-authenticated browser settings UI implemented and tested with a fake Modal verifier; live account verification and billing tests not yet performed
 
 ```sh
 cd service
