@@ -72,3 +72,30 @@ class SceneOperationValidationTests(unittest.TestCase):
             {'kind':'delete_object','name':'x','path':'/tmp/secret'}]
         for op in bad:
             with self.subTest(op=op),self.assertRaises(ValueError):validate_operation(op)
+
+    def test_dev023_id_selectors_and_hierarchy(self):
+        id1='11111111-1111-4111-8111-111111111111'
+        id2='22222222-2222-4222-8222-222222222222'
+        valid=[
+            {'kind':'set_transform','objectId':id1,'location':[1,2,3]},
+            {'kind':'set_color','objectId':id1,'color':[0.2,0.3,0.4]},
+            {'kind':'rename_object','objectId':id1,'newName':'Changed'},
+            {'kind':'delete_object','objectId':id1},
+            {'kind':'duplicate_object','sourceId':id1,'name':'New copy'},
+            {'kind':'set_parent','name':'Child','parentId':id2},
+            {'kind':'set_parent','objectId':id1,'parentId':None}]
+        for op in valid:
+            with self.subTest(op=op):self.assertEqual(validate_operation(op),op)
+        for invalid in [
+            {'kind':'set_transform','location':[1,0,0]},
+            {'kind':'set_transform','name':'Child','objectId':id1,'location':[1,0,0]},
+            {'kind':'set_parent','name':'Child'},
+            {'kind':'set_parent','objectId':id1,'parentId':id1},
+            {'kind':'set_parent','objectId':id1,'parentId':'bad'},
+            {'kind':'set_parent','name':'Child','parentId':id2,'python':'unsafe'},
+            {'kind':'duplicate_object','source':'Child','sourceId':id1,'name':'Copy'},
+            {'kind':'rename_object','objectId':id1,'name':'Child','newName':'Else'},
+            {'kind':'delete_object','objectId':'../unsafe'},
+        ]:
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                validate_operation(invalid)
