@@ -1,7 +1,7 @@
 """Strict, standalone validation of bounded data-only Blender operations."""
 import math
 import re
-KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object')
+KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object')
 PRIMITIVES=('cube','sphere','cylinder','cone','torus')
 def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
@@ -25,11 +25,17 @@ def validate_operation(value):
              'set_transform':{'kind','name','location','scale','rotation'},
              'set_color':{'kind','name','color'},
              'delete_object':{'kind','name'},
+             'rename_object':{'kind','name','newName'},
              'duplicate_object':{'kind','name','source','location','scale','rotation'}}[kind]
     if set(value)-allowed:raise ValueError('Unrecognized operation field')
     name=value.get('name')
     if not isinstance(name,str) or not 1<=len(name.strip())<=100 or re.search(r'[\x00-\x1f/\\]',name):
         raise ValueError('Invalid object name')
+    if kind=='rename_object':
+        new_name=value.get('newName')
+        if not isinstance(new_name,str) or not 1<=len(new_name.strip())<=100 or re.search(r'[\x00-\x1f/\\]',new_name):
+            raise ValueError('Invalid new object name')
+        if new_name==name:raise ValueError('Object name must change')
     if kind=='duplicate_object':
         source=value.get('source')
         if not isinstance(source,str) or not 1<=len(source.strip())<=100 or re.search(r'[\x00-\x1f/\\]',source):
