@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-025
-in_progress: DEV-025
+selected_step: DEV-026
+in_progress: DEV-026
 completed_steps:
   - DEV-001
   - DEV-002
@@ -142,15 +142,25 @@ verification:
       status: DEFERRED
       reason: Real Google/ChatGPT and personal Modal execution deferred
   dev025:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: Applied mesh bevel, subdivision, Boolean and GLB topology require full CI
+      status: PASS
+      source_sha: 4b662068da848aaa0a99c3ce40022bd872e968cb
+      result: All 15 pull-request CI workflows passed with real Blender modifier regression
+      workflow_run: https://github.com/erland/blender-workspace/pull/30/checks
     live_acceptance:
       status: DEFERRED
       reason: Live Google/ChatGPT and personal Modal billing remain unverified
+  dev026:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: Extrusion, mirror and array require real Blender revision and GLB CI verification
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT, browser and individual Modal billing remain unverified
 next:
-  recommended: VERIFY_DEV-025
-  reason: Verify real applied mesh modifiers and GLB regression; next plan extrusion/mirror/array or PBR based on demonstrated gaps
+  recommended: VERIFY_DEV-026
+  reason: Check Python, TypeScript and real Blender topology/GLB CI; next plan PBR material support
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
