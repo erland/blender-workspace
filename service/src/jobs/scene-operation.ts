@@ -8,9 +8,11 @@ const objectId=z.string().uuid();
 const vertex=z.tuple([z.number().finite().min(-100).max(100),
   z.number().finite().min(-100).max(100),z.number().finite().min(-100).max(100)]);
 const polygon=z.array(z.number().int().nonnegative()).min(3).max(8);
+const verticesSchema=z.array(vertex).min(3).max(1024);
+const facesSchema=z.array(polygon).min(1).max(2048);
 const meshGeometry=z.object({
-  vertices:z.array(vertex).min(3).max(1024),
-  faces:z.array(polygon).min(1).max(2048)
+  vertices:verticesSchema,
+  faces:facesSchema
 }).strict().superRefine((mesh,ctx)=>{
   let total=0;
   for(const [i,face] of mesh.faces.entries()){
@@ -28,8 +30,8 @@ const oneTarget=(x:{name?:string;objectId?:string})=>Boolean(x.name)!==Boolean(x
 export const SingleSceneOperationSchema=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('add_primitive'),name,primitive:z.enum(['cube','sphere','cylinder','cone','torus']),
    location:xyz.optional(),scale:scale.optional(),color:rgb.optional()}).strict(),
- z.object({kind:z.literal('add_mesh'),name,vertices:meshGeometry.shape.vertices,
-   faces:meshGeometry.shape.faces,location:xyz.optional(),scale:scale.optional(),
+ z.object({kind:z.literal('add_mesh'),name,vertices:verticesSchema,
+   faces:facesSchema,location:xyz.optional(),scale:scale.optional(),
    rotation:xyz.optional(),color:rgb.optional()}).strict().superRefine((mesh,ctx)=>{
      const result=meshGeometry.safeParse({vertices:mesh.vertices,faces:mesh.faces});
      if(!result.success)for(const issue of result.error.issues)
