@@ -233,3 +233,44 @@ jobs:
             --entrypoint blender bw-blender:dev015 -b --factory-startup \
             --python /workspace/tests/blender_verify_dev025.py -- \
             /workspace/artifacts/modifier-source /workspace/artifacts/modifier-edit
+
+          # DEV-026: applied extrude/mirror/array on both primitive and custom meshes.
+          mkdir -p batch-artifacts/shape-source batch-artifacts/shape-edited
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          operations={'kind':'batch','operations':[
+              {'kind':'add_primitive','name':'Extruded','primitive':'cube','location':[-6,0,0]},
+              {'kind':'add_mesh','name':'Mirrored',
+               'vertices':[[1,0,0],[2,0,0],[1,1,0],[1,0,2]],
+               'faces':[[0,2,1],[0,1,3],[1,2,3],[2,0,3]],'location':[0,0,0]},
+              {'kind':'add_primitive','name':'Repeated','primitive':'cube','location':[6,0,0]}]}
+          Path('shape-source.json').write_text(json.dumps(operations))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/shape-source:/workspace/out" \
+            -v "$PWD/shape-source.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- NEW /workspace/spec.json 1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('batch-artifacts/shape-source/scene.json').read_text())
+          ids={obj['name']:obj['objectId'] for obj in report['scene']['objects']}
+          operations={'kind':'batch','operations':[
+              {'kind':'extrude_face','objectId':ids['Extruded'],'faceIndex':0,'offset':[0,0,2]},
+              {'kind':'mirror_mesh','objectId':ids['Mirrored'],'axis':'x'},
+              {'kind':'array_mesh','objectId':ids['Repeated'],'count':3,'offset':[3,0,0]}]}
+          Path('shape-edited.json').write_text(json.dumps(operations))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/shape-edited:/workspace/out" \
+            -v "$PWD/batch-artifacts/shape-source:/workspace/previous:ro" \
+            -v "$PWD/shape-edited.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 2
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts:/workspace/artifacts:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/tests/blender_verify_dev026.py -- \
+            /workspace/artifacts/shape-source /workspace/artifacts/shape-edited
