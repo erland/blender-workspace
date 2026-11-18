@@ -55,9 +55,10 @@ export class LiveGoogleProvider implements GoogleIdentityProvider {
       ...(typeof payload.email==='string'?{email:payload.email}:{})};
   }
 }
-type Pending={state:string;nonce:string;expires:number;clientId:string;
+type Pending={kind?:'settings';state:string;nonce:string;expires:number;clientId:string;
   redirect:string;scope:string;resource:string;challenge:string;clientState?:string};
 const b64=(s:string)=>Buffer.from(s,'utf8').toString('base64url');
+interface SettingsSession {ownerKey:string;csrf:string;expires:number;}
 function error(code:string,status=400){
   return {status,body:{error:code},headers:{'cache-control':'no-store'}};
 }
@@ -105,6 +106,39 @@ export class GoogleOAuthServer {
       const p=JSON.parse(Buffer.from(encoded,'base64url').toString('utf8')) as Pending;
       return p.expires>Date.now()&&typeof p.state==='string'&&typeof p.nonce==='string'?p:undefined;
     }catch{return undefined;}
+  }
+  async beginSettingsLogin(){
+    const pending:Pending={kind:'settings',state:random(),nonce:random(),
+      expires:Date.now()+600_000,clientId:'',redirect:'',scope:'',
+      resource:this.resource,challenge:''};
+    return {status:302,body:'',headers:{
+      location:this.provider.authorizeUrl(pending.state,pending.nonce,this.callback),
+      'set-cookie':this.cookie(this.signedPending(pending),600),
+      'cache-control':'no-store'
+    }};
+  }
+  private settingsCookie(value:string,maxAge:number):string{
+    return 'bw_modal_settings='+value+'; Path=/settings; HttpOnly; SameSite=Lax; Secure; Max-Age='+maxAge;
+  }
+  settingsSession(cookie:string|undefined):SettingsSession|undefined {
+    const value=cookie?.split(';').map(x=>x.trim())
+      .find(x=>x.startsWith('bw_modal_settings='))?.slice('bw_modal_settings='.length);
+    if(!value||value.length>3000)return undefined;
+    const [encoded,signature,...rest]=value.split('.');
+    if(!encoded||!signature||rest.length)return undefined;
+    const one=Buffer.from(signature),two=Buffer.from(this.signature(encoded));
+    if(one.length!==two.length||!timingSafeEqual(one,two))return undefined;
+    try{
+      const session=JSON.parse(Buffer.from(encoded,'base64url').toString('utf8')) as SettingsSession;
+      return session.expires>Date.now()&&typeof session.ownerKey==='string'&&
+        /^oauth:[a-f0-9]{64}$/.test(session.ownerKey)&&
+        typeof session.csrf==='string'&&session.csrf.length>=32?session:undefined;
+    }catch{return undefined;}
+  }
+  logoutSettings(){
+    return {status:303,body:'',headers:{
+      location:'/', 'set-cookie':this.settingsCookie('',0),'cache-control':'no-store'
+    }};
   }
   private cookie(value:string,maxAge:number):string{
     return 'bw_oauth_pending='+value+'; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age='+maxAge;
@@ -171,6 +205,17 @@ export class GoogleOAuthServer {
     if(this.config.allowedEmails.length>0&&
       (!identity.email||!this.config.allowedEmails.includes(identity.email.toLowerCase())))
       return error('access_denied',403);
+    if(pending.kind==='settings'){
+      const ownerKey='oauth:'+hash(this.issuer+'\\0'+identity.subject);
+      const session:SettingsSession={ownerKey,csrf:random(),expires:Date.now()+8*3600_000};
+      const encoded=b64(JSON.stringify(session));
+      return {status:302,body:'',headers:{
+        location:'/settings',
+        'set-cookie':[this.cookie('',0),
+          this.settingsCookie(encoded+'.'+this.signature(encoded),8*3600)],
+        'cache-control':'no-store'
+      }};
+    }
     const code=random();
     await this.store.saveCode(hash(code),{
       clientId:pending.clientId,redirectUri:pending.redirect,
