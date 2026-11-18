@@ -10,6 +10,25 @@ class SceneOperationValidationTests(unittest.TestCase):
             {'kind':'set_color','name':'Wheel 1','color':[0,0,0]},
             {'kind':'delete_object','name':'Wheel 1'}]
         for op in valid:self.assertEqual(validate_operation(op),op)
+    def test_batch_operations(self):
+        ops={'kind':'batch','operations':[
+            {'kind':'add_primitive','name':'Tabletop','primitive':'cube'},
+            {'kind':'add_primitive','name':'Leg 1','primitive':'cylinder'},
+            {'kind':'set_color','name':'Leg 1','color':[0.3,0.2,0.1]}]}
+        self.assertEqual(validate_operation(ops),ops)
+    def test_rejects_batch_bypass(self):
+        add={'kind':'add_primitive','name':'Cube','primitive':'cube'}
+        cases=[
+            {'kind':'batch','operations':[]},
+            {'kind':'batch','operations':[add]*21},
+            {'kind':'batch','operations':[{'kind':'batch','operations':[add]}]},
+            {'kind':'batch','operations':[{**add,'script':'evil'}]},
+            {'kind':'batch','operations':[add],'python':'print(1)'},
+            {'kind':'batch','operations':'not-an-array'},
+        ]
+        for value in cases:
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                validate_operation(value)
     def test_rejects_untrusted_instructions(self):
         bad=[
             {'kind':'run_python','name':'x','code':'print(1)'},

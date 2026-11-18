@@ -1,0 +1,88 @@
+name: DEV-015 Batched Blender operations
+on:
+  pull_request:
+    paths:
+      - 'service/**'
+      - 'blender_workspace_poc/**'
+      - 'modal_provider/**'
+      - 'tests/**'
+      - '.github/workflows/batched-operations-dev015.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'service/**'
+      - 'blender_workspace_poc/**'
+      - 'modal_provider/**'
+      - 'tests/**'
+      - '.github/workflows/batched-operations-dev015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  batched-operations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bwtest
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: bwtest
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bwtest -d bwtest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://bwtest:ci-password@127.0.0.1:5432/bwtest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Python batch and mocked Modal tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: TypeScript and PostgreSQL MCP tests
+        working-directory: service
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Build service and worker containers
+        run: |
+          docker build -f service/Dockerfile -t bw-service:dev015 service
+          docker build -f job-worker/Dockerfile -t bw-worker:dev015 .
+      - name: Build headless Blender
+        run: docker build -t bw-blender:dev015 .
+      - name: Verify real batched create and edit
+        run: |
+          mkdir -p batch-artifacts/first batch-artifacts/second
+          echo '{"kind":"batch","operations":[{"kind":"add_primitive","name":"Desk Top","primitive":"cube","scale":[3,1,0.2]},{"kind":"add_primitive","name":"Desk Leg","primitive":"cylinder","location":[-1,0,-1]},{"kind":"set_color","name":"Desk Leg","color":[0.2,0.5,0.8]}]}' > batch-create.json
+          echo '{"kind":"batch","operations":[{"kind":"set_transform","name":"Desk Top","location":[0,0,2]},{"kind":"add_primitive","name":"Desk Lamp","primitive":"sphere","location":[0,0,3]}]}' > batch-edit.json
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/first:/workspace/out" \
+            -v "$PWD/batch-create.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- NEW /workspace/spec.json 1
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/second:/workspace/out" \
+            -v "$PWD/batch-artifacts/first:/workspace/previous:ro" \
+            -v "$PWD/batch-edit.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 2
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          one=json.loads(Path('batch-artifacts/first/scene.json').read_text())
+          two=json.loads(Path('batch-artifacts/second/scene.json').read_text())
+          names1={x['name'] for x in one['scene']['objects']}
+          names2={x['name'] for x in two['scene']['objects']}
+          assert {'Desk Top','Desk Leg'} <= names1
+          assert {'Desk Top','Desk Leg','Desk Lamp'} <= names2
+          top=next(x for x in two['scene']['objects'] if x['name']=='Desk Top')
+          assert top['localTransform']['location']==[0.0,0.0,2.0]
+          for name in ['first','second']:
+              for ext in ['blend','glb','json']:
+                  assert (Path('batch-artifacts')/name/('scene.'+ext)).stat().st_size>0
+          PY

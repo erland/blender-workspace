@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-014
-in_progress: DEV-014
+selected_step: DEV-015
+in_progress: DEV-015
 completed_steps:
   - DEV-001
   - DEV-002
@@ -18,38 +18,31 @@ verification:
     reason: Live Google/ChatGPT login acceptance intentionally postponed
   dev009:
     status: DEFERRED
-    reason: Live per-user Modal account and billing verification postponed
+    reason: Live personal Modal credentials and billing checks postponed
   dev010:
     status: DEFERRED
-    reason: Live worker verification postponed; previous code CI PASS
+    reason: Live dispatcher verification postponed
   dev011:
     status: DEFERRED
-    reason: Live scene revision verification postponed; previous code CI PASS
+    reason: Live scene revision verification postponed
   dev012:
     status: DEFERRED
-    reason: Live Body edit verification postponed; previous code CI PASS
+    reason: Live legacy scene edit verification postponed
   dev013:
+    status: DEFERRED
+    reason: Live scene inspect acceptance postponed
+  dev014:
     status: DEFERRED
     code_ci:
       status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44245026502
-    live_acceptance:
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44247065795
+    live_modal:
       status: DEFERRED
-  dev014:
+  dev015:
     status: PENDING
-    code_ci:
-      status: PASS
-      source_sha: d45728e865b7ce71fc164e4b8d2c1c67d0d89f92
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44246739916
-      result: 21 Python tests, 40 Node/PostgreSQL/MCP tests, real headless Blender creation plus edit in two revisions, service and worker Docker builds PASS
-    regressions:
-      status: PASS
-      result: All 15 GitHub Actions workflows passed
-    live_acceptance:
-      status: DEFERRED
-      reason: Real Google/ChatGPT login and personal Modal sandbox/billing execution intentionally postponed
+    reason: Await batch schema, PostgreSQL/MCP, mocked Modal and real headless Blender tests
 next:
-  recommended: DEV-015
-  reason: Merge PR #18 then extend generic object modeling incrementally; retain explicitly deferred Google/Modal integration acceptance
+  recommended: REPAIR-DEV-015
+  reason: Complete CI before merge and preserve deferred external acceptance
 blockers:
-  - Live Google/ChatGPT and personal Modal acceptance intentionally deferred
+  - Real Google/ChatGPT and personal Modal end-to-end execution deferred

@@ -7,6 +7,17 @@ def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
         all(type(x) in (float,int) and math.isfinite(x) and low<=x<=high for x in value))
 def validate_operation(value):
+    if isinstance(value,dict) and value.get('kind')=='batch':
+        if set(value)!={'kind','operations'}:
+            raise ValueError('Invalid batch fields')
+        items=value['operations']
+        if not isinstance(items,list) or not 1<=len(items)<=20:
+            raise ValueError('Batch must contain 1 to 20 operations')
+        for item in items:
+            if not isinstance(item,dict) or item.get('kind')=='batch':
+                raise ValueError('Nested batch is forbidden')
+            validate_operation(item)
+        return value
     if not isinstance(value,dict) or value.get('kind') not in KINDS:
         raise ValueError('Invalid operation kind')
     kind=value['kind']
