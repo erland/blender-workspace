@@ -1,23 +1,22 @@
-import {spawn} from 'node:child_process';
+import {ModalClient} from 'modal';
 import type {ModalCredentials,ModalTokenVerifier} from './modal-accounts.js';
 
-/** Calls the Modal CLI with an isolated credential environment. Never logs the secret. */
+/** Verify credentials with Modal's official JS SDK. No Python/Modal CLI dependency in MCP service.
+ * The client is explicitly configured per account; no process-global credential lookup.
+ */
 export class ModalCliTokenVerifier implements ModalTokenVerifier {
-  constructor(private readonly timeoutMs=30_000) {}
+  constructor(private readonly timeoutMs=15_000) {}
   async verify(token:ModalCredentials):Promise<void>{
-    await new Promise<void>((resolve,reject)=>{
-      const env:NodeJS.ProcessEnv={...process.env,MODAL_TOKEN_ID:token.tokenId,MODAL_TOKEN_SECRET:token.tokenSecret};
-      delete env.MODAL_OAUTH_REFRESH_TOKEN;
-      delete env.MODAL_OAUTH_CLIENT_ID;
-      delete env.MODAL_OAUTH_CLIENT_SECRET;
-      delete env.MODAL_OAUTH_JWT_KEY;
-      const proc=spawn('modal',['token','info'],{env,stdio:'ignore'});
-      let finished=false;
-      const timer=setTimeout(()=>proc.kill('SIGKILL'),this.timeoutMs);
-      proc.once('error',()=>{if(!finished){finished=true;clearTimeout(timer);
-        reject(new Error('Modal credential verification unavailable'));}});
-      proc.once('close',code=>{if(!finished){finished=true;clearTimeout(timer);
-        code===0?resolve():reject(new Error('Modal credential verification rejected'));}});
+    const client=new ModalClient({
+      tokenId:token.tokenId,tokenSecret:token.tokenSecret,timeoutMs:this.timeoutMs,maxRetries:0
     });
+    try{
+      // Authenticated, read-only API call. No sandbox creation or billing job.
+      await client.getImageBuilderVersion();
+    }catch{
+      throw new Error('Modal credential verification failed');
+    }finally{
+      client.close();
+    }
   }
 }
