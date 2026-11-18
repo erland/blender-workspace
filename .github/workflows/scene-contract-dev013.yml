@@ -1,0 +1,47 @@
+name: DEV-013 Generic scene inspection
+on:
+  pull_request:
+    paths:
+      - 'service/**'
+      - 'blender_workspace_poc/**'
+      - '.github/workflows/scene-contract-dev013.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'service/**'
+      - 'blender_workspace_poc/**'
+      - '.github/workflows/scene-contract-dev013.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scene-inspection:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bwtest
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: bwtest
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bwtest -d bwtest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://bwtest:ci-password@127.0.0.1:5432/bwtest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile and test service and scene metadata
+        working-directory: service
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Build MCP service image
+        run: docker build -f service/Dockerfile -t blender-workspace:dev013 service

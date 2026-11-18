@@ -5,12 +5,15 @@ import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {SceneEditSchema} from '../jobs/scene-edit.js';
+import type {LocalArtifactStore} from '../storage/artifact-store.js';
+import {inspectSavedScene} from '../scene/scene-contract.js';
 
 export interface ProjectServices {
   ownerKey: string;
   projects: ProjectRepository;
   jobs: JobRepository;
   modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
+  artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'>;
 }
 const uuid = z.string().uuid();
 const cleanName = z.string().trim().min(1).max(200);
@@ -35,7 +38,7 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
-  const {ownerKey,projects,jobs,modalAccounts}=deps;
+  const {ownerKey,projects,jobs,modalAccounts,artifacts}=deps;
   const allowed=permissions??new Set([READ_SCOPE,WRITE_SCOPE]);
   const denied=(scope:string)=>allowed.has(scope)?null:{
     isError:true,
@@ -89,6 +92,23 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       const versions=await projects.revisions(ownerKey,projectId);
       return result({revisions:versions.map(v=>({revision:v.revision,createdAt:v.created_at,note:v.note,artifactAvailable:v.artifact_prefix!==null}))}); }
     catch(e){return failure(e);}
+  });
+  server.registerTool('workspace_inspect_scene',{
+    description:'Read the actual object list and scene metadata saved with one owned Blender project revision. Works for arbitrary object names, meshes, lights, cameras, armatures and other scene objects. Read-only; does not execute Blender.',
+    inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999)},
+    annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+  },async({projectId,revision})=>{
+    const block=denied(READ_SCOPE);if(block)return block;
+    try{
+      const project=await projects.get(ownerKey,projectId);
+      if(!project)return failure(new JobConflict('Project not found'));
+      const revisions=await projects.revisions(ownerKey,projectId);
+      if(!revisions.some(v=>v.revision===revision&&v.artifact_prefix))
+        return failure(new JobConflict('Saved project revision not found'));
+      if(!artifacts)return failure(new JobConflict('Scene inspection is not configured'));
+      const scene=await inspectSavedScene(artifacts,projectId,revision);
+      return result({projectId,revision,scene});
+    }catch{return failure(new JobConflict('Scene metadata could not be verified'));}
   });
   server.registerTool('workspace_queue_demo', {
     description: 'Queue the first cube-monster demonstration revision for automatic execution by the separate dispatcher. Requires a connected Modal account.',

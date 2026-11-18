@@ -14,11 +14,30 @@ def save_scene(path):
 def export_glb(path):
     bpy.ops.export_scene.gltf(filepath=str(path),export_format='GLB',use_selection=False,export_animations=True,export_skins=True,export_apply=False)
 def inspect_scene():
+    # Report the actual Blender scene. Object names/types are not constrained
+    # by the demo model and are never inferred from filename conventions.
     objects=[]
     for obj in bpy.data.objects:
-        if obj.type in {'MESH','ARMATURE'}:
-            objects.append({'name':obj.name,'type':obj.type,'materials':[m.name for m in obj.data.materials] if obj.type=='MESH' else [],'bones':[b.name for b in obj.data.bones] if obj.type=='ARMATURE' else []})
-    return {'blender_version':bpy.app.version_string,'fps':bpy.context.scene.render.fps,'frame_start':bpy.context.scene.frame_start,'frame_end':bpy.context.scene.frame_end,'objects':sorted(objects,key=lambda x:x['name']),'actions':sorted(a.name for a in bpy.data.actions),'armature_animation':any(o.type=='ARMATURE' and o.animation_data and o.animation_data.action for o in bpy.data.objects),'render_engine':bpy.context.scene.render.engine}
+        objects.append({
+            'name':obj.name,
+            'type':obj.type,
+            'parent':obj.parent.name if obj.parent else None,
+            'materials':[m.name for m in obj.data.materials if m] if obj.type=='MESH' else [],
+            'bones':[b.name for b in obj.data.bones] if obj.type=='ARMATURE' else [],
+            'localTransform':{
+                'location':[float(v) for v in obj.location],
+                'rotationEuler':[float(v) for v in obj.rotation_euler],
+                'scale':[float(v) for v in obj.scale]
+            }
+        })
+    return {'blender_version':bpy.app.version_string,'fps':bpy.context.scene.render.fps,
+        'frame_start':bpy.context.scene.frame_start,
+        'frame_end':bpy.context.scene.frame_end,
+        'objects':sorted(objects,key=lambda x:x['name']),
+        'actions':sorted(a.name for a in bpy.data.actions),
+        'armature_animation':any(o.type=='ARMATURE' and o.animation_data and o.animation_data.action
+                                 for o in bpy.data.objects),
+        'render_engine':bpy.context.scene.render.engine}
 def artifact_record(path):
     p=Path(path)
     return {'path':p.name,'size_bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}

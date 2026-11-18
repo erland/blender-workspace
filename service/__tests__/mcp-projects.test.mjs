@@ -7,11 +7,15 @@ import {loadConfig} from '../dist/config.js';
 import {applyMigrations} from '../dist/db/migrations.js';
 import {ProjectRepository} from '../dist/db/projects.js';
 import {JobRepository} from '../dist/jobs/job-repository.js';
+import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 const token='m'.repeat(48);
-async function start(t,owner,pool) {
+async function start(t,owner,pool,artifacts) {
   const config=loadConfig({MCP_ACCESS_TOKEN:token,PUBLIC_ORIGIN:'http://127.0.0.1:3000',MCP_OWNER_KEY:owner});
-  const app=createApp(config,{ownerKey:owner,projects:new ProjectRepository(pool),jobs:new JobRepository(pool)});
+  const app=createApp(config,{ownerKey:owner,projects:new ProjectRepository(pool),jobs:new JobRepository(pool),...(artifacts?{artifacts}:{})});
   await app.listen({port:0,host:'127.0.0.1'});t.after(()=>app.close());
   let id=1;
   return async (method,params={},authorized=true) => {
@@ -39,17 +43,26 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:6});
   await applyMigrations(pool);
   const owner='mcp-test-'+randomUUID(),other='mcp-other-'+randomUUID();
-  const call=await start(t,owner,pool),otherCall=await start(t,other,pool);
+  const root=await mkdtemp(path.join(os.tmpdir(),'bw-mcp-scene-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const artifacts=new LocalArtifactStore(root);
+  const call=await start(t,owner,pool,artifacts),otherCall=await start(t,other,pool,artifacts);
   const toolList=await call('tools/list');
   const names=toolList.tools.map(x=>x.name);
   for (const name of ['workspace_create_project','workspace_list_projects','workspace_get_project',
     'workspace_rename_project','workspace_list_revisions','workspace_queue_demo',
-    'workspace_queue_recolor_blue','workspace_queue_scene_edit','workspace_get_job'])
+    'workspace_queue_recolor_blue','workspace_queue_scene_edit',
+    'workspace_inspect_scene','workspace_get_job'])
     assert.ok(names.includes(name),name);
   const created=output(await call('tools/call',{name:'workspace_create_project',arguments:{name:'Cube monster'}}));
   const id=created.project.id;
+  let newSceneId;
   t.after(async()=>{
     try {
+      if(newSceneId){
+        await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[newSceneId]);
+        await pool.query('DELETE FROM bw_projects WHERE id=$1',[newSceneId]);
+      }
       await pool.query('DELETE FROM bw_jobs WHERE project_id=$1',[id]);
       await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[id]);
       await pool.query('DELETE FROM bw_projects WHERE id=$1',[id]);
@@ -67,6 +80,34 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   assert.equal((await call('tools/call',{name:'workspace_queue_scene_edit',arguments:{
     projectId:id,expectedRevision:1,edit:{target:'Body',color:[0.1,0.2,0.3]}
   }})).isError,true);
+  assert.equal((await call('tools/call',{name:'workspace_inspect_scene',
+    arguments:{projectId:id,revision:1}})).isError,true);
+  // Scene metadata can be entirely unrelated to the cube-monster fixture.
+  const newScene=output(await call('tools/call',{name:'workspace_create_project',
+    arguments:{name:'Modern house'}})).project;
+  newSceneId=newScene.id;
+  const reportPath=path.join(root,'house_report.json');
+  const blendPath=path.join(root,'house.blend');
+  await writeFile(reportPath,JSON.stringify({schema_version:1,scene:{objects:[
+    {name:'Hallway / Door',type:'MESH',materials:['Oak'],bones:[]},
+    {name:'Main Camera',type:'CAMERA',materials:[],bones:[]}
+  ]}}));
+  await writeFile(blendPath,'saved 3D architecture scene');
+  await artifacts.publish({projectId:newScene.id,revision:1,expectedPreviousRevision:0,
+    artifacts:[{name:'model.blend',sourcePath:blendPath},
+      {name:'scene_report.json',sourcePath:reportPath}]});
+  await new ProjectRepository(pool).addRevision(owner,newScene.id,'Architectural concept',
+    newScene.id+'/00000001');
+  const inspected=output(await call('tools/call',{name:'workspace_inspect_scene',
+    arguments:{projectId:newScene.id,revision:1}}));
+  assert.deepEqual(inspected.scene.objects.map(x=>x.name),['Hallway / Door','Main Camera']);
+  assert.equal(inspected.scene.objects[1].type,'CAMERA');
+  assert.equal((await otherCall('tools/call',{name:'workspace_inspect_scene',
+    arguments:{projectId:newScene.id,revision:1}})).isError,true);
+  await writeFile(await artifacts.verifiedArtifactPath(newScene.id,1,'scene_report.json'),
+    '{"schema_version":1,"scene":{"objects":[]}}');
+  assert.equal((await call('tools/call',{name:'workspace_inspect_scene',
+    arguments:{projectId:newScene.id,revision:1}})).isError,true);
   const queued=output(await call('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}}));
   assert.equal(queued.job.status,'pending');
   assert.match(queued.message,/automatic worker dispatch/);
