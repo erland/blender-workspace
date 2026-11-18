@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-010
-in_progress: DEV-010
+selected_step: DEV-011
+in_progress: DEV-011
 completed_steps:
   - DEV-001
   - DEV-002
@@ -18,28 +18,19 @@ verification:
     reason: Live Google OAuth/ChatGPT login acceptance intentionally postponed
   dev009:
     status: DEFERRED
-    code_ci:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44236176622
-    live_modal:
-      status: DEFERRED
-      reason: Live personal Modal execution and billing isolation postponed
+    reason: Live personal Modal execution and billing isolation postponed
   dev010:
-    status: PENDING
+    status: DEFERRED
     code_ci:
       status: PASS
-      source_sha: 5a0221d2140c317bbe8239adb0f775a63efe0d9a
       workflow_run: https://github.com/erland/blender-workspace/actions/runs/44237803666
-      result: 32/32 PostgreSQL and MCP tests passed; concurrent worker claims, isolation, failures, crash quarantine and Docker image verified
-    regression_ci:
-      status: PASS
-      result: All 10 PR workflows passed, including DEV-006, DEV-008 and DEV-009
     live_dispatch:
       status: DEFERRED
-      reason: No production Coolify dispatcher or per-user billable Modal sandbox run performed
+  dev011:
+    status: PENDING
+    reason: Await mocked Modal revision transfer, PostgreSQL revisions/ownership, Blender regression and Docker build
 next:
-  recommended: DEV-011
-  reason: Merge PR #14 and continue with Blender scene revision support; retain deferred DEV-008/009/010 live acceptance gates
+  recommended: REPAIR-DEV-011
+  reason: Verify the controlled scene revision pipeline and retain deferred external integration gates
 blockers:
-  - Live OAuth/Google acceptance deferred
-  - Live per-user Modal cost/account verification deferred
+  - Live Google/ChatGPT and owner-specific Modal verification deferred

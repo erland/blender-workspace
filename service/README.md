@@ -1,13 +1,13 @@
 # Blender Workspace MCP service
 
-Blender Workspace uses PostgreSQL for owner-isolated project metadata, encrypted personal Modal credentials, immutable Blender artifacts and Google/OAuth login.
+Blender Workspace uses PostgreSQL for user-owned projects, encrypted personal Modal credentials, immutable revisions, Google/OAuth authentication and a separate Modal dispatcher.
 
-## Current architecture
+Implemented steps:
+- [Google login – DEV-008](docs/dev-008-google.md): automated tests passed, live acceptance deferred
+- [Personal Modal credentials – DEV-009](docs/dev-009-modal-accounts.md): encrypted per-owner tokens; real Modal billing tests deferred
+- [Automatic worker – DEV-010](docs/dev-010-dispatcher.md): PostgreSQL-backed dispatcher; external test deferred
+- [Reopen and revise scenes – DEV-011](docs/dev-011-scene-revision.md): project version 1 ➝ 2, safe predefined blue recolor; source hash verified; new immutable revision
 
-- [Google login, DEV-008](docs/dev-008-google.md) – code and simulated login tests passed; external Google/ChatGPT acceptance deferred
-- [Personal Modal credentials, DEV-009](docs/dev-009-modal-accounts.md) – encrypted personal credentials and Google settings; live Modal billing test deferred
-- [Automatic Blender job dispatcher, DEV-010](docs/dev-010-dispatcher.md) – separate continuously running worker, PostgreSQL atomic claim and crash quarantine; no public worker endpoint
+The initial demo scene retains its armature and animation. **Only the predefined blue recolor is currently implemented**, not arbitrary 3D editing through ChatGPT.
 
-Run `npm install && npm run check` from `service/`. Run `npm run db:migrate` after building, before serving requests or starting workers. Use `service/Dockerfile` with `service/` context for the HTTP app and `job-worker/Dockerfile` with repository root context for the dispatcher.
-
-The current demo generates the initial cube-monster revision only. No real Google login or personal Modal sandbox was executed for DEV-010 CI.
+From `service/`: `npm install && npm run check`. Run `npm run db:migrate` before starting HTTP or worker processes. Build worker with `job-worker/Dockerfile` (repository-root build context). No live Google or personal Modal operation was executed in DEV-011 CI.

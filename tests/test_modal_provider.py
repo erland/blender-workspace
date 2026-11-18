@@ -35,6 +35,32 @@ class ModalProviderTests(unittest.TestCase):
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
             self.assertEqual(json.loads((Path(tmp) / "modal_run_report.json").read_text())["status"], "PASS")
 
+    def test_revision_2_uploads_prior_blend_and_only_downloads_new_artifacts(self):
+        sdk = self.sdk()
+        with TemporaryDirectory() as tmp:
+            original = Path(tmp) / "source.blend"
+            original.write_bytes(b"previous saved Blender scene")
+            out = Path(tmp) / "output"
+            result = run(sdk, out, revision=2, input_blend=str(original))
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["revision"], 2)
+            self.assertEqual(len(result["artifacts"]), 3)
+            self.assertEqual({a["name"] for a in result["artifacts"]},
+                {"monster_v2.blend", "monster_v2.glb", "monster_v2.json"})
+            sdk.Sandbox.create.return_value.filesystem.copy_from_local.assert_called_once_with(
+                str(original.resolve()), "/workspace/out/monster_v1.blend")
+            args = sdk.Sandbox.create.return_value.exec.call_args.args
+            self.assertIn("revise_monster.py", " ".join(args))
+            self.assertNotIn("run_smoke.sh", " ".join(args))
+            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+
+    def test_revision_rejects_missing_source_without_starting_modal(self):
+        sdk = self.sdk()
+        with TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "saved .blend"):
+                run(sdk, tmp, revision=2, input_blend=str(Path(tmp) / "absent.blend"))
+            sdk.Sandbox.create.assert_not_called()
+
     def test_execution_failure_always_terminates(self):
         sdk = self.sdk(code=1)
         with TemporaryDirectory() as tmp:

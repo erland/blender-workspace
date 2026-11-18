@@ -117,3 +117,55 @@ test('rejects initial-demo replay on existing revision', {skip:!process.env.TEST
   assert.equal((await x.jobs.get(x.owner,revision2.id)).status,'failed');
   assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
 });
+
+test('revision 2 reads verified original .blend and publishes immutable v2 without changing v1',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  const v1=await x.workflow.createDemo(x.owner,x.project.id);
+  assert.equal(v1.status,'completed');
+  const original=await x.store.verifiedArtifactPath(x.project.id,1,'monster_v1.blend');
+  const before=(await import('node:fs/promises')).readFile;
+  const originalBytes=await before(original);
+  let received=null;
+  const revisionExecutor={
+    async createDemo(){throw Error('Should not recreate')},
+    async reviseDemo(dir,owner,input){
+      received={owner,input};
+      for(const filename of ['monster_v2.blend','monster_v2.glb','monster_v2.json'])
+        await writeFile(path.join(dir,filename),'recolored-'+filename);
+    }
+  };
+  const workflow=new JobOrchestrator(x.jobs,x.store,revisionExecutor);
+  const reserved=await x.jobs.reserve(x.owner,x.project.id,1,'Blue body');
+  const finished=await workflow.execute(x.owner,reserved.id);
+  assert.equal(finished.status,'completed');
+  assert.deepEqual(received,{owner:x.owner,input:original});
+  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,2);
+  assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2]);
+  assert.deepEqual(await before(original),originalBytes);
+  assert.deepEqual((await x.store.inspect(x.project.id,2,true)).artifacts.map(a=>a.name),
+    ['monster_v2.blend','monster_v2.glb','monster_v2.json']);
+  assert.equal((await x.jobs.get(x.other,reserved.id)),null);
+  const unsupported=await x.jobs.reserve(x.owner,x.project.id,2);
+  await assert.rejects(()=>workflow.execute(x.owner,unsupported.id),/Only revisions 1 and 2/);
+  assert.equal((await x.jobs.get(x.owner,unsupported.id)).status,'failed');
+});
+
+test('corrupt prior scene blocks revision before Modal and publishes nothing',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.workflow.createDemo(x.owner,x.project.id);
+  const original=await x.store.verifiedArtifactPath(x.project.id,1,'monster_v1.blend');
+  await writeFile(original,'tampered input');
+  let runs=0;
+  const workflow=new JobOrchestrator(x.jobs,x.store,{
+    async createDemo(){throw Error('Unexpected creation')},
+    async reviseDemo(){runs++;}
+  });
+  const reserved=await x.jobs.reserve(x.owner,x.project.id,1);
+  await assert.rejects(()=>workflow.execute(x.owner,reserved.id),/checksum mismatch/i);
+  assert.equal(runs,0);
+  assert.equal((await x.jobs.get(x.owner,reserved.id)).status,'failed');
+  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
+  assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
+});
