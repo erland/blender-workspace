@@ -32,6 +32,12 @@ def decode_embedded_glb(payload):
         not isinstance(gltf.get('scenes'),list) or len(gltf['scenes'])<1 or
         not isinstance(gltf.get('accessors'),list) or len(gltf['accessors'])>4096):
         raise ValueError('GLB scene shape unsupported')
+    accessors=gltf['accessors']
+    if any(not isinstance(a,dict) or type(a.get('count')) is not int or
+           not 0<=a['count']<=100000 for a in accessors) or sum(
+           a['count'] for a in accessors if isinstance(a,dict) and
+           type(a.get('count')) is int)>200000:
+        raise ValueError('GLB accessor complexity exceeds limits')
     buffers=gltf.get('buffers',[])
     images=gltf.get('images',[])
     required=gltf.get('extensionsRequired',[])
