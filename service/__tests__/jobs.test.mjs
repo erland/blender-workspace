@@ -326,3 +326,18 @@ test('duplicate operation accepts bounded batches and rejects unsafe references'
     {kind:'duplicate_object',name:'New'}
   ])assert.throws(()=>parseSceneOperation(bad));
 });
+
+test('rename_object supports single operations and batches, rejecting invalid names',()=>{
+  const rename={kind:'rename_object',name:'Leg',newName:'Table leg'};
+  assert.deepEqual(parseSceneOperation(rename),rename);
+  assert.equal(parseSceneOperation({kind:'batch',operations:[
+    {kind:'add_primitive',name:'Leg',primitive:'cylinder'},rename,
+    {kind:'set_color',name:'Table leg',color:[1,0,0]}]}).kind,'batch');
+  for(const bad of [
+    {...rename,newName:'Leg'},
+    {...rename,newName:'../bad'},
+    {...rename,newName:''},
+    {...rename,python:'print(1)'},
+    {kind:'rename_object',name:'Leg'}
+  ])assert.throws(()=>parseSceneOperation(bad));
+});
