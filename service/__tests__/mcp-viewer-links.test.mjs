@@ -17,7 +17,7 @@ async function rpc(app,method,params={}){
     body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
   const body=await response.text();
   assert.equal(response.status,200,body);
-  const frame=body.split('\\n').find(x=>x.startsWith('data:'));
+  const frame=body.split(String.fromCharCode(10)).find(x=>x.startsWith('data:'));
   return (frame?JSON.parse(frame.slice(5)):JSON.parse(body)).result;
 }
 function data(reply){return JSON.parse(reply.content[0].text);}
