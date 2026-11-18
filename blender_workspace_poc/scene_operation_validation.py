@@ -2,7 +2,7 @@
 import math
 import re
 from blender_workspace_poc.object_identity import valid_object_id
-KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent')
+KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh')
 PRIMITIVES=('cube','sphere','cylinder','cone','torus')
 def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
@@ -26,6 +26,7 @@ def validate_operation(value):
         raise ValueError('Invalid operation kind')
     kind=value['kind']
     allowed={'add_primitive':{'kind','name','primitive','location','scale','color'},
+             'add_mesh':{'kind','name','vertices','faces','location','scale','rotation','color'},
              'set_transform':{'kind','name','objectId','location','scale','rotation'},
              'set_color':{'kind','name','objectId','color'},
              'delete_object':{'kind','name','objectId'},
@@ -35,7 +36,7 @@ def validate_operation(value):
     if set(value)-allowed:raise ValueError('Unrecognized operation field')
     name=value.get('name')
     object_id=value.get('objectId')
-    if kind=='add_primitive' or kind=='duplicate_object':
+    if kind in ('add_primitive','duplicate_object','add_mesh'):
         if not _valid_name(name):raise ValueError('Invalid new object name')
     else:
         if (name is None)==(object_id is None):
@@ -65,6 +66,24 @@ def validate_operation(value):
             raise ValueError('Invalid parent object ID')
         if object_id is not None and object_id==parent_id:
             raise ValueError('Self parenting forbidden')
+    if kind=='add_mesh':
+        vertices=value.get('vertices')
+        faces=value.get('faces')
+        if not isinstance(vertices,list) or not 3<=len(vertices)<=1024 or not all(
+                _vector(v,-100,100) for v in vertices):
+            raise ValueError('Mesh requires 3 to 1024 finite vertices')
+        if not isinstance(faces,list) or not 1<=len(faces)<=2048:
+            raise ValueError('Mesh requires 1 to 2048 polygon faces')
+        total=0
+        for face in faces:
+            if not isinstance(face,list) or not 3<=len(face)<=8:
+                raise ValueError('Face must have 3 to 8 vertices')
+            total+=len(face)
+            if total>8192:raise ValueError('Too many face indices')
+            if any(type(i) is not int or i<0 or i>=len(vertices) for i in face):
+                raise ValueError('Face vertex index out of bounds')
+            if len(set(face))!=len(face):
+                raise ValueError('Repeated face index')
     if kind=='add_primitive' and value.get('primitive') not in PRIMITIVES:
         raise ValueError('Invalid primitive')
     if kind=='set_transform' and not any(k in value for k in ('location','scale','rotation')):

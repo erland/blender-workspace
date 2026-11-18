@@ -38,6 +38,33 @@ def set_parent_preserving_world(obj,parent):
 def apply_operation(operation):
     kind=operation['kind'];name=operation.get('name')
     existing=bpy.data.objects.get(name) if name is not None else None
+    if kind=='add_mesh':
+        if existing is not None:raise ValueError('Object name already exists')
+        mesh=bpy.data.meshes.new('Geometry_'+name)
+        obj=None
+        try:
+            mesh.from_pydata([tuple(v) for v in operation['vertices']],[],
+                             [tuple(face) for face in operation['faces']])
+            mesh.validate(clean_customdata=False)
+            mesh.update()
+            obj=bpy.data.objects.new(name,mesh)
+            bpy.context.scene.collection.objects.link(obj)
+            if 'location' in operation:obj.location=tuple(operation['location'])
+            if 'scale' in operation:obj.scale=tuple(operation['scale'])
+            if 'rotation' in operation:obj.rotation_euler=tuple(operation['rotation'])
+            if 'color' in operation:
+                rgba=tuple(operation['color'])+(1.0,)
+                mat=bpy.data.materials.new('Material_'+name)
+                mat.use_nodes=True
+                mat.diffuse_color=rgba
+                bsdf=mat.node_tree.nodes.get('Principled BSDF')
+                if bsdf:bsdf.inputs['Base Color'].default_value=rgba
+                mesh.materials.append(mat)
+            return
+        except Exception:
+            if obj is not None:bpy.data.objects.remove(obj,do_unlink=True)
+            if mesh.users==0:bpy.data.meshes.remove(mesh)
+            raise
     if kind=='duplicate_object':
         source=resolve_target(operation,'sourceId','source')
         if source is None or source.type!='MESH':
@@ -119,7 +146,7 @@ def main():
     op=validate_operation(json.loads(Path(operation_file).read_text('utf8')))
     actions=op['operations'] if op['kind']=='batch' else [op]
     if source=='NEW':
-        if revision!=1 or actions[0]['kind']!='add_primitive':
+        if revision!=1 or actions[0]['kind'] not in ('add_primitive','add_mesh'):
             raise ValueError('New scene requires initial primitive')
         bpy.ops.object.select_all(action='SELECT')
         bpy.ops.object.delete(use_global=False)

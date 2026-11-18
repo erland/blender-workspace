@@ -155,3 +155,40 @@ jobs:
               for ext in ['blend','glb','json']:
                   assert (Path('batch-artifacts')/name/('scene.'+ext)).stat().st_size>0
           PY
+
+          # DEV-024: create a non-primitive mesh as the first scene operation.
+          mkdir -p batch-artifacts/custom
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          mesh={'kind':'add_mesh','name':'Custom Roof','vertices':[
+              [-2,-2,0],[2,-2,0],[2,2,0],[-2,2,0],[0,0,3]],
+              'faces':[[0,3,2,1],[0,1,4],[1,2,4],[2,3,4],[3,0,4]],
+              'color':[0.2,0.5,0.8]}
+          Path('custom-mesh.json').write_text(json.dumps(mesh))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/custom:/workspace/out" \
+            -v "$PWD/custom-mesh.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- NEW /workspace/spec.json 1
+          python3 - <<'PY'
+          import json,struct
+          from pathlib import Path
+          base=Path('batch-artifacts/custom')
+          report=json.loads((base/'scene.json').read_text())
+          meshes={o['name']:o for o in report['scene']['objects'] if o['type']=='MESH'}
+          assert 'Custom Roof' in meshes
+          assert meshes['Custom Roof']['objectId']
+          raw=(base/'scene.glb').read_bytes()
+          assert raw[:4]==b'glTF'
+          size,chunk=struct.unpack_from('<I4s',raw,12)
+          assert chunk==b'JSON'
+          data=json.loads(raw[20:20+size])
+          nodes={node['name']:node for node in data['nodes']}
+          node=nodes['Custom Roof']
+          assert node['extras']['bw_object_id']==meshes['Custom Roof']['objectId']
+          triangles=data['meshes'][node['mesh']]['primitives']
+          assert triangles
+          assert (base/'scene.blend').stat().st_size>0
+          PY

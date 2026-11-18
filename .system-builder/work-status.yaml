@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-023
-in_progress: DEV-023
+selected_step: DEV-024
+in_progress: DEV-024
 completed_steps:
   - DEV-001
   - DEV-002
@@ -122,15 +122,25 @@ verification:
       status: DEFERRED
       reason: Live ChatGPT/Google/Modal and iPad object selection are not yet verified
   dev023:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: UUID-targeted operations and hierarchy behavior need full PR CI verification
+      status: PASS
+      source_sha: e99028a449c0b236bd10479201faef79c75b760a
+      result: All 15 CI workflows passed including three-revision UUID hierarchy and cycle safety regression
+      workflow_run: https://github.com/erland/blender-workspace/pull/28/checks
     live_acceptance:
       status: DEFERRED
       reason: Real Google/ChatGPT, browser and personal Modal acceptance still deferred
+  dev024:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: Bounded custom geometry and actual Blender GLB export require PR CI
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT and personal Modal execution deferred
 next:
-  recommended: VERIFY_DEV-023
-  reason: Verify three-revision real Blender hierarchy tests and all CI before merging; next is general custom mesh geometry
+  recommended: VERIFY_DEV-024
+  reason: Verify custom mesh generation with real Blender, then plan bounded mesh editing and modifiers
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
