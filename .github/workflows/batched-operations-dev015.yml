@@ -274,3 +274,41 @@ jobs:
             --entrypoint blender bw-blender:dev015 -b --factory-startup \
             --python /workspace/tests/blender_verify_dev026.py -- \
             /workspace/artifacts/shape-source /workspace/artifacts/shape-edited
+
+          # DEV-027: PBR must survive BLEND -> GLB without modifying another object's material.
+          mkdir -p batch-artifacts/pbr-source batch-artifacts/pbr-edited
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          operations={'kind':'batch','operations':[
+              {'kind':'add_primitive','name':'PBR Target','primitive':'cube','color':[0.7,0.2,0.1]},
+              {'kind':'add_primitive','name':'Untouched','primitive':'sphere','location':[4,0,0],
+               'color':[0.2,0.6,0.2]}]}
+          Path('pbr-source.json').write_text(json.dumps(operations))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/pbr-source:/workspace/out" \
+            -v "$PWD/pbr-source.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- NEW /workspace/spec.json 1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('batch-artifacts/pbr-source/scene.json').read_text())
+          object_id=next(o['objectId'] for o in report['scene']['objects'] if o['name']=='PBR Target')
+          operation={'kind':'set_pbr_material','objectId':object_id,
+              'baseColor':[0.1,0.3,0.6],'metallic':0.8,'roughness':0.2,
+              'opacity':0.55,'emissionColor':[0.2,0.1,0.0],'emissionStrength':0.4}
+          Path('pbr-edit.json').write_text(json.dumps(operation))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/pbr-edited:/workspace/out" \
+            -v "$PWD/batch-artifacts/pbr-source:/workspace/previous:ro" \
+            -v "$PWD/pbr-edit.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 2
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts:/workspace/artifacts:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/tests/blender_verify_dev027.py -- \
+            /workspace/artifacts/pbr-source /workspace/artifacts/pbr-edited
