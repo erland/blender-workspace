@@ -185,6 +185,32 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        return reply.type('text/html; charset=utf-8').send(viewerPage(projectId,Number(revision)));
      }catch{return reply.code(404).send('Not found');}
    });
+   // Returns only revisions belonging to the signed-in user and containing
+   // a verified GLB. No file paths, private metadata, or tokens are exposed.
+   app.get('/viewer/api/projects/:projectId/revisions',async(request,reply)=>{
+     viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const session=google.settingsSession(request.headers.cookie);
+     if(!session)return reply.code(401).send({error:'unauthorized'});
+     const {projectId}=request.params as {projectId:string};
+     if(!validViewerParams(projectId,'1'))
+       return reply.code(404).send({error:'not_found'});
+     if(request.headers.origin&&request.headers.origin!==config.publicOrigin)
+       return reply.code(403).send({error:'origin_not_allowed'});
+     try{
+       const project=await services.projects.get(session.ownerKey,projectId);
+       if(!project)return reply.code(404).send({error:'not_found'});
+       const revisions=await services.projects.revisions(session.ownerKey,projectId);
+       const available:number[]=[];
+       // Limit manifest and checksum reads on a single interactive request.
+       for(const r of revisions.filter(r=>r.artifact_prefix).slice(-100)){
+         try{
+           await services.artifacts!.verifiedArtifactPath(projectId,r.revision,'scene.glb');
+           available.push(r.revision);
+         }catch{/* Unavailable/corrupt revisions must not be advertised. */}
+       }
+       return reply.type('application/json').send({projectId,revisions:available});
+     }catch{return reply.code(404).send({error:'not_found'});}
+   });
    app.get('/viewer/api/projects/:projectId/revisions/:revision/scene.glb',async(request,reply)=>{
      viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
      const session=google.settingsSession(request.headers.cookie);
