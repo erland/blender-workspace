@@ -28,9 +28,19 @@ verification:
       status: DEFERRED
   dev011:
     status: PENDING
-    reason: Await mocked Modal revision transfer, PostgreSQL revisions/ownership, Blender regression and Docker build
+    code_ci:
+      status: PASS
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44239330831
+      source_sha: f9e9eec0e645a48e561e3e9d709519437af46768
+      result: 12 Python tests, 34 PostgreSQL/Node tests, Modal worker Docker build PASS
+    regressions:
+      status: PASS
+      result: All 12 GitHub Actions workflows PASS including headless Blender and Modal DEV-002
+    live_revision:
+      status: DEFERRED
+      reason: No real personal Modal sandbox was run with an uploaded revision-1 Blender scene; user elected to postpone external verification
 next:
-  recommended: REPAIR-DEV-011
-  reason: Verify the controlled scene revision pipeline and retain deferred external integration gates
+  recommended: DEV-012
+  reason: Merge PR #15 and plan safe structured scene-edit operations; retain deferred live Google/Modal and revision integration gates
 blockers:
   - Live Google/ChatGPT and owner-specific Modal verification deferred
