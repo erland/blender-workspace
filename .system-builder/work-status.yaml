@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-015
-in_progress: DEV-015
+selected_step: DEV-016
+in_progress: DEV-016
 completed_steps:
   - DEV-001
   - DEV-002
@@ -51,8 +51,16 @@ verification:
     live_acceptance:
       status: DEFERRED
       reason: No real Google/ChatGPT login or personal Modal billing/execution performed
+  dev016:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: New duplicate-object contract and real headless Blender regression await PR CI
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT and user-billed Modal execution postponed
 next:
-  recommended: DEV-016
-  reason: Merge PR #19 then extend generic geometric capabilities without requiring one Modal job per object; keep external acceptance deferred
+  recommended: VERIFY_DEV-016
+  reason: Verify PR CI, repair any failures, and record confirmed source revision before completion
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
