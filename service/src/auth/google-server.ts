@@ -78,7 +78,7 @@ export class GoogleOAuthServer {
     this.provider=provider??new LiveGoogleProvider(config);
   }
   get issuer(){return this.config.publicOrigin;}
-  get resource(){return this.config.publicOrigin;}
+  get resource(){return this.config.publicOrigin+'/mcp';}
   get callback(){return this.config.publicOrigin+'/auth/google/callback';}
   metadata(){
     return {issuer:this.issuer,authorization_endpoint:this.issuer+'/authorize',
@@ -189,17 +189,17 @@ export class GoogleOAuthServer {
       const verifier=form.code_verifier;
       if(!code||!verifier||!VERIFIER.test(verifier)||!form.client_id||!form.redirect_uri)
         return error('invalid_request');
-      const grant=await this.store.consumeCode(hash(code));
-      if(!grant||grant.clientId!==form.client_id||grant.redirectUri!==form.redirect_uri||
-        (form.resource&&form.resource!==grant.resource)||
-        createHash('sha256').update(verifier).digest('base64url')!==grant.challenge)
+      const challenge=createHash('sha256').update(verifier).digest('base64url');
+      const grant=await this.store.consumeCode(hash(code),form.client_id,form.redirect_uri,
+        challenge,form.resource);
+      if(!grant)
         return error('invalid_grant');
       return this.issue(grant);
     }
     if(form.grant_type==='refresh_token'){
       if(!form.refresh_token||!form.client_id)return error('invalid_request');
-      const grant=await this.store.consumeRefresh(hash(form.refresh_token),form.client_id);
-      if(!grant||(form.resource&&form.resource!==grant.resource))
+      const grant=await this.store.consumeRefresh(hash(form.refresh_token),form.client_id,form.resource);
+      if(!grant)
         return error('invalid_grant');
       return this.issue(grant);
     }
