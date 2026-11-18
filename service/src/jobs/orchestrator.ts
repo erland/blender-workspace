@@ -4,12 +4,14 @@ import os from 'node:os';
 import type { Job, JobRepository } from './job-repository.js';
 import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-store.js';
 import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
+import {parseSceneOperation,type SceneOperation} from './scene-operation.js';
 
 export interface BlenderExecutor {
   /** Produce trusted outputs for the current demo. DEV-006 only creates revision 1. */
   createDemo(outDir:string,owner:string):Promise<void>;
   reviseDemo?(outDir:string,owner:string,inputBlend:string):Promise<void>;
   editScene?(outDir:string,owner:string,inputBlend:string,revision:number,edit:SceneEdit):Promise<void>;
+  runSceneOperation?(outDir:string,owner:string,revision:number,operation:SceneOperation,inputBlend?:string):Promise<void>;
 }
 const artifactFiles=(revision:number)=>['blend','glb','json'].map(ext=>`monster_v${revision}.${ext}`);
 export class JobOrchestrator {
@@ -28,14 +30,20 @@ export class JobOrchestrator {
   async executeClaimed(job:Job):Promise<Job> {
     if(job.status!=='running')throw new Error('Only running jobs can execute');
     const owner=job.owner_key,jobId=job.id;
-    if(job.expected_revision>0 && !job.edit_spec && job.expected_revision!==1) {
+    if(job.expected_revision>0 && !job.edit_spec && !job.operation_spec && job.expected_revision!==1) {
       await this.jobs.markFailed(owner,jobId,'A structured edit is required for this revision');
       throw new Error('A structured edit is required for this revision');
     }
     const temp=await mkdtemp(path.join(os.tmpdir(),'bw-job-'));
     let published=false;
     try {
-      if(job.expected_revision===0){
+      if(job.operation_spec){
+        if(!this.executor.runSceneOperation)throw new Error('Generic operation executor is not configured');
+        const operation=parseSceneOperation(job.operation_spec);
+        const source=job.expected_revision===0?undefined:await this.files.verifiedArtifactPath(
+          job.project_id,job.expected_revision,'scene.blend');
+        await this.executor.runSceneOperation(temp,owner,job.requested_revision,operation,source);
+      }else if(job.expected_revision===0){
         await this.executor.createDemo(temp,job.owner_key);
       }else{
         // Each edit is based on the most recent SHA-verified immutable predecessor.
@@ -52,7 +60,8 @@ export class JobOrchestrator {
           await this.executor.reviseDemo(temp,owner,input);
         }
       }
-      const artifacts:IncomingArtifact[]=artifactFiles(job.requested_revision)
+      const names=job.operation_spec?['scene.blend','scene.glb','scene.json']:artifactFiles(job.requested_revision);
+      const artifacts:IncomingArtifact[]=names
         .map(name=>({name,sourcePath:path.join(temp,name)}));
       await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
         expectedPreviousRevision:job.expected_revision,artifacts});

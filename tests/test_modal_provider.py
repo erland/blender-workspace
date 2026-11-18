@@ -88,6 +88,48 @@ class ModalProviderTests(unittest.TestCase):
                 run(sdk,Path(tmp)/'out',revision=3,input_blend=str(scene),edit_file=str(change))
             sdk.Sandbox.create.assert_not_called()
 
+    def test_generic_creation_uses_fixed_blender_script_and_generic_artifacts(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            operation=Path(tmp)/'operation.json'
+            operation.write_text(json.dumps({'kind':'add_primitive','name':'Villa Wall',
+                'primitive':'cube','scale':[3,0.2,2]}))
+            report=run(sdk,Path(tmp)/'out',revision=1,operation_file=str(operation))
+            self.assertEqual(report['status'],'PASS')
+            self.assertEqual({a['name'] for a in report['artifacts']},
+                {'scene.blend','scene.glb','scene.json'})
+            upload=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args
+            self.assertEqual(upload.args,(str(operation.resolve()),'/workspace/out/operation.json'))
+            args=sdk.Sandbox.create.return_value.exec.call_args.args
+            self.assertIn('apply_operation.py',' '.join(args))
+            self.assertNotIn('run_smoke.sh',' '.join(args))
+            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+
+    def test_generic_edit_uploads_predecessor_and_operation(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            source=Path(tmp)/'house.blend';source.write_bytes(b'house')
+            spec=Path(tmp)/'operation.json'
+            spec.write_text(json.dumps({'kind':'set_transform','name':'Villa Wall',
+                'location':[3,0,0]}))
+            report=run(sdk,Path(tmp)/'out',revision=2,input_blend=str(source),
+                operation_file=str(spec))
+            self.assertEqual(report['status'],'PASS')
+            calls=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list
+            self.assertEqual(calls[0].args,(str(spec.resolve()),'/workspace/out/operation.json'))
+            self.assertEqual(calls[1].args,(str(source.resolve()),'/workspace/out/input.blend'))
+            self.assertEqual(len(report['artifacts']),3)
+
+    def test_generic_invalid_script_rejected_before_modal(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            op=Path(tmp)/'bad.json'
+            op.write_text(json.dumps({'kind':'add_primitive','name':'X','primitive':'cube',
+                'python':'print(1)'}))
+            with self.assertRaises(ValueError):
+                run(sdk,Path(tmp)/'out',revision=1,operation_file=str(op))
+            sdk.Sandbox.create.assert_not_called()
+
     def test_revision_rejects_missing_source_without_starting_modal(self):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp:

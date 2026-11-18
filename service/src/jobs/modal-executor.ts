@@ -3,6 +3,7 @@ import path from 'node:path';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
+import {parseSceneOperation,type SceneOperation} from './scene-operation.js';
 import type {BlenderExecutor} from './orchestrator.js';
 import type {ModalCredentials,ModalAccountManager} from '../modal/modal-accounts.js';
 
@@ -43,7 +44,24 @@ export class ModalPythonExecutor implements BlenderExecutor {
       await this.runRevision(outDir,owner,revision,inputBlend,editPath);
     }finally{await rm(folder,{recursive:true,force:true});}
   }
-  private async runRevision(outDir:string,owner:string,revision:number,inputBlend?:string,editPath?:string):Promise<void> {
+  async runSceneOperation(outDir:string,owner:string,revision:number,
+      operation:SceneOperation,inputBlend?:string):Promise<void>{
+    if(!Number.isInteger(revision)||revision<1||revision>99999999||
+        (revision===1&&inputBlend!==undefined)||(revision>1&&!inputBlend))
+      throw new RangeError('Invalid generic operation revision');
+    if(inputBlend&&!path.isAbsolute(inputBlend))throw new RangeError('Invalid source path');
+    const safe=parseSceneOperation(operation);
+    if(revision===1&&safe.kind!=='add_primitive')
+      throw new RangeError('Initial scene must add a primitive');
+    const folder=await mkdtemp(path.join(os.tmpdir(),'bw-scene-'));
+    try{
+      const filepath=path.join(folder,'operation.json');
+      await writeFile(filepath,JSON.stringify(safe),{mode:0o600});
+      await this.runRevision(outDir,owner,revision,inputBlend,undefined,filepath);
+    }finally{await rm(folder,{recursive:true,force:true});}
+  }
+  private async runRevision(outDir:string,owner:string,revision:number,
+      inputBlend?:string,editPath?:string,operationPath?:string):Promise<void> {
     if(!owner?.trim())throw new Error('Missing job owner');
     if(!this.accounts&&!this.legacy)throw new Error('Personal Modal account service unavailable');
     const token=this.accounts?await this.accounts.requireConnected(owner):undefined;
@@ -54,6 +72,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
         '--revision',String(revision)];
       if(inputBlend)args.push('--input-blend',inputBlend);
       if(editPath)args.push('--edit-file',editPath);
+      if(operationPath)args.push('--operation-file',operationPath);
       const proc=spawn('python3',args,
         {cwd:this.repoRoot,stdio:['ignore','pipe','pipe'],env});
       let ended=false;

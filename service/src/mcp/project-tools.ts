@@ -5,6 +5,7 @@ import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {SceneEditSchema} from '../jobs/scene-edit.js';
+import {SceneOperationSchema} from '../jobs/scene-operation.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import {inspectSavedScene} from '../scene/scene-contract.js';
 
@@ -109,6 +110,36 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       const scene=await inspectSavedScene(artifacts,projectId,revision);
       return result({projectId,revision,scene});
     }catch{return failure(new JobConflict('Scene metadata could not be verified'));}
+  });
+  server.registerTool('workspace_queue_scene_operation',{
+    description:'Queue one bounded Blender operation independent of model type: add a named primitive, set object transforms, set mesh color or delete an object. Starting a new scene requires add_primitive. Follow-up operations use saved revisions. No user Python code.',
+    inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
+      operation:SceneOperationSchema,note:note.optional()},...schemes(WRITE_SCOPE)
+  },async({projectId,expectedRevision,operation,note:jobNote})=>{
+    const deniedWrite=denied(WRITE_SCOPE);if(deniedWrite)return deniedWrite;
+    try{
+      if(modalAccounts&&!(await modalAccounts.status(ownerKey)).connected)
+        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
+      const project=await projects.get(ownerKey,projectId);
+      if(!project)return failure(new JobConflict('Project not found'));
+      if(project.current_revision!==expectedRevision)
+        return failure(new JobConflict('Stale project revision'));
+      if(expectedRevision===0){
+        if(operation.kind!=='add_primitive')
+          return failure(new JobConflict('Initial scene must add a primitive'));
+      }else{
+        const history=await projects.revisions(ownerKey,projectId);
+        if(!history.some(v=>v.revision===expectedRevision&&v.artifact_prefix))
+          return failure(new JobConflict('Saved source revision not found'));
+        if(!artifacts)return failure(new JobConflict('Generic artifacts are not configured'));
+        const manifest=await artifacts.inspect(projectId,expectedRevision);
+        if(!manifest.artifacts.some(v=>v.name==='scene.blend'))
+          return failure(new JobConflict('Generic scene source is required'));
+      }
+      const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
+        jobNote??'Structured Blender operation',undefined,operation);
+      return result({job:safeJob(job),operation,message:'Queued generic Blender scene operation'});
+    }catch{return failure(new JobConflict('Scene operation could not be queued'));}
   });
   server.registerTool('workspace_queue_demo', {
     description: 'Queue the first cube-monster demonstration revision for automatic execution by the separate dispatcher. Requires a connected Modal account.',

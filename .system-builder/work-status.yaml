@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-013
-in_progress: DEV-013
+selected_step: DEV-014
+in_progress: DEV-014
 completed_steps:
   - DEV-001
   - DEV-002
@@ -15,38 +15,41 @@ completed_steps:
 verification:
   dev008:
     status: DEFERRED
-    reason: Real Google/ChatGPT login acceptance intentionally postponed
+    reason: Live Google/ChatGPT login acceptance intentionally postponed
   dev009:
     status: DEFERRED
-    reason: Real personal Modal execution and billing isolation postponed
+    reason: Live per-user Modal account and billing verification postponed
   dev010:
     status: DEFERRED
-    reason: External dispatcher verification deferred; prior code tests passed
+    reason: Live worker verification postponed; previous code CI PASS
   dev011:
     status: DEFERRED
-    reason: External revision verification deferred; prior code tests passed
+    reason: Live scene revision verification postponed; previous code CI PASS
   dev012:
     status: DEFERRED
-    code_ci:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44241325634
-    live_acceptance:
-      status: DEFERRED
+    reason: Live Body edit verification postponed; previous code CI PASS
   dev013:
-    status: PENDING
+    status: DEFERRED
     code_ci:
       status: PASS
       workflow_run: https://github.com/erland/blender-workspace/actions/runs/44245026502
-      source_sha: 64e8854c4ed37535825ce4e564b1e543b32c8f15
-      result: 38/38 Node/PostgreSQL tests; generic saved scene inspection, owner isolation, tamper detection, Docker build
-    regressions:
-      status: PASS
-      result: All 13 CI workflows passed, including Blender, Modal and OAuth
     live_acceptance:
       status: DEFERRED
-      reason: Real Google/ChatGPT login and Modal user execution intentionally postponed
+  dev014:
+    status: PENDING
+    code_ci:
+      status: PASS
+      source_sha: d45728e865b7ce71fc164e4b8d2c1c67d0d89f92
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44246739916
+      result: 21 Python tests, 40 Node/PostgreSQL/MCP tests, real headless Blender creation plus edit in two revisions, service and worker Docker builds PASS
+    regressions:
+      status: PASS
+      result: All 15 GitHub Actions workflows passed
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT login and personal Modal sandbox/billing execution intentionally postponed
 next:
-  recommended: DEV-014
-  reason: Merge PR #17, then implement generic scene creation/manipulation operations using the new scene object contract
+  recommended: DEV-015
+  reason: Merge PR #18 then extend generic object modeling incrementally; retain explicitly deferred Google/Modal integration acceptance
 blockers:
-  - Live Google/ChatGPT and owner-specific Modal acceptance deferred
+  - Live Google/ChatGPT and personal Modal acceptance intentionally deferred
