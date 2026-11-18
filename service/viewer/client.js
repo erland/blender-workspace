@@ -69,7 +69,7 @@ function createViewport(canvas,interactive=false){
     if(!canvas.closest('[hidden]')){controls.update();renderer.render(scene,camera);}
   }
   draw();
-  return {...state,fit,clear,dispose:()=>{observer.disconnect();controls.dispose();clear();renderer.dispose();}};
+  return Object.assign(state,{fit,clear,dispose:()=>{observer.disconnect();controls.dispose();clear();renderer.dispose();}});
 }
 const main=createViewport(document.getElementById('viewport'),true);
 const secondary=createViewport(document.getElementById('comparison-viewport'));
