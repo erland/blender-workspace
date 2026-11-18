@@ -9,7 +9,7 @@ export interface ProjectServices {
   ownerKey: string;
   projects: ProjectRepository;
   jobs: JobRepository;
-  modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'>;
+  modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
 }
 const uuid = z.string().uuid();
 const cleanName = z.string().trim().min(1).max(200);
