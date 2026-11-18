@@ -1,15 +1,18 @@
-# One-shot Modal job worker (DEV-006)
+# One-shot Blender Modal worker
 
-The worker has Node.js, TypeScript orchestration, Python 3, pinned Modal SDK and the Blender build context. It is **separate** from the public MCP service image.
+The worker executes short-lived sandbox jobs with isolated artifacts. DEV-009 adds per-user Modal credentials.
+
+Set `DATABASE_URL`, `ARTIFACT_ROOT`, `MODAL_WORKER_ROOT` and `MODAL_CREDENTIAL_ENCRYPTION_KEY` (same encryption key securely provided to service and worker).
+
+Use a trusted operator to associate an account with the authenticated owner key. Pass credentials over protected stdin, not command-line parameters:
 
 ```sh
-docker build -f job-worker/Dockerfile -t blender-workspace-worker:dev006 .
-# Supply DATABASE_URL, MODAL_TOKEN_ID, MODAL_TOKEN_SECRET and bind-mount a writable volume.
-docker run --rm --env-file ./worker-secrets.env \
-  -v /your/persistent/volume:/data/blender-workspace \
-  blender-workspace-worker:dev006 create internal-operator "Cube monster"
+# The stdin payload is a JSON object with tokenId and tokenSecret.
+# Do not save tokens in shell history or log files.
+cat /secure/credentials.json | docker run -i --rm --network trusted \
+  --env-file /secure/worker.env \
+  -v /persistent/artifacts:/data/blender-workspace \
+  blender-workspace-worker:dev009 modal-connect 'oauth:authenticated-owner-hash'
 ```
 
-The example uses a local, trusted owner key. Do not commit the env file. In production, derive ownership from server-side authorization rather than permitting arbitrary identity input. The image does not run a persistent service and should not be exposed publicly.
-
-To validate the end-to-end flow, use the manually triggered **DEV-006 Modal live** GitHub Actions workflow after it reaches `main`. It creates an isolated PostgreSQL 16 test database, builds this worker, executes a real Modal job using repository secrets and uploads artifact evidence. This is a billable Modal operation and is not triggered for every PR.
+`modal-status OWNER`, `modal-test OWNER`, `modal-disconnect OWNER` and `run OWNER JOB_ID` are supported; only trusted operators should invoke them. A connected Modal account is required before running a job. No public settings screen exists yet. The `MODAL_EXECUTION_MODE=legacy` option is strictly for the existing single-owner DEV-006 integration test; never use it in public deployments.

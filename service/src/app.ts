@@ -8,7 +8,8 @@ import {bearerChallenge,protectedResourceMetadata,remoteJwks,verifyOAuthAccessTo
  READ_SCOPE,WRITE_SCOPE,type Principal,type Jwks} from './auth/oauth.js';
 
 export function createApp(config:ServiceConfig,
- services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs']},
+ services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs'];
+  modalAccounts?:ProjectServices['modalAccounts']},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
@@ -98,7 +99,8 @@ export function createApp(config:ServiceConfig,
      const principal=principals.get(request);
      if(!principal){reply.code(401).send({error:'unauthorized'});return;}
      registerProjectTools(server,{ownerKey:principal.ownerKey,
-       projects:services.projects,jobs:services.jobs},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
+       projects:services.projects,jobs:services.jobs,
+       ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{})},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
    }
    const transport=new NodeStreamableHTTPServerTransport({sessionIdGenerator:undefined});
    let closed=false;
