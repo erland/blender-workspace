@@ -31,7 +31,10 @@ FUNCTION_GIB_USD=0.00000222
 SANDBOX_CPU_USD=0.00003942
 SANDBOX_GIB_USD=0.00000667
 
-image=modal.Image.from_dockerfile(str(REPOSITORY/"Dockerfile"),context_dir=str(REPOSITORY))
+image=modal.Image.from_dockerfile(
+    str(REPOSITORY/"experiments/Dockerfile.modal-benchmark"),
+    context_dir=str(REPOSITORY)
+)
 app=modal.App("blender-workspace-function-sandbox-comparison")
 
 @app.function(image=image,cpu=CPU_CORES,memory=MEMORY_MIB,timeout=JOB_TIMEOUT,
@@ -52,7 +55,8 @@ def benchmark_sandbox():
                             block_network=True)
     try:
         output=sb.stdout.read()
-        exit_code=sb.wait()
+        sb.wait()
+        exit_code=sb.returncode
         total=time.perf_counter()-started
         if exit_code!=0:
             error=sb.stderr.read()
