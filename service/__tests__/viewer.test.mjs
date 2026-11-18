@@ -78,7 +78,7 @@ test('DEV-019 viewer uses Google cookie and never exposes bearer or session secr
     headers:{cookie,origin:'https://evil.example'}});
   assert.equal(forbidden.statusCode,403);
   const badRevision=await app.inject({method:'GET',
-    url:'/viewer/api/projects/'+id+'/revisions/2/scene.glb',headers:{cookie}});
+    url:'/viewer/api/projects/'+id+'/revisions/3/scene.glb',headers:{cookie}});
   assert.equal(badRevision.statusCode,404);
   const foreign=await app.inject({method:'GET',
     url:'/viewer/'+randomUUID()+'/revisions/1',headers:{cookie}});
