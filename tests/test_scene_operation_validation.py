@@ -29,6 +29,24 @@ class SceneOperationValidationTests(unittest.TestCase):
         for value in cases:
             with self.subTest(value=value),self.assertRaises(ValueError):
                 validate_operation(value)
+    def test_duplicate_object_contract(self):
+        item={'kind':'duplicate_object','source':'Desk leg','name':'Desk leg 2',
+              'location':[2,0,0],'rotation':[0,0,1.57]}
+        self.assertEqual(validate_operation(item),item)
+        self.assertEqual(validate_operation({'kind':'batch','operations':[
+            {'kind':'add_primitive','name':'Base','primitive':'cube'},
+            {'kind':'duplicate_object','source':'Base','name':'Copy'}]})['kind'],'batch')
+        for invalid in [
+            {'kind':'duplicate_object','source':'Base','name':'Base'},
+            {'kind':'duplicate_object','source':'../Base','name':'Copy'},
+            {'kind':'duplicate_object','source':'Base','name':'Copy','script':'run()'},
+            {'kind':'duplicate_object','source':'Base','name':'Copy','location':[float('inf'),0,0]},
+            {'kind':'duplicate_object','name':'Copy'},
+            {'kind':'duplicate_object','source':'Base','name':'Copy','scale':[0,1,1]},
+        ]:
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                validate_operation(invalid)
+
     def test_rejects_untrusted_instructions(self):
         bad=[
             {'kind':'run_python','name':'x','code':'print(1)'},
