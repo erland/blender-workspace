@@ -37,9 +37,19 @@ verification:
       status: DEFERRED
   dev014:
     status: PENDING
-    reason: Await generic object operations, model-independent artifact pipeline, PostgreSQL integration, mocked Modal and Docker regression CI
+    code_ci:
+      status: PASS
+      source_sha: d45728e865b7ce71fc164e4b8d2c1c67d0d89f92
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44246739916
+      result: 21 Python tests, 40 Node/PostgreSQL/MCP tests, real headless Blender creation plus edit in two revisions, service and worker Docker builds PASS
+    regressions:
+      status: PASS
+      result: All 15 GitHub Actions workflows passed
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT login and personal Modal sandbox/billing execution intentionally postponed
 next:
-  recommended: REPAIR-DEV-014
-  reason: Verify code and tests before merge; keep real Google/Modal acceptance deferred
+  recommended: DEV-015
+  reason: Merge PR #18 then extend generic object modeling incrementally; retain explicitly deferred Google/Modal integration acceptance
 blockers:
   - Live Google/ChatGPT and personal Modal acceptance intentionally deferred
