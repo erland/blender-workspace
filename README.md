@@ -80,3 +80,8 @@ in versioned Blender operations. See [DEV-026 geometry operations](service/docs/
 
 DEV-027 supports safe, GLB-compatible Principled BSDF materials with metallic,
 roughness, opacity and emission. See [PBR material contract](service/docs/dev-027-pbr-materials.md).
+
+DEV-028 provides initial bounded import of small, self-contained GLB assets via a
+validated MCP operation, with fresh stable IDs and continued versioned edits.
+Large-file upload and real-world acceptance remain separate requirements.
+See [DEV-028 GLB import](service/docs/dev-028-bounded-glb-import.md).
