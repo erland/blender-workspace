@@ -35,6 +35,29 @@ def set_parent_preserving_world(obj,parent):
     obj.parent=parent
     obj.matrix_world=original
 
+def apply_bounded_modifier(obj,modifier):
+    """Evaluate only a fixed Blender modifier and reject excessive output.
+
+    No user-defined scripts, filenames, modifier expressions or unbounded levels.
+    An invalid result aborts this job before publishing an immutable revision.
+    """
+    if obj.type!='MESH':raise ValueError('Target must be a mesh')
+    if len(obj.data.vertices)>20000 or len(obj.data.polygons)>40000:
+        raise ValueError('Mesh exceeds modifier input complexity limit')
+    depsgraph=bpy.context.evaluated_depsgraph_get()
+    evaluated=obj.evaluated_get(depsgraph)
+    evaluated_mesh=evaluated.to_mesh()
+    try:
+        if evaluated_mesh is None or len(evaluated_mesh.vertices)>100000 or len(evaluated_mesh.polygons)>50000:
+            raise ValueError('Modifier output exceeds complexity limit')
+    finally:
+        if evaluated_mesh is not None:evaluated.to_mesh_clear()
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active=obj
+    applied=bpy.ops.object.modifier_apply(modifier=modifier.name)
+    if 'FINISHED' not in applied:raise ValueError('Modifier application failed')
+
 def apply_operation(operation):
     kind=operation['kind'];name=operation.get('name')
     existing=bpy.data.objects.get(name) if name is not None else None
@@ -116,6 +139,32 @@ def apply_operation(operation):
             return
         if kind=='delete_object':
             bpy.data.objects.remove(obj,do_unlink=True)
+            return
+        if kind in ('bevel_mesh','subdivide_mesh','boolean_mesh'):
+            if obj.type!='MESH':raise ValueError('Modifier target must be a mesh')
+            if len(obj.data.vertices)>20000 or len(obj.data.polygons)>40000:
+                raise ValueError('Mesh exceeds modifier input complexity limit')
+            if kind=='boolean_mesh':
+                operand=find_by_id(operation['operandId'])
+                if operand is obj or operand.type!='MESH':
+                    raise ValueError('Boolean operand must be a distinct mesh')
+                if len(operand.data.vertices)>20000 or len(operand.data.polygons)>40000:
+                    raise ValueError('Boolean operand exceeds complexity limit')
+                modifier=obj.modifiers.new('BW Boolean','BOOLEAN')
+                modifier.operation={'union':'UNION','difference':'DIFFERENCE',
+                                    'intersection':'INTERSECT'}[operation['operation']]
+                modifier.solver='EXACT'
+                modifier.object=operand
+            elif kind=='bevel_mesh':
+                modifier=obj.modifiers.new('BW Bevel','BEVEL')
+                modifier.width=operation['width']
+                modifier.segments=operation['segments']
+                modifier.limit_method='ANGLE'
+            else:
+                modifier=obj.modifiers.new('BW Subdivision','SUBSURF')
+                modifier.levels=operation['levels']
+                modifier.render_levels=operation['levels']
+            apply_bounded_modifier(obj,modifier)
             return
         if obj.type!='MESH':raise ValueError('Transforms and color require mesh objects')
         if kind=='set_transform':

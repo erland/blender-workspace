@@ -192,3 +192,44 @@ jobs:
           assert triangles
           assert (base/'scene.blend').stat().st_size>0
           PY
+
+          # DEV-025: run all three modifiers on saved mesh objects, including UUID Boolean.
+          mkdir -p batch-artifacts/modifier-source batch-artifacts/modifier-edit
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          operations={'kind':'batch','operations':[
+              {'kind':'add_primitive','name':'Beveled','primitive':'cube','location':[-5,0,0]},
+              {'kind':'add_primitive','name':'Smoothed','primitive':'cube','location':[5,0,0]},
+              {'kind':'add_primitive','name':'Cut Body','primitive':'cube'},
+              {'kind':'add_primitive','name':'Cutter','primitive':'cube','location':[0.8,0,0]}]}
+          Path('modifier-create.json').write_text(json.dumps(operations))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/modifier-source:/workspace/out" \
+            -v "$PWD/modifier-create.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- NEW /workspace/spec.json 1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('batch-artifacts/modifier-source/scene.json').read_text())
+          ids={x['name']:x['objectId'] for x in report['scene']['objects']}
+          operations={'kind':'batch','operations':[
+              {'kind':'bevel_mesh','objectId':ids['Beveled'],'width':0.18,'segments':2},
+              {'kind':'subdivide_mesh','objectId':ids['Smoothed'],'levels':1},
+              {'kind':'boolean_mesh','objectId':ids['Cut Body'],
+               'operandId':ids['Cutter'],'operation':'difference'}]}
+          Path('modifier-edit.json').write_text(json.dumps(operations))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/modifier-edit:/workspace/out" \
+            -v "$PWD/batch-artifacts/modifier-source:/workspace/previous:ro" \
+            -v "$PWD/modifier-edit.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 2
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts:/workspace/artifacts:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/tests/blender_verify_dev025.py -- \
+            /workspace/artifacts/modifier-source /workspace/artifacts/modifier-edit

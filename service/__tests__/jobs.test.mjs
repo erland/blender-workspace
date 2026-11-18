@@ -393,3 +393,29 @@ test('DEV-024 bounded custom mesh schema rejects unsafe indices and payloads',()
     {...mesh,color:[2,0,0]}
   ])assert.throws(()=>parseSceneOperation(invalid),JSON.stringify(invalid).slice(0,180));
 });
+
+test('DEV-025 bounded mesh modifiers validate operation targets and parameters',()=>{
+  const a='11111111-1111-4111-8111-111111111111';
+  const b='22222222-2222-4222-8222-222222222222';
+  for(const op of [
+    {kind:'bevel_mesh',objectId:a,width:0.1,segments:2},
+    {kind:'subdivide_mesh',name:'Panel',levels:2},
+    {kind:'boolean_mesh',objectId:a,operandId:b,operation:'difference'},
+    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'union'},
+    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'intersection'}
+  ])assert.deepEqual(parseSceneOperation(op),op);
+  for(const bad of [
+    {kind:'bevel_mesh',name:'Panel',width:0,segments:1},
+    {kind:'bevel_mesh',name:'Panel',width:Infinity,segments:1},
+    {kind:'bevel_mesh',name:'Panel',width:2.1,segments:1},
+    {kind:'bevel_mesh',name:'Panel',width:0.1,segments:4},
+    {kind:'subdivide_mesh',name:'Panel',levels:3},
+    {kind:'subdivide_mesh',name:'Panel',levels:0},
+    {kind:'subdivide_mesh',name:'Panel',levels:1.5},
+    {kind:'boolean_mesh',objectId:a,operandId:a,operation:'union'},
+    {kind:'boolean_mesh',name:'Panel',operandId:'invalid',operation:'difference'},
+    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'script'},
+    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'union',code:'evil'},
+    {kind:'bevel_mesh',objectId:a,name:'Panel',width:0.1,segments:1}
+  ])assert.throws(()=>parseSceneOperation(bad));
+});
