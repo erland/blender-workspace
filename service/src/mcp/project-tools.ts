@@ -139,7 +139,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     });
   }
   server.registerTool('workspace_queue_scene_operation',{
-    description:'Queue one or a batch (1–20) of bounded Blender operations independent of model type: add named primitives, change transforms or color, duplicate meshes, rename or delete objects. A new scene must begin with add_primitive. Operations execute in order in one immutable revision. No user Python code.',
+    description:'Queue one or a batch (1–20) of bounded Blender operations for any model: create primitives, transform/recolor/duplicate/rename/delete, or parent/unparent scene objects. For existing targets specify exactly one of name or stable objectId; for duplicate sources specify source or sourceId. set_parent requires parentId (UUID or null to unparent), rejects cycles and preserves world position. A new scene must begin with add_primitive. Operations are ordered and saved as one immutable revision. No user Python.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       operation:SceneOperationSchema,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,operation,note:jobNote})=>{
