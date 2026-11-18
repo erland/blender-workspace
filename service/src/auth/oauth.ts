@@ -15,7 +15,9 @@ export function protectedResourceMetadata(settings:OAuthSettings) {
   };
 }
 export function bearerChallenge(settings:OAuthSettings):string {
-  return 'Bearer resource_metadata="'+settings.resource+'/.well-known/oauth-protected-resource", scope="'+READ_SCOPE+' '+WRITE_SCOPE+'"';
+  const u=new URL(settings.resource);
+  const suffix=u.pathname==='/'?'':u.pathname.replace(/\/$/,'');
+  return 'Bearer resource_metadata="'+u.origin+'/.well-known/oauth-protected-resource'+suffix+'", scope="'+READ_SCOPE+' '+WRITE_SCOPE+'"';
 }
 export function remoteJwks(settings:OAuthSettings):Jwks {
   return createRemoteJWKSet(new URL(settings.jwksUri),{timeoutDuration:5000,cooldownDuration:30000});
