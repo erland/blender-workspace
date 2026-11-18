@@ -14,6 +14,7 @@ operation or a batch of 1–20 ordered operations. Supported operations:
 - Add named cubes, UV spheres, cylinders, cones or tori.
 - Change mesh location, scale, rotation or material color.
 - Duplicate an existing mesh with a new name and optional transforms.
+- Rename objects without rebuilding their geometry.
 - Delete named objects.
 
 The first operation in a new scene must add a primitive. A batch produces
@@ -25,7 +26,8 @@ a restriction on what scenes the service can represent.
 This is bounded procedural scene authoring, not arbitrary AI-to-mesh
 generation or unrestricted Python script execution. See
 [DEV-015 batch contract](service/docs/dev-015-batched-operations.md)
-and [DEV-016 duplication contract](service/docs/dev-016-duplicate-objects.md).
+[DEV-016 duplication contract](service/docs/dev-016-duplicate-objects.md),
+and [DEV-017 rename contract](service/docs/dev-017-rename-objects.md).
 
 ## Deployment and security
 
