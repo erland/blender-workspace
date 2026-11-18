@@ -6,7 +6,7 @@ This implements the account/worker boundary using the same architectural princip
 
 - PostgreSQL migration `004_modal_accounts.sql` for ciphertext, IV, auth tag, status and owner
 - `ModalAccountManager`: verified save/replace, status, re-test, delete, owner-isolated retrieval
-- `ModalCliTokenVerifier`: executes `modal token info` with candidate credentials; output and secrets never logged
+- `ModalCliTokenVerifier`: uses the official Modal JavaScript SDK with a read-only authenticated request; no Python CLI required in the MCP container
 - New MCP tools when store configured: `workspace_modal_status`, `workspace_modal_test`, `workspace_modal_disconnect` (separately authorized read/write)
 - New worker commands: `modal-connect OWNER`, `modal-status OWNER`, `modal-test OWNER`, `modal-disconnect OWNER`, and `run OWNER JOB_ID`. `modal-connect` receives JSON `{"tokenId":"...","tokenSecret":"..."}` from **stdin**, never command arguments.
 - Existing `run` uses the owner from the **claimed database job**, not an arbitrary supplied output folder or credential identity.
@@ -14,7 +14,7 @@ This implements the account/worker boundary using the same architectural princip
 
 ## Explicit limitations and security
 
-**Do not treat the internal CLI as an end-user settings page.** This step provides the secure server-side account core and operator provisioning. A Google-authenticated, CSRF-protected browser settings page analogous to Agent Workspace remains to be implemented and verified. No Modal token is accepted in a ChatGPT/MCP tool argument. A user cannot presently self-onboard without a trusted operator, and no public production readiness is claimed.
+**Google-authenticated self-service settings** are available at `/settings/login` and `/settings`. The browser login generates a short-lived signed HttpOnly cookie and CSRF secret; all account mutations require a same-origin POST and a valid CSRF token. Users can connect, replace, re-test, and disconnect their own credentials. The Modal secret is never passed through a ChatGPT/MCP tool argument or rendered back into HTML. Internal CLI provisioning remains an operator-only fallback. No public production readiness is claimed until DEV-008 and DEV-009 external acceptance is complete.
 
 Do not accept arbitrary `OWNER` values from HTTP users when invoking the operator CLI: the account must be associated with the authenticated owner key. Existing OAuth owner keys are derived from issuer and Google subject. CLI is strictly for trusted operators in a protected environment, with a trusted source for the owner identity.
 
@@ -24,4 +24,4 @@ When the credential store is configured, queuing a job requires an existing conn
 
 No Google account connection, real Modal API credential, storage key or user password is needed for the automated tests. GitHub Actions validates encryption, tamper detection, owner isolation, credential replacement, disconnect, safe worker environment and simulated job owner routing. The real Modal credential test/worker execution still requires a later integration gate.
 
-The current verifier deliberately does not return raw provider failure information to MCP clients. A verifier failure is currently classified as a general test failure; distinguishing revoked credentials from transient networking errors needs more diagnostics before auto-marking a connection revoked.
+The current verifier deliberately does not return raw provider failure information to MCP clients. Differentiate credential revocation from transient networking errors in production monitoring; temporary Modal availability failures should not permanently revoke user credentials.
