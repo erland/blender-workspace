@@ -38,6 +38,9 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Check Python syntax
         run: python3 -m py_compile experiments/modal_function_vs_sandbox.py tests/blender_modal_benchmark.py
       - name: Validate dry run without Modal token or cloud compute
@@ -45,7 +48,12 @@ jobs:
           python3 -m pip install 'modal>=1.6,<2'
           python3 experiments/modal_function_vs_sandbox.py --iterations 1
       - name: Build identical Blender benchmark image locally
-        run: docker build -f Dockerfile -t blender-modal-benchmark:ci .
+        run: docker build -f experiments/Dockerfile.modal-benchmark -t blender-modal-benchmark:ci .
+      - name: Verify Python and pip in exact Modal benchmark image
+        run: |
+          docker run --rm --entrypoint python blender-modal-benchmark:ci \
+            -c 'import sys,pip; print(sys.version); assert sys.version_info[:2] == (3,12)'
+          docker run --rm --entrypoint pip blender-modal-benchmark:ci --version
       - name: Execute fixed workload with headless Blender (no Modal)
         run: |
           docker run --rm --entrypoint blender blender-modal-benchmark:ci \
@@ -79,6 +87,9 @@ jobs:
       PYTHONUNBUFFERED: '1'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Verify Modal credentials are configured
         run: |
           if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then

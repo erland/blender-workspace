@@ -7,7 +7,7 @@ This is an opt-in experiment, not a production migration.
 ## Goal and fairness
 
 Run the **same** `tests/blender_modal_benchmark.py` through the exact same
-`Dockerfile` image, with 2 requested physical cores, 4 GiB memory, no GPU,
+`experiments/Dockerfile.modal-benchmark` image, with 2 requested physical cores, 4 GiB memory, no GPU,
 blocked outbound networking, no secrets/volumes, and a 180-second job timeout:
 
 - **Function:** one ephemeral call, `single_use_containers=True`,
@@ -150,3 +150,23 @@ Use dedicated short-lived Sandboxes if later enabling unrestricted
 AI-generated Blender Python. No wholesale migration is justified by the
 currently verified evidence, and the hybrid decision still depends on
 real Modal benchmark measurements and an end-to-end security test.
+
+## Correction after manual Action #44392148551
+
+The first paid benchmark attempt failed **before any measured run** when
+Modal could not detect a supported Python interpreter in the original
+Debian-based `Dockerfile`. This is not a user-token or Sandbox failure.
+
+The comparison now uses a **benchmark-only Dockerfile** derived from the
+production Blender image, but based on `python:3.12-slim-bookworm` so
+`python` and `pip` are always on PATH. The production Dockerfile and
+execution architecture are **unchanged**. Both benchmark modes use the
+same derived image, so their relative measurements remain comparable.
+GitHub Actions pins Python 3.12 in both validation and paid jobs and
+locally checks `python`, `pip` and real Blender inside the benchmark
+image before permitting a manual Modal test. The Sandbox branch also reads
+its actual `returncode` after `wait()` for SDK compatibility.
+
+This addresses the specific failure seen in run #44392148551, but a fresh
+paid manual Action after merge is still required to verify Modal function
+registration and the subsequent Sandbox test end to end.
