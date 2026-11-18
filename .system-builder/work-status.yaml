@@ -15,13 +15,23 @@ completed_steps:
 verification:
   dev008:
     status: DEFERRED
-    reason: Code merged and CI green; live Google OAuth/ChatGPT login acceptance intentionally postponed
+    reason: Code merged and CI green; real Google OAuth/ChatGPT acceptance explicitly deferred
   dev009:
     status: PENDING
-    reason: Await PostgreSQL encryption/account isolation, per-owner worker routing and regression CI; self-service settings page and live Modal credentials remain separate acceptance gates
+    code_ci:
+      status: PASS
+      source_sha: d21775434eb0a5d7f39f30f1806088b2bcbe39b4
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44235592278
+      result: 28 automated tests PASS, both Docker images built; Google settings and PostgreSQL tested with simulated providers
+    live_modal:
+      status: DEFERRED
+      reason: No real personal Modal account verification, user-specific execution or billing test performed
+    live_google:
+      status: DEFERRED
+      reason: No external ChatGPT/Google callback against Coolify performed
 next:
-  recommended: REPAIR-DEV-009
-  reason: Complete automated verification and keep deferred live OAuth/Modal integration explicit
+  recommended: DEV-010
+  reason: Proceed with opt-in job dispatcher using owner-scoped Modal credentials; retain outstanding live security acceptance gates
 blockers:
-  - Google-authenticated self-service Modal settings UI not yet implemented
-  - Real per-user Modal API token and sandbox billing isolation not yet verified
+  - DEV-008 external Google OAuth/ChatGPT verification intentionally deferred
+  - DEV-009 live per-owner Modal integration and billing verification deferred
