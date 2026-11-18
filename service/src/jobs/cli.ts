@@ -3,6 +3,7 @@ import { LocalArtifactStore } from '../storage/artifact-store.js';
 import { ProjectRepository } from '../db/projects.js';
 import { JobRepository } from './job-repository.js';
 import { JobOrchestrator } from './orchestrator.js';
+import {JobDispatcher} from './dispatcher.js';
 import {ModalPythonExecutor} from './modal-executor.js';
 import {ModalAccountManager} from '../modal/modal-accounts.js';
 import {ModalCliTokenVerifier} from '../modal/modal-token-verifier.js';
