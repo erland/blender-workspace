@@ -48,6 +48,18 @@ export const SingleSceneOperationSchema=z.discriminatedUnion('kind',[
    location:xyz.optional(),scale:scale.optional(),rotation:xyz.optional()}).strict()
    .refine(v=>Boolean(v.source)!==Boolean(v.sourceId),'Specify exactly one source selector')
    .refine(v=>v.source===undefined||v.source!==v.name,'Duplicate target must be different from source'),
+ z.object({kind:z.literal('bevel_mesh'),...target,
+   width:z.number().finite().min(0.001).max(2),
+   segments:z.number().int().min(1).max(3)}).strict()
+   .refine(oneTarget,'Specify exactly one mesh selector'),
+ z.object({kind:z.literal('subdivide_mesh'),...target,
+   levels:z.number().int().min(1).max(2)}).strict()
+   .refine(oneTarget,'Specify exactly one mesh selector'),
+ z.object({kind:z.literal('boolean_mesh'),...target,operandId:objectId,
+   operation:z.enum(['union','difference','intersection'])}).strict()
+   .refine(oneTarget,'Specify exactly one target mesh selector')
+   .refine(v=>v.objectId===undefined||v.objectId!==v.operandId,
+     'Target and operand must differ'),
  z.object({kind:z.literal('set_parent'),...target,parentId:objectId.nullable()}).strict()
    .refine(oneTarget,'Specify exactly one child selector')
    .refine(v=>v.parentId===null||v.parentId!==v.objectId,'Object cannot parent itself')
