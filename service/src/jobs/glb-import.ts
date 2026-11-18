@@ -26,6 +26,9 @@ export function inspectEmbeddedGlb(base64:string):{bytes:Buffer;meshCount:number
    !Array.isArray(gltf.accessors)||gltf.accessors.length>4096||
    gltf.buffers?.length>1||gltf.images?.length>128)
    throw new Error('GLB scene shape invalid');
+ if(gltf.accessors.some((a:any)=>!a||!Number.isSafeInteger(a.count)||a.count<0||a.count>100000)||
+    gltf.accessors.reduce((sum:number,a:any)=>sum+a.count,0)>200000)
+   throw new Error('GLB accessor complexity exceeds bounds');
  if((gltf.buffers??[]).some((v:any)=>!v||typeof v!=='object'||v.uri!==undefined)||
     (gltf.images??[]).some((v:any)=>v?.uri!==undefined)||
     (gltf.extensionsRequired??[]).some((v:any)=>typeof v!=='string'||!v.startsWith('KHR_')))
