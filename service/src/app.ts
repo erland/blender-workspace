@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import {createReadStream} from 'node:fs';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -148,7 +149,9 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
    integrations:services?'project_metadata':'not_configured'}));
 
  app.addHook('onRequest',async(request,reply)=>{
-   if(request.url.split('?')[0]!=='/mcp')return;
+   const path=request.url.split('?')[0];
+   // GLB downloads have the same bearer auth and owner context as MCP calls.
+   if(path!=='/mcp'&&!path.startsWith('/api/projects/'))return;
    if(request.headers.origin&&request.headers.origin!==config.publicOrigin) {
      reply.code(403).send({error:'origin_not_allowed'});return;
    }
@@ -169,6 +172,39 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      }
      if(config.ownerKey)principals.set(request,{ownerKey:config.ownerKey,
        scopes:new Set([READ_SCOPE,WRITE_SCOPE])});
+   }
+ });
+
+ // DEV-018: deliberately no token-bearing URL or public download link.
+ // Each request is authenticated independently and checked against project ownership.
+ app.get('/api/projects/:projectId/revisions/:revision/scene.glb',async(request,reply)=>{
+   const principal=principals.get(request);
+   reply.header('cache-control','private, no-store')
+     .header('x-content-type-options','nosniff')
+     .header('cross-origin-resource-policy','same-origin')
+     .header('content-security-policy',"default-src 'none'")
+     .header('vary','Authorization');
+   if(!principal)return reply.code(401).send({error:'unauthorized'});
+   if(!principal.scopes.has(READ_SCOPE))
+     return reply.code(403).send({error:'insufficient_scope'});
+   if(!services?.artifacts)return reply.code(404).send({error:'not_found'});
+   const {projectId,revision}=request.params as {projectId:string;revision:string};
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)||
+       !/^[1-9][0-9]{0,7}$/.test(revision))
+     return reply.code(404).send({error:'not_found'});
+   const revisionNo=Number(revision);
+   try{
+     const project=await services.projects.get(principal.ownerKey,projectId);
+     if(!project)return reply.code(404).send({error:'not_found'});
+     const revisions=await services.projects.revisions(principal.ownerKey,projectId);
+     if(!revisions.some(v=>v.revision===revisionNo&&v.artifact_prefix))
+       return reply.code(404).send({error:'not_found'});
+     // This checks the manifest and actual file SHA-256 before streaming.
+     const file=await services.artifacts.verifiedArtifactPath(projectId,revisionNo,'scene.glb');
+     return reply.type('model/gltf-binary').send(createReadStream(file));
+   }catch{
+     // Do not disclose whether a foreign, corrupt or missing revision exists.
+     return reply.code(404).send({error:'not_found'});
    }
  });
 
