@@ -10,6 +10,7 @@ import {ProjectRepository} from '../dist/db/projects.js';
 import {JobRepository,JobConflict} from '../dist/jobs/job-repository.js';
 import {JobOrchestrator} from '../dist/jobs/orchestrator.js';
 import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
+import {parseSceneEdit} from '../dist/jobs/scene-edit.js';
 
 async function fixture(t) {
   const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:8});
@@ -149,7 +150,7 @@ test('revision 2 reads verified original .blend and publishes immutable v2 witho
     ['monster_v2.blend','monster_v2.glb','monster_v2.json']);
   assert.equal((await x.jobs.get(x.other,reserved.id)),null);
   const unsupported=await x.jobs.reserve(x.owner,x.project.id,2);
-  await assert.rejects(()=>workflow.execute(x.owner,unsupported.id),/Only revisions 1 and 2/);
+  await assert.rejects(()=>workflow.execute(x.owner,unsupported.id),/structured edit is required/);
   assert.equal((await x.jobs.get(x.owner,unsupported.id)).status,'failed');
 });
 
@@ -170,4 +171,55 @@ test('corrupt prior scene blocks revision before Modal and publishes nothing',
   assert.equal((await x.jobs.get(x.owner,reserved.id)).status,'failed');
   assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
   assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
+});
+
+test('validated structured edit can create immutable revision 3 from v2, and command survives DB reload',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.workflow.createDemo(x.owner,x.project.id);
+  const v2executor={async createDemo(){throw Error('unexpected')},async reviseDemo(dir){
+    for(const name of ['monster_v2.blend','monster_v2.glb','monster_v2.json'])
+      await writeFile(path.join(dir,name),'version-2-'+name);
+  }};
+  const workflow2=new JobOrchestrator(x.jobs,x.store,v2executor);
+  const blue=await x.jobs.reserve(x.owner,x.project.id,1,'Blue');
+  await workflow2.execute(x.owner,blue.id);
+  const original=await x.store.verifiedArtifactPath(x.project.id,2,'monster_v2.blend');
+  const initial=await (await import('node:fs/promises')).readFile(original);
+  const edit=parseSceneEdit({target:'Body',color:[0.8,0.3,0.2],scale:[1,1.5,1],
+    location:[0,0,1]});
+  const reserved=await x.jobs.reserve(x.owner,x.project.id,2,'Structured edit',edit);
+  const fromDb=await x.jobs.get(x.owner,reserved.id);
+  assert.deepEqual(fromDb.edit_spec,edit);
+  let call;
+  const workflow3=new JobOrchestrator(x.jobs,x.store,{
+    async createDemo(){throw Error('unexpected')},
+    async editScene(dir,owner,input,revision,received){
+      call={owner,input,revision,received};
+      for(const name of ['monster_v3.blend','monster_v3.glb','monster_v3.json'])
+        await writeFile(path.join(dir,name),'version-3-'+name);
+    }
+  });
+  const completed=await workflow3.execute(x.owner,reserved.id);
+  assert.equal(completed.status,'completed');
+  assert.deepEqual(call,{owner:x.owner,input:original,revision:3,received:edit});
+  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,3);
+  assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2,3]);
+  assert.deepEqual(await (await import('node:fs/promises')).readFile(original),initial);
+  assert.equal((await x.store.inspect(x.project.id,3)).artifacts.length,3);
+  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,3,'Cross-tenant',edit),JobConflict);
+  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,2,'Stale',edit),JobConflict);
+});
+test('strict edit rejects code injection, unknown target and invalid numeric transforms',()=>{
+  for(const edit of [{target:'Body',python:'__import__("os")'},
+    {target:'Leg',color:[1,0,0]},
+    {target:'Body',scale:[0,1,1]},
+    {target:'Body',location:[11,0,0]},
+    {target:'Body',color:[NaN,0,0]},
+    {target:'Body'},
+    {target:'Body',color:[1,2,3]}]){
+    assert.throws(()=>parseSceneEdit(edit));
+  }
+  assert.deepEqual(parseSceneEdit({target:'Body',color:[0,0.4,1]}),
+    {target:'Body',color:[0,0.4,1]});
 });

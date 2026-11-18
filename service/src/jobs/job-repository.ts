@@ -1,20 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
 
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
   id:string; project_id:string;owner_key:string; expected_revision:number;
-  requested_revision:number;status:JobStatus;note:string;error_message:string|null;
+  requested_revision:number;status:JobStatus;note:string;error_message:string|null;edit_spec:SceneEdit|null;
 }
 export class JobConflict extends Error {
   constructor(message:string) {super(message);this.name='JobConflict';}
 }
 export class JobRepository {
   constructor(private readonly pool:Pool) {}
-  async reserve(owner:string, projectId:string, expectedRevision:number, note=''):Promise<Job> {
+  async reserve(owner:string, projectId:string, expectedRevision:number, note='',edit?:SceneEdit):Promise<Job> {
     if (!owner.trim() || owner.length>200 || note.length>5000 || !Number.isSafeInteger(expectedRevision) ||
         expectedRevision<0 || expectedRevision>99999998)
       throw new RangeError('Invalid job input');
+    const safeEdit=edit===undefined?null:parseSceneEdit(edit);
     const client=await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -24,9 +26,9 @@ export class JobRepository {
       if (!p.rowCount) throw new JobConflict('Project not found or unauthorized');
       if (p.rows[0].current_revision !== expectedRevision) throw new JobConflict('Stale project revision');
       const j=await client.query<Job>(`INSERT INTO bw_jobs
-        (id,project_id,owner_key,expected_revision,requested_revision,status,note)
-        VALUES($1,$2,$3,$4,$5,'pending',$6) RETURNING *`,
-        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,note]);
+        (id,project_id,owner_key,expected_revision,requested_revision,status,note,edit_spec)
+        VALUES($1,$2,$3,$4,$5,'pending',$6,$7::jsonb) RETURNING *`,
+        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,note,safeEdit===null?null:JSON.stringify(safeEdit)]);
       await client.query('COMMIT');
       return j.rows[0];
     } catch (e) {

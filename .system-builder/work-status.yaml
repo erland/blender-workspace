@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-011
-in_progress: DEV-011
+selected_step: DEV-012
+in_progress: DEV-012
 completed_steps:
   - DEV-001
   - DEV-002
@@ -15,10 +15,10 @@ completed_steps:
 verification:
   dev008:
     status: DEFERRED
-    reason: Live Google OAuth/ChatGPT login acceptance intentionally postponed
+    reason: Real Google/ChatGPT login acceptance intentionally postponed
   dev009:
     status: DEFERRED
-    reason: Live personal Modal execution and billing isolation postponed
+    reason: Live personal Modal credentials and billing isolation postponed
   dev010:
     status: DEFERRED
     code_ci:
@@ -27,20 +27,27 @@ verification:
     live_dispatch:
       status: DEFERRED
   dev011:
-    status: PENDING
+    status: DEFERRED
     code_ci:
       status: PASS
       workflow_run: https://github.com/erland/blender-workspace/actions/runs/44239330831
-      source_sha: f9e9eec0e645a48e561e3e9d709519437af46768
-      result: 12 Python tests, 34 PostgreSQL/Node tests, Modal worker Docker build PASS
-    regressions:
-      status: PASS
-      result: All 12 GitHub Actions workflows PASS including headless Blender and Modal DEV-002
     live_revision:
       status: DEFERRED
-      reason: No real personal Modal sandbox was run with an uploaded revision-1 Blender scene; user elected to postpone external verification
+  dev012:
+    status: PENDING
+    code_ci:
+      status: PASS
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44241325634
+      source_sha: e490dbfc87483229cca8cd8363033b13df45155d
+      result: Python schema and mocked Modal tests, PostgreSQL/MCP tests, both Docker builds passed
+    regressions:
+      status: PASS
+      result: All 13 GitHub Actions workflows passed
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google login, personal Modal execution and structured Blender scene edit not yet tested end-to-end
 next:
-  recommended: DEV-012
-  reason: Merge PR #15 and plan safe structured scene-edit operations; retain deferred live Google/Modal and revision integration gates
+  recommended: DEV-013
+  reason: Merge PR #16, then select next modeling capability while retaining deferred external integration tests
 blockers:
-  - Live Google/ChatGPT and owner-specific Modal verification deferred
+  - Real Google/ChatGPT and owner-specific Modal acceptance deferred

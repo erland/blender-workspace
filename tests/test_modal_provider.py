@@ -54,6 +54,40 @@ class ModalProviderTests(unittest.TestCase):
             self.assertNotIn("run_smoke.sh", " ".join(args))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
 
+    def test_structured_revision_uploads_data_file_and_previous_scene(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            source=Path(tmp)/'v2.blend'
+            source.write_bytes(b'prior scene')
+            edit=Path(tmp)/'change.json'
+            edit.write_text(json.dumps({'target':'Body','color':[0.5,0.2,0.8],
+                'scale':[1,1,2]}))
+            report=run(sdk,Path(tmp)/'output',revision=3,
+                input_blend=str(source),edit_file=str(edit))
+            self.assertEqual(report['revision'],3)
+            self.assertEqual(len(report['artifacts']),3)
+            names={a['name'] for a in report['artifacts']}
+            self.assertEqual(names,{'monster_v3.blend','monster_v3.glb','monster_v3.json'})
+            calls=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list
+            self.assertEqual(len(calls),2)
+            self.assertEqual(calls[0].args,(str(source.resolve()),'/workspace/out/monster_v2.blend'))
+            self.assertEqual(calls[1].args,(str(edit.resolve()),'/workspace/out/scene_edit.json'))
+            args=sdk.Sandbox.create.return_value.exec.call_args.args
+            self.assertIn('edit_scene.py',' '.join(args))
+            self.assertNotIn('run_smoke.sh',' '.join(args))
+            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+
+    def test_structured_invalid_edit_never_allocates_modal(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            scene=Path(tmp)/'scene.blend'
+            scene.write_bytes(b'scene')
+            change=Path(tmp)/'change.json'
+            change.write_text(json.dumps({'target':'Body','shell':'rm -rf /'}))
+            with self.assertRaises(ValueError):
+                run(sdk,Path(tmp)/'out',revision=3,input_blend=str(scene),edit_file=str(change))
+            sdk.Sandbox.create.assert_not_called()
+
     def test_revision_rejects_missing_source_without_starting_modal(self):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp:

@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import os from 'node:os';
+import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
 import type {BlenderExecutor} from './orchestrator.js';
 import type {ModalCredentials,ModalAccountManager} from '../modal/modal-accounts.js';
 
@@ -29,7 +32,18 @@ export class ModalPythonExecutor implements BlenderExecutor {
     if(!path.isAbsolute(inputBlend))throw new RangeError('Revision input must be absolute');
     return this.runRevision(outDir,owner,2,inputBlend);
   }
-  private async runRevision(outDir:string,owner:string,revision:number,inputBlend?:string):Promise<void> {
+  async editScene(outDir:string,owner:string,inputBlend:string,revision:number,edit:SceneEdit):Promise<void> {
+    if(!path.isAbsolute(inputBlend)||!Number.isInteger(revision)||revision<2||revision>99999999)
+      throw new RangeError('Invalid edit input');
+    const safe=parseSceneEdit(edit);
+    const folder=await mkdtemp(path.join(os.tmpdir(),'bw-edit-'));
+    try{
+      const editPath=path.join(folder,'edit.json');
+      await writeFile(editPath,JSON.stringify(safe),{mode:0o600});
+      await this.runRevision(outDir,owner,revision,inputBlend,editPath);
+    }finally{await rm(folder,{recursive:true,force:true});}
+  }
+  private async runRevision(outDir:string,owner:string,revision:number,inputBlend?:string,editPath?:string):Promise<void> {
     if(!owner?.trim())throw new Error('Missing job owner');
     if(!this.accounts&&!this.legacy)throw new Error('Personal Modal account service unavailable');
     const token=this.accounts?await this.accounts.requireConnected(owner):undefined;
@@ -39,6 +53,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
       const args=[script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib','8192',
         '--revision',String(revision)];
       if(inputBlend)args.push('--input-blend',inputBlend);
+      if(editPath)args.push('--edit-file',editPath);
       const proc=spawn('python3',args,
         {cwd:this.repoRoot,stdio:['ignore','pipe','pipe'],env});
       let ended=false;

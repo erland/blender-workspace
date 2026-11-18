@@ -3,11 +3,13 @@ import path from 'node:path';
 import os from 'node:os';
 import type { Job, JobRepository } from './job-repository.js';
 import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-store.js';
+import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
 
 export interface BlenderExecutor {
   /** Produce trusted outputs for the current demo. DEV-006 only creates revision 1. */
   createDemo(outDir:string,owner:string):Promise<void>;
   reviseDemo?(outDir:string,owner:string,inputBlend:string):Promise<void>;
+  editScene?(outDir:string,owner:string,inputBlend:string,revision:number,edit:SceneEdit):Promise<void>;
 }
 const artifactFiles=(revision:number)=>['blend','glb','json'].map(ext=>`monster_v${revision}.${ext}`);
 export class JobOrchestrator {
@@ -26,11 +28,9 @@ export class JobOrchestrator {
   async executeClaimed(job:Job):Promise<Job> {
     if(job.status!=='running')throw new Error('Only running jobs can execute');
     const owner=job.owner_key,jobId=job.id;
-    // Currently supported transformations: initial creation and a controlled
-    // blue recolor of the previous .blend scene. No arbitrary Blender scripts.
-    if(job.expected_revision>1) {
-      await this.jobs.markFailed(owner,jobId,'Only revisions 1 and 2 are supported');
-      throw new Error('Only revisions 1 and 2 are supported');
+    if(job.expected_revision>0 && !job.edit_spec && job.expected_revision!==1) {
+      await this.jobs.markFailed(owner,jobId,'A structured edit is required for this revision');
+      throw new Error('A structured edit is required for this revision');
     }
     const temp=await mkdtemp(path.join(os.tmpdir(),'bw-job-'));
     let published=false;
@@ -38,11 +38,19 @@ export class JobOrchestrator {
       if(job.expected_revision===0){
         await this.executor.createDemo(temp,job.owner_key);
       }else{
-        if(!this.executor.reviseDemo)throw new Error('Revision executor is not configured');
-        // Validate manifest bytes and hashes before copying the input to Modal.
-        // Ownership is guaranteed by the claimed, owner-scoped database job.
-        const input=await this.files.verifiedArtifactPath(job.project_id,1,'monster_v1.blend');
-        await this.executor.reviseDemo(temp,job.owner_key,input);
+        // Each edit is based on the most recent SHA-verified immutable predecessor.
+        const previous=job.expected_revision;
+        const input=await this.files.verifiedArtifactPath(job.project_id,previous,
+          `monster_v${previous}.blend`);
+        if(job.edit_spec){
+          if(!this.executor.editScene)throw new Error('Structured edit executor is not configured');
+          await this.executor.editScene(temp,owner,input,job.requested_revision,
+            parseSceneEdit(job.edit_spec));
+        }else{
+          // Compatibility: the existing predefined blue v1 -> v2 operation.
+          if(!this.executor.reviseDemo)throw new Error('Revision executor is not configured');
+          await this.executor.reviseDemo(temp,owner,input);
+        }
       }
       const artifacts:IncomingArtifact[]=artifactFiles(job.requested_revision)
         .map(name=>({name,sourcePath:path.join(temp,name)}));
