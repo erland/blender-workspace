@@ -12,7 +12,7 @@ export const SingleSceneOperationSchema=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('set_color'),name,color:rgb}).strict(),
  z.object({kind:z.literal('delete_object'),name}).strict(),
  z.object({kind:z.literal('duplicate_object'),name,source:name,
-   location:xyz.optional(),scale:scale.optional(),rotation:xyz.optional()}).strict()
+   location:xyz.optional(),scale:scale.optional(),rotation:xyz.optional()}).strict().refine(v=>v.name!==v.source,'Duplicate target must be different from source')
 ]);
 export const SceneOperationSchema=z.union([SingleSceneOperationSchema,
  z.object({kind:z.literal('batch'),operations:z.array(SingleSceneOperationSchema).min(1).max(20)}).strict()
