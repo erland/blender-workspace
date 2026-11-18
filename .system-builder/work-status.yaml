@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-027
-in_progress: DEV-027
+selected_step: DEV-028
+in_progress: DEV-028
 completed_steps:
   - DEV-001
   - DEV-002
@@ -162,15 +162,27 @@ verification:
       status: DEFERRED
       reason: Real Google/ChatGPT, browser and individual Modal billing remain unverified
   dev027:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: PBR material mapping, transparent glTF alpha and emission require PR CI and real Blender export verification
+      status: PASS
+      source_sha: 093e1027c443e2c3ba6c95d54bfee8f092e3801b
+      result: All 15 PR checks passed, including real Blender PBR/GLB transparency and emission regression
+      workflow_run: https://github.com/erland/blender-workspace/pull/32/checks
     live_acceptance:
       status: DEFERRED
       reason: Live Google/ChatGPT, browser appearance and per-user Modal execution not yet verified
+  dev028:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: Bounded embedded GLB import and real Blender re-import must pass all CI
+    live_acceptance:
+      status: DEFERRED
+      reason: Live Google/ChatGPT/Modal and browser tests still outstanding
 next:
-  recommended: VERIFY_DEV-027
-  reason: Verify full CI including glTF material factors, then evaluate import/reuse and live browser acceptance
+  recommended: VERIFY_DEV-028
+  reason: Verify bounded GLB import in real Blender, then perform phase B gap and acceptance review before expanding functionality
+blockers_additional:
+  - Production-grade owner-scoped staged upload for GLB assets larger than 120 kB is not implemented
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
