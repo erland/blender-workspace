@@ -77,3 +77,6 @@ addressed by stable object UUID or name. See [mesh modifiers](service/docs/dev-0
 
 DEV-026 supports safe face extrusion, single-axis mirroring and bounded mesh arrays
 in versioned Blender operations. See [DEV-026 geometry operations](service/docs/dev-026-extrude-mirror-array.md).
+
+DEV-027 supports safe, GLB-compatible Principled BSDF materials with metallic,
+roughness, opacity and emission. See [PBR material contract](service/docs/dev-027-pbr-materials.md).
