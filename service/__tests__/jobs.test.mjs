@@ -11,6 +11,7 @@ import {JobRepository,JobConflict} from '../dist/jobs/job-repository.js';
 import {JobOrchestrator} from '../dist/jobs/orchestrator.js';
 import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
 import {parseSceneEdit} from '../dist/jobs/scene-edit.js';
+import {parseSceneOperation} from '../dist/jobs/scene-operation.js';
 
 async function fixture(t) {
   const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:8});
@@ -222,4 +223,54 @@ test('strict edit rejects code injection, unknown target and invalid numeric tra
   }
   assert.deepEqual(parseSceneEdit({target:'Body',color:[0,0.4,1]}),
     {target:'Body',color:[0,0.4,1]});
+});
+
+test('generic scene revisions support arbitrary 3D assets, immutable file names and owner isolation',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  const called=[];
+  const runner={
+    async createDemo(){throw Error('Legacy demo must not run')},
+    async runSceneOperation(dir,owner,revision,operation,input){
+      called.push({owner,revision,operation,input});
+      for(const filename of ['scene.blend','scene.glb','scene.json'])
+        await writeFile(path.join(dir,filename),
+          filename==='scene.json'?JSON.stringify({schema_version:1,scene:{objects:[
+            {name:operation.name,type:'MESH',materials:[],bones:[]}]}}):
+          'generic-'+revision+'-'+filename);
+    }
+  };
+  const flow=new JobOrchestrator(x.jobs,x.store,runner);
+  const create=parseSceneOperation({kind:'add_primitive',name:'Architectural Column',primitive:'cylinder',
+    location:[0,1,2],color:[0.4,0.5,0.6]});
+  const reserved=await x.jobs.reserve(x.owner,x.project.id,0,'Start arbitrary scene',undefined,create);
+  assert.deepEqual((await x.jobs.get(x.owner,reserved.id)).operation_spec,create);
+  assert.equal((await flow.execute(x.owner,reserved.id)).status,'completed');
+  assert.equal(called[0].input,undefined);
+  const original=await x.store.verifiedArtifactPath(x.project.id,1,'scene.blend');
+  const originalBytes=await (await import('node:fs/promises')).readFile(original);
+  const edit=parseSceneOperation({kind:'set_transform',name:'Architectural Column',
+    location:[4,0,1],scale:[1,1,2]});
+  const next=await x.jobs.reserve(x.owner,x.project.id,1,'Adjust column',undefined,edit);
+  assert.equal((await flow.execute(x.owner,next.id)).status,'completed');
+  assert.deepEqual(called[1],{owner:x.owner,revision:2,operation:edit,input:original});
+  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,2);
+  assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2]);
+  assert.deepEqual(await (await import('node:fs/promises')).readFile(original),originalBytes);
+  assert.deepEqual((await x.store.inspect(x.project.id,2)).artifacts.map(a=>a.name),
+    ['scene.blend','scene.glb','scene.json']);
+  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,2,'Attack',undefined,edit),JobConflict);
+  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,1,'Stale',undefined,edit),JobConflict);
+});
+test('generic operation schema rejects scripts and unsafe payloads',()=>{
+  for(const x of [
+    {kind:'exec_python',name:'A',source:'import os'},
+    {kind:'add_primitive',name:'../x',primitive:'cube'},
+    {kind:'add_primitive',name:'X',primitive:'mesh_from_url'},
+    {kind:'set_transform',name:'X'},
+    {kind:'set_transform',name:'X',location:[NaN,0,0]},
+    {kind:'set_color',name:'X',color:[1,2,0]},
+    {kind:'delete_object',name:'X',shell:'rm -rf /'}]){
+    assert.throws(()=>parseSceneOperation(x));
+  }
 });
