@@ -419,3 +419,27 @@ test('DEV-025 bounded mesh modifiers validate operation targets and parameters',
     {kind:'bevel_mesh',objectId:a,name:'Panel',width:0.1,segments:1}
   ])assert.throws(()=>parseSceneOperation(bad));
 });
+
+test('DEV-026 mesh extrude, mirror and array reject unsafe inputs',()=>{
+  const id='11111111-1111-4111-8111-111111111111';
+  const good=[
+    {kind:'extrude_face',objectId:id,faceIndex:0,offset:[0,0,1]},
+    {kind:'mirror_mesh',name:'Panel',axis:'x'},
+    {kind:'array_mesh',objectId:id,count:3,offset:[2,0,0]},
+  ];
+  for(const op of good)assert.deepEqual(parseSceneOperation(op),op);
+  for(const bad of [
+    {kind:'extrude_face',name:'Panel',faceIndex:-1,offset:[0,0,1]},
+    {kind:'extrude_face',name:'Panel',faceIndex:40000,offset:[0,0,1]},
+    {kind:'extrude_face',name:'Panel',faceIndex:1.5,offset:[0,0,1]},
+    {kind:'extrude_face',name:'Panel',faceIndex:1,offset:[0,0,0]},
+    {kind:'extrude_face',name:'Panel',faceIndex:1,offset:[NaN,0,1]},
+    {kind:'mirror_mesh',name:'Panel',axis:'bad'},
+    {kind:'array_mesh',name:'Panel',count:1,offset:[2,0,0]},
+    {kind:'array_mesh',name:'Panel',count:9,offset:[2,0,0]},
+    {kind:'array_mesh',name:'Panel',count:2,offset:[0,0,0]},
+    {kind:'array_mesh',name:'Panel',count:2,offset:[11,0,0]},
+    {kind:'array_mesh',name:'Panel',count:2,offset:[1,0,0],python:'evil'},
+    {kind:'mirror_mesh',name:'Panel',objectId:id,axis:'x'},
+  ])assert.throws(()=>parseSceneOperation(bad));
+});

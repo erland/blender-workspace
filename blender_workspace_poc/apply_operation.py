@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 import bpy
+import bmesh
+from mathutils import Vector
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.scene_operation_validation import validate_operation
 from blender_workspace_poc.object_identity import assign_new_object_id,ensure_object_ids,PROPERTY
@@ -57,6 +59,31 @@ def apply_bounded_modifier(obj,modifier):
     bpy.context.view_layer.objects.active=obj
     applied=bpy.ops.object.modifier_apply(modifier=modifier.name)
     if 'FINISHED' not in applied:raise ValueError('Modifier application failed')
+
+def extrude_bounded_face(obj,face_index,offset):
+    """Extrude one polygon in local coordinates, preserving the object's UUID."""
+    if obj.type!='MESH':raise ValueError('Extrusion target must be a mesh')
+    mesh=obj.data
+    if len(mesh.vertices)>20000 or len(mesh.polygons)>40000:
+        raise ValueError('Mesh exceeds editing input limit')
+    if face_index>=len(mesh.polygons):raise ValueError('Face index not found')
+    # Do not modify a mesh shared by other objects. Other references stay intact.
+    if mesh.users>1:obj.data=mesh.copy()
+    bm=bmesh.new()
+    try:
+        bm.from_mesh(obj.data)
+        bm.faces.ensure_lookup_table()
+        face=bm.faces[face_index]
+        output=bmesh.ops.extrude_discrete_faces(bm,faces=[face])
+        caps=output['faces']
+        verts=set(v for cap in caps for v in cap.verts)
+        bmesh.ops.translate(bm,verts=list(verts),vec=Vector(offset))
+        if len(bm.verts)>100000 or len(bm.faces)>50000:
+            raise ValueError('Extrusion output exceeds complexity limit')
+        bm.to_mesh(obj.data)
+        obj.data.update()
+    finally:
+        bm.free()
 
 def apply_operation(operation):
     kind=operation['kind'];name=operation.get('name')
@@ -139,6 +166,25 @@ def apply_operation(operation):
             return
         if kind=='delete_object':
             bpy.data.objects.remove(obj,do_unlink=True)
+            return
+        if kind=='extrude_face':
+            extrude_bounded_face(obj,operation['faceIndex'],operation['offset'])
+            return
+        if kind in ('mirror_mesh','array_mesh'):
+            if obj.type!='MESH':raise ValueError('Modifier target must be a mesh')
+            if kind=='mirror_mesh':
+                modifier=obj.modifiers.new('BW Mirror','MIRROR')
+                modifier.use_axis=[operation['axis']==key for key in ('x','y','z')]
+                modifier.use_clip=False
+                modifier.use_mirror_merge=True
+            else:
+                modifier=obj.modifiers.new('BW Array','ARRAY')
+                modifier.count=operation['count']
+                modifier.use_relative_offset=False
+                modifier.use_constant_offset=True
+                modifier.constant_offset_displace=tuple(operation['offset'])
+                modifier.use_merge_vertices=False
+            apply_bounded_modifier(obj,modifier)
             return
         if kind in ('bevel_mesh','subdivide_mesh','boolean_mesh'):
             if obj.type!='MESH':raise ValueError('Modifier target must be a mesh')

@@ -60,6 +60,17 @@ export const SingleSceneOperationSchema=z.discriminatedUnion('kind',[
    .refine(oneTarget,'Specify exactly one target mesh selector')
    .refine(v=>v.objectId===undefined||v.objectId!==v.operandId,
      'Target and operand must differ'),
+ z.object({kind:z.literal('extrude_face'),...target,
+   faceIndex:z.number().int().min(0).max(39999),
+   offset:z.tuple([z.number().finite().min(-10).max(10),z.number().finite().min(-10).max(10),z.number().finite().min(-10).max(10)])}).strict()
+   .refine(oneTarget,'Specify exactly one mesh selector')
+   .refine(v=>v.offset.some(n=>n!==0),'Extrusion offset must be nonzero'),
+ z.object({kind:z.literal('mirror_mesh'),...target,axis:z.enum(['x','y','z'])}).strict()
+   .refine(oneTarget,'Specify exactly one mesh selector'),
+ z.object({kind:z.literal('array_mesh'),...target,count:z.number().int().min(2).max(8),
+   offset:z.tuple([z.number().finite().min(-10).max(10),z.number().finite().min(-10).max(10),z.number().finite().min(-10).max(10)])}).strict()
+   .refine(oneTarget,'Specify exactly one mesh selector')
+   .refine(v=>v.offset.some(n=>n!==0),'Array offset must be nonzero'),
  z.object({kind:z.literal('set_parent'),...target,parentId:objectId.nullable()}).strict()
    .refine(oneTarget,'Specify exactly one child selector')
    .refine(v=>v.parentId===null||v.parentId!==v.objectId,'Object cannot parent itself')

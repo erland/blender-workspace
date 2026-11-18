@@ -154,3 +154,32 @@ class SceneOperationValidationTests(unittest.TestCase):
         ]:
             with self.subTest(invalid=op),self.assertRaises(ValueError):
                 validate_operation(op)
+
+    def test_dev026_extrude_mirror_array(self):
+        object_id='11111111-1111-4111-8111-111111111111'
+        good=[
+            {'kind':'extrude_face','objectId':object_id,'faceIndex':0,'offset':[0,0,1]},
+            {'kind':'mirror_mesh','name':'Panel','axis':'x'},
+            {'kind':'array_mesh','objectId':object_id,'count':3,'offset':[2,0,0]},
+        ]
+        for op in good:
+            with self.subTest(op=op):self.assertEqual(validate_operation(op),op)
+        for bad in [
+            {'kind':'extrude_face','name':'Panel','faceIndex':-1,'offset':[0,0,1]},
+            {'kind':'extrude_face','name':'Panel','faceIndex':40000,'offset':[0,0,1]},
+            {'kind':'extrude_face','name':'Panel','faceIndex':True,'offset':[0,0,1]},
+            {'kind':'extrude_face','name':'Panel','faceIndex':1.5,'offset':[0,0,1]},
+            {'kind':'extrude_face','name':'Panel','faceIndex':1,'offset':[0,0,0]},
+            {'kind':'extrude_face','name':'Panel','faceIndex':1,'offset':[float('nan'),0,1]},
+            {'kind':'mirror_mesh','name':'Panel','axis':'q'},
+            {'kind':'mirror_mesh','name':'Panel','axis':['x']},
+            {'kind':'array_mesh','name':'Panel','count':1,'offset':[2,0,0]},
+            {'kind':'array_mesh','name':'Panel','count':9,'offset':[2,0,0]},
+            {'kind':'array_mesh','name':'Panel','count':True,'offset':[2,0,0]},
+            {'kind':'array_mesh','name':'Panel','count':2,'offset':[0,0,0]},
+            {'kind':'array_mesh','name':'Panel','count':2,'offset':[12,0,0]},
+            {'kind':'array_mesh','name':'Panel','count':2,'offset':[1,0,0],'python':'evil'},
+            {'kind':'mirror_mesh','name':'Panel','objectId':object_id,'axis':'x'},
+        ]:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                validate_operation(bad)

@@ -74,3 +74,6 @@ and polygon size. See [DEV-024 custom mesh](service/docs/dev-024-custom-mesh.md)
 
 DEV-025 adds bounded, applied mesh bevel, subdivision and Boolean edits,
 addressed by stable object UUID or name. See [mesh modifiers](service/docs/dev-025-mesh-modifiers.md).
+
+DEV-026 supports safe face extrusion, single-axis mirroring and bounded mesh arrays
+in versioned Blender operations. See [DEV-026 geometry operations](service/docs/dev-026-extrude-mirror-array.md).
