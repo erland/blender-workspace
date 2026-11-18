@@ -1,24 +1,54 @@
 # Blender Workspace
 
-A headless Blender proof of concept for Blender Workspace. The planned service will expose a remote MCP endpoint from Coolify, persist project metadata in PostgreSQL, and run short-lived Blender jobs on Modal. **None of those integrations is implemented by DEV-001.**
+A multi-user, model-independent, headless Blender workspace controlled by
+an authenticated MCP service. Project/job/revision metadata lives in
+PostgreSQL; scene artifacts are stored with SHA-256 integrity metadata.
+A background dispatcher can run short-lived, owner-scoped Blender jobs
+through Modal.
 
-## DEV-001
+## Current modeling capabilities
 
-The Python scripts create a cube-bodied, two-legged monster with rigging and a looping walk animation, export `.blend` and animated `.glb`, reopen the saved Blender file in a separate process, recolor the monster, and export revision two.
+The MCP tool `workspace_queue_scene_operation` queues one validated scene
+operation or a batch of 1–20 ordered operations. Supported operations:
 
-Run with Docker:
+- Add named cubes, UV spheres, cylinders, cones or tori.
+- Change mesh location, scale, rotation or material color.
+- Duplicate an existing mesh with a new name and optional transforms.
+- Delete named objects.
+
+The first operation in a new scene must add a primitive. A batch produces
+one immutable revision (`scene.blend`, `scene.glb`, `scene.json`).
+Existing scenes can be inspected through `workspace_inspect_scene`.
+The earlier cube-monster example remains a regression/demo case, **not**
+a restriction on what scenes the service can represent.
+
+This is bounded procedural scene authoring, not arbitrary AI-to-mesh
+generation or unrestricted Python script execution. See
+[DEV-015 batch contract](service/docs/dev-015-batched-operations.md)
+and [DEV-016 duplication contract](service/docs/dev-016-duplicate-objects.md).
+
+## Deployment and security
+
+See the documentation in `service/docs/` for Google OAuth, MCP,
+PostgreSQL, Coolify, personal Modal credentials and job dispatch.
+The service enforces owner authorization and optimistic scene revision
+checks. Do not expose legacy internal bearer-token mode publicly.
+
+The code and mocked integrations have CI coverage, but **live Google/
+ChatGPT OAuth login and individually billed Modal execution remain
+deferred acceptance gates**. Do not describe the service as production
+verified until these pass.
+
+## Local demo and CI
+
+Run the legacy Blender example with Docker:
 
 ```bash
 ./scripts/run_docker.sh
 ```
 
-The generated files are in `out/`:
-`monster_v1.blend`, `monster_v1.glb`, `monster_v1.json` and the corresponding v2 files.
-
-## GitHub Actions
-
-The **Blender headless DEV-001** workflow builds Blender in Docker, executes the actual Blender scripts, checks project reopening and animation export, and publishes generated files as an Actions artifact. The run must pass before DEV-001 may be marked complete. Python unit tests alone are not sufficient.
-
-## Current status
-
-DEV-001 is **verification_pending** pending a genuine GitHub Actions runtime PASS. No Modal, Coolify, PostgreSQL or MCP functionality exists yet.
+GitHub Actions runs the Python and Node/PostgreSQL/MCP tests, builds
+service/worker containers and executes real headless Blender
+create/reopen/edit flows. See `.github/workflows/`.
+The authoritative development state is
+`.system-builder/work-status.yaml`.
