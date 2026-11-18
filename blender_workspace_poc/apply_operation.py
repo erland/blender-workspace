@@ -4,6 +4,8 @@ The caller supplies data-only JSON. No dynamic Python, file paths or commands.
 """
 import json
 import sys
+import tempfile
+import os
 from pathlib import Path
 import bpy
 import bmesh
@@ -11,6 +13,7 @@ from mathutils import Vector
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.scene_operation_validation import validate_operation
 from blender_workspace_poc.object_identity import assign_new_object_id,ensure_object_ids,PROPERTY
+from blender_workspace_poc.glb_import_validation import decode_embedded_glb
 from blender_workspace_poc.common import ensure_output,save_scene,export_glb,write_manifest
 
 def find_by_id(object_id):
@@ -111,9 +114,45 @@ def apply_pbr_material(obj,operation):
     obj.data.materials.clear()
     obj.data.materials.append(mat)
 
+def import_bounded_glb(operation):
+    """Load a self-contained small GLB from a private temporary file.
+
+    The caller controls only validated bytes, never paths or import flags.
+    """
+    raw=decode_embedded_glb(operation['glbBase64'])
+    prior={obj.as_pointer() for obj in bpy.data.objects}
+    filename=None
+    try:
+        with tempfile.NamedTemporaryFile(mode='wb',suffix='.glb',
+                                         prefix='.bw-import-',dir=str(ensure_output()),
+                                         delete=False) as handle:
+            filename=handle.name
+            handle.write(raw)
+        result=bpy.ops.import_scene.gltf(filepath=filename)
+        if 'FINISHED' not in result:
+            raise ValueError('Blender GLB import did not finish')
+    finally:
+        if filename is not None:
+            os.unlink(filename)
+    imported=[obj for obj in bpy.data.objects if obj.as_pointer() not in prior]
+    meshes=[obj for obj in imported if obj.type=='MESH']
+    if not meshes or len(imported)>256 or len(meshes)>128:
+        raise ValueError('Imported GLB object count outside limits')
+    if (sum(len(obj.data.vertices) for obj in meshes)>100000 or
+        sum(len(obj.data.polygons) for obj in meshes)>50000):
+        raise ValueError('Imported GLB topology exceeds limits')
+    prefix=operation['name']
+    for obj in imported:
+        # External glTF extras must never be trusted as our stable identity.
+        assign_new_object_id(obj)
+        obj.name=(prefix+'_'+obj.name)[:100]
+
 def apply_operation(operation):
     kind=operation['kind'];name=operation.get('name')
     existing=bpy.data.objects.get(name) if name is not None else None
+    if kind=='import_glb':
+        import_bounded_glb(operation)
+        return
     if kind=='add_mesh':
         if existing is not None:raise ValueError('Object name already exists')
         mesh=bpy.data.meshes.new('Geometry_'+name)
@@ -270,7 +309,7 @@ def main():
     op=validate_operation(json.loads(Path(operation_file).read_text('utf8')))
     actions=op['operations'] if op['kind']=='batch' else [op]
     if source=='NEW':
-        if revision!=1 or actions[0]['kind'] not in ('add_primitive','add_mesh'):
+        if revision!=1 or actions[0]['kind'] not in ('add_primitive','add_mesh','import_glb'):
             raise ValueError('New scene requires initial primitive')
         bpy.ops.object.select_all(action='SELECT')
         bpy.ops.object.delete(use_global=False)
