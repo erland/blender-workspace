@@ -15,7 +15,9 @@ export function protectedResourceMetadata(settings:OAuthSettings) {
   };
 }
 export function bearerChallenge(settings:OAuthSettings):string {
-  return 'Bearer resource_metadata="'+settings.resource+'/.well-known/oauth-protected-resource", scope="'+READ_SCOPE+' '+WRITE_SCOPE+'"';
+  const u=new URL(settings.resource);
+  const suffix=u.pathname==='/'?'':u.pathname.replace(/\/$/,'');
+  return 'Bearer resource_metadata="'+u.origin+'/.well-known/oauth-protected-resource'+suffix+'", scope="'+READ_SCOPE+' '+WRITE_SCOPE+'"';
 }
 export function remoteJwks(settings:OAuthSettings):Jwks {
   return createRemoteJWKSet(new URL(settings.jwksUri),{timeoutDuration:5000,cooldownDuration:30000});
@@ -23,7 +25,7 @@ export function remoteJwks(settings:OAuthSettings):Jwks {
 export async function verifyOAuthAccessToken(token:string,settings:OAuthSettings,keys:Jwks):Promise<Principal> {
   // Asymmetric signatures only; fail closed on audience, issuer, lifetime and scopes.
   const {payload}=await jwtVerify(token,keys,{issuer:settings.issuer,
-    audience:settings.resource,algorithms:['RS256','ES256'],clockTolerance:5});
+    audience:settings.resource,algorithms:['RS256','ES256','EdDSA'],clockTolerance:5});
   if (!payload.sub || typeof payload.sub!=='string' || payload.sub.length>512 ||
       typeof payload.exp!=='number' || !Number.isSafeInteger(payload.exp))
     throw new Error('Missing subject or expiration');

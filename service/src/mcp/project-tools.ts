@@ -38,7 +38,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     isError:true,
     content:[{type:'text' as const,text:'Insufficient OAuth scope'}],
     ...(oauth&&resource?{_meta:{'mcp/www_authenticate':[
-      'Bearer resource_metadata="'+resource+'/.well-known/oauth-protected-resource", error="insufficient_scope", error_description="Required scope: '+scope+'"'
+      'Bearer resource_metadata="'+new URL('/.well-known/oauth-protected-resource'+new URL(resource).pathname,resource).toString()+'", error="insufficient_scope", error_description="Required scope: '+scope+'"'
     ]}}:{})
   };
   const schemes=(scope:string)=>oauth?{_meta:{securitySchemes:[{type:'oauth2' as const,scopes:[scope]}]}}:{};

@@ -1,9 +1,10 @@
 import {timingSafeEqual} from 'node:crypto';
 import type {OAuthSettings} from './auth/oauth.js';
+import {loadGoogleAuthConfig,type GoogleAuthConfig} from './auth/google-server.js';
 
 export interface ServiceConfig {
   host:string; port:number; accessToken:string;publicOrigin:string;ownerKey?:string;
-  authMode:'internal'|'oauth';oauth?:OAuthSettings;
+  authMode:'internal'|'oauth'|'google';oauth?:OAuthSettings;google?:GoogleAuthConfig;
 }
 function validateUrl(value:string,label:string,allowLocal=false):string {
   const url=new URL(value);
@@ -17,7 +18,7 @@ function validateUrl(value:string,label:string,allowLocal=false):string {
 }
 export function loadConfig(env:NodeJS.ProcessEnv=process.env):ServiceConfig {
   const authMode=env.MCP_AUTH_MODE??'internal';
-  if(authMode!=='oauth'&&authMode!=='internal')throw new Error('Invalid MCP_AUTH_MODE');
+  if(authMode!=='oauth'&&authMode!=='google'&&authMode!=='internal')throw new Error('Invalid MCP_AUTH_MODE');
   const allowLocal=env.OAUTH_ALLOW_LOCAL_TEST==='true'&&env.NODE_ENV==='test';
   const publicOrigin=validateUrl(env.PUBLIC_ORIGIN??'','PUBLIC_ORIGIN',authMode==='internal'||allowLocal);
   const port=Number(env.PORT??'3000');
@@ -26,6 +27,12 @@ export function loadConfig(env:NodeJS.ProcessEnv=process.env):ServiceConfig {
   const ownerKey=env.MCP_OWNER_KEY;
   if(ownerKey!==undefined&&(!ownerKey.trim()||ownerKey.length>200))
     throw new Error('Invalid MCP_OWNER_KEY');
+  if(authMode==='google'){
+    if(ownerKey||accessToken)throw new Error('Legacy bearer token/owner not allowed in Google mode');
+    const google=loadGoogleAuthConfig(env,publicOrigin);
+    return {host:env.HOST??'0.0.0.0',port,accessToken:'',publicOrigin,
+      authMode,google,oauth:{issuer:publicOrigin,jwksUri:publicOrigin+'/jwks',resource:publicOrigin+'/mcp'}};
+  }
   if(authMode==='internal'){
     if(accessToken.length<32)throw new Error('MCP_ACCESS_TOKEN must contain at least 32 characters');
     return {host:env.HOST??'0.0.0.0',port,accessToken,publicOrigin,ownerKey,authMode};

@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import {McpServer} from '@modelcontextprotocol/server';
+import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
 import {authorized,type ServiceConfig} from './config.js';
 import {registerProjectTools,type ProjectServices} from './mcp/project-tools.js';
@@ -8,16 +9,52 @@ import {bearerChallenge,protectedResourceMetadata,remoteJwks,verifyOAuthAccessTo
 
 export function createApp(config:ServiceConfig,
  services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs']},
- options?: {keys?:Jwks}) {
- if(config.authMode==='oauth'&&!services)throw new Error('OAuth requires project services');
+ options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
+ if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
    throw new Error('Internal owner identity mismatch');
- const app=Fastify({logger:{level:'info'},bodyLimit:256*1024,trustProxy:false});
+ const app=Fastify({logger:{level:'info'},disableRequestLogging:true,bodyLimit:256*1024,trustProxy:false});
  const principals=new WeakMap<object,Principal>();
- const keys=config.oauth?(options?.keys??remoteJwks(config.oauth)):undefined;
+ const keys=config.oauth?(options?.keys??options?.google?.verifierKeys??remoteJwks(config.oauth)):undefined;
+ if(config.google&&!options?.google)throw new Error('Google OAuth mode requires an authorization server');
 
- if(config.oauth) app.get('/.well-known/oauth-protected-resource',
-   async()=>protectedResourceMetadata(config.oauth!));
+ if(config.oauth){
+   app.get('/.well-known/oauth-protected-resource',async()=>protectedResourceMetadata(config.oauth!));
+   app.get('/.well-known/oauth-protected-resource/mcp',
+     async()=>protectedResourceMetadata(config.oauth!));
+ }
+ if(options?.google){
+   app.addContentTypeParser('application/x-www-form-urlencoded',
+     {parseAs:'string'},(_request,body,done)=>done(null,body));
+   const google=options.google;
+   app.get('/.well-known/oauth-authorization-server',async()=>google.metadata());
+   app.get('/jwks',async(_request,reply)=>{
+     reply.header('cache-control','public, max-age=300');return google.jwks;
+   });
+   app.post('/register',{bodyLimit:16*1024},async(request,reply)=>{
+     const answer=await google.register(request.body);
+     for(const [key,value] of Object.entries(answer.headers))reply.header(key,value);
+     reply.code(answer.status);return answer.body;
+   });
+   app.get('/authorize',async(request,reply)=>{
+     const answer=await google.authorize(request.query as Record<string,unknown>);
+     for(const [key,value] of Object.entries(answer.headers))reply.header(key,value);
+     reply.code(answer.status);return answer.body;
+   });
+   app.get('/auth/google/callback',async(request,reply)=>{
+     const answer=await google.callbackLogin(request.query as Record<string,unknown>,request.headers.cookie);
+     for(const [key,value] of Object.entries(answer.headers))reply.header(key,value);
+     reply.code(answer.status);return answer.body;
+   });
+   app.post('/token',{bodyLimit:8*1024},async(request,reply)=>{
+     if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+       return reply.code(415).send({error:'invalid_request'});
+     const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
+     const answer=await google.token(Object.fromEntries(form));
+     for(const [key,value] of Object.entries(answer.headers))reply.header(key,value);
+     reply.code(answer.status);return answer.body;
+   });
+ }
  app.get('/health/live',async()=>({status:'alive',service:'blender-workspace'}));
  app.get('/health/ready',async()=>({status:'ready',service:'blender-workspace',
    integrations:services?'project_metadata':'not_configured'}));
