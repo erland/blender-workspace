@@ -82,7 +82,7 @@ jobs:
               {'kind':'set_parent','objectId':ids['Copied Leg'],'parentId':ids['Desk Top']},
               {'kind':'rename_object','objectId':ids['Copied Leg'],'newName':'Parented Leg'},
               {'kind':'set_color','objectId':ids['Desk Leg'],'color':[0.2,0.8,0.3]},
-              {'kind':'set_parent','objectId':ids['Parented Leg'] if 'Parented Leg' in ids else ids['Desk Leg'],'parentId':None}
+              {'kind':'set_parent','objectId':ids['Desk Leg'],'parentId':None}
           ]}
           # The last operation deliberately unparents an existing, unparented object.
           Path('batch-parent.json').write_text(json.dumps(operations))
