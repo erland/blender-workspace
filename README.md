@@ -12,6 +12,7 @@ The MCP tool `workspace_queue_scene_operation` queues one validated scene
 operation or a batch of 1–20 ordered operations. Supported operations:
 
 - Add named cubes, UV spheres, cylinders, cones or tori.
+- Build bounded custom polygon meshes from vertices and face indices.
 - Change mesh location, scale, rotation or material color.
 - Duplicate an existing mesh with a new name and optional transforms.
 - Rename objects without rebuilding their geometry.
@@ -67,3 +68,6 @@ service/worker containers and executes real headless Blender
 create/reopen/edit flows. See `.github/workflows/`.
 The authoritative development state is
 `.system-builder/work-status.yaml`.
+
+Custom mesh geometry (`add_mesh`) is bounded and validates indices, finite coordinates
+and polygon size. See [DEV-024 custom mesh](service/docs/dev-024-custom-mesh.md).
