@@ -56,8 +56,13 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
     assert.ok(names.includes(name),name);
   const created=output(await call('tools/call',{name:'workspace_create_project',arguments:{name:'Cube monster'}}));
   const id=created.project.id;
+  let newSceneId;
   t.after(async()=>{
     try {
+      if(newSceneId){
+        await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[newSceneId]);
+        await pool.query('DELETE FROM bw_projects WHERE id=$1',[newSceneId]);
+      }
       await pool.query('DELETE FROM bw_jobs WHERE project_id=$1',[id]);
       await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[id]);
       await pool.query('DELETE FROM bw_projects WHERE id=$1',[id]);
@@ -80,10 +85,7 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   // Scene metadata can be entirely unrelated to the cube-monster fixture.
   const newScene=output(await call('tools/call',{name:'workspace_create_project',
     arguments:{name:'Modern house'}})).project;
-  t.after(async()=>{
-    await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[newScene.id]);
-    await pool.query('DELETE FROM bw_projects WHERE id=$1',[newScene.id]);
-  });
+  newSceneId=newScene.id;
   const reportPath=path.join(root,'house_report.json');
   const blendPath=path.join(root,'house.blend');
   await writeFile(reportPath,JSON.stringify({schema_version:1,scene:{objects:[
