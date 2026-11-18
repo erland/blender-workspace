@@ -36,7 +36,7 @@ app=modal.App("blender-workspace-function-sandbox-comparison")
 
 @app.function(image=image,cpu=CPU_CORES,memory=MEMORY_MIB,timeout=JOB_TIMEOUT,
               block_network=True,restrict_modal_access=True,
-              single_use_containers=True,include_source=False)
+              single_use_containers=True)
 def benchmark_function():
     started=time.perf_counter()
     run=subprocess.run(COMMAND,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
@@ -137,7 +137,7 @@ def main():
     parser.add_argument("--iterations",type=int,default=3,choices=range(1,6),metavar="1-5")
     parser.add_argument("--output",default="modal-benchmark-results.json")
     args=parser.parse_args()
-    max_reserved=2*(1+args.iterations)*JOB_TIMEOUT*(
+    scenario_cost=2*(1+args.iterations)*JOB_TIMEOUT*(
         CPU_CORES*SANDBOX_CPU_USD+MEMORY_MIB/1024*SANDBOX_GIB_USD)
     if not args.execute:
         print("DRY RUN: no Modal resources were started.")
