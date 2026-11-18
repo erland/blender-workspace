@@ -139,7 +139,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     });
   }
   server.registerTool('workspace_queue_scene_operation',{
-    description:'Queue one or a batch (1–20) of bounded Blender operations for any model: create primitives, transform/recolor/duplicate/rename/delete, or parent/unparent scene objects. For existing targets specify exactly one of name or stable objectId; for duplicate sources specify source or sourceId. set_parent requires parentId (UUID or null to unparent), rejects cycles and preserves world position. Existing meshes also support set_pbr_material with bounded RGB baseColor/emissionColor, metallic, roughness, opacity and emissionStrength (all factors 0–1). Existing meshes support extrude_face (polygon faceIndex and nonzero local offset), mirror_mesh (x/y/z axis), array_mesh (2–8 copies with nonzero local constant offset), bevel_mesh (width 0.001–2, 1–3 segments), subdivide_mesh (1–2 levels) and boolean_mesh (union/difference/intersection with operandId) as applied, bounded geometry edits. A new scene must begin with add_primitive or add_mesh. add_mesh accepts bounded vertices and face vertex indices. Operations are ordered and saved as one immutable revision. No user Python.',
+    description:'Queue one or a batch (1–20) of bounded Blender operations for any model: create primitives, transform/recolor/duplicate/rename/delete, or parent/unparent scene objects. For existing targets specify exactly one of name or stable objectId; for duplicate sources specify source or sourceId. set_parent requires parentId (UUID or null to unparent), rejects cycles and preserves world position. Existing meshes also support set_pbr_material with bounded RGB baseColor/emissionColor, metallic, roughness, opacity and emissionStrength (all factors 0–1). Existing meshes support extrude_face (polygon faceIndex and nonzero local offset), mirror_mesh (x/y/z axis), array_mesh (2–8 copies with nonzero local constant offset), bevel_mesh (width 0.001–2, 1–3 segments), subdivide_mesh (1–2 levels) and boolean_mesh (union/difference/intersection with operandId) as applied, bounded geometry edits. A new scene must begin with add_primitive, add_mesh, or import_glb. import_glb accepts only a self-contained GLB v2 embedded as base64 (up to 120 KB decoded), not paths or remote URLs. add_mesh accepts bounded vertices and face vertex indices. Operations are ordered and saved as one immutable revision. No user Python.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       operation:SceneOperationSchema,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,operation,note:jobNote})=>{
@@ -153,7 +153,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
         return failure(new JobConflict('Stale project revision'));
       if(expectedRevision===0){
         if(!isValidInitialSceneOperation(operation))
-          return failure(new JobConflict('Initial scene must add a primitive or custom mesh'));
+          return failure(new JobConflict('Initial scene must add a primitive, custom mesh or bounded GLB'));
       }else{
         const history=await projects.revisions(ownerKey,projectId);
         if(!history.some(v=>v.revision===expectedRevision&&v.artifact_prefix))
