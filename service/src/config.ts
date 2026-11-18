@@ -31,7 +31,7 @@ export function loadConfig(env:NodeJS.ProcessEnv=process.env):ServiceConfig {
     if(ownerKey||accessToken)throw new Error('Legacy bearer token/owner not allowed in Google mode');
     const google=loadGoogleAuthConfig(env,publicOrigin);
     return {host:env.HOST??'0.0.0.0',port,accessToken:'',publicOrigin,
-      authMode,google,oauth:{issuer:publicOrigin,jwksUri:publicOrigin+'/jwks',resource:publicOrigin}};
+      authMode,google,oauth:{issuer:publicOrigin,jwksUri:publicOrigin+'/jwks',resource:publicOrigin+'/mcp'}};
   }
   if(authMode==='internal'){
     if(accessToken.length<32)throw new Error('MCP_ACCESS_TOKEN must contain at least 32 characters');
