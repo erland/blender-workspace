@@ -158,7 +158,7 @@ class ModalProviderTests(unittest.TestCase):
         sdk=self.sdk()
         with TemporaryDirectory() as tmp:
             script=Path(tmp)/'code.py'
-            for source in ('', ' ', 'x'*16385, 'print(1)\\x00'):
+            for source in ('', ' ', 'x'*16385, 'print(1)\x00'):
                 script.write_text(source)
                 with self.assertRaises(ValueError):
                     run(sdk,Path(tmp)/'out',revision=1,python_file=str(script))
@@ -168,7 +168,7 @@ class ModalProviderTests(unittest.TestCase):
         sdk=self.sdk()
         with TemporaryDirectory() as tmp:
             script=Path(tmp)/'model.py'
-            script.write_text('import bpy\\nbpy.ops.mesh.primitive_cube_add()')
+            script.write_text('import bpy\nbpy.ops.mesh.primitive_cube_add()')
             with self.assertRaises(ValueError):
                 run(sdk,Path(tmp)/'out',revision=1,python_file=str(script))
             kwargs=sdk.Sandbox.create.call_args.kwargs
