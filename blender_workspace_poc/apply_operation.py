@@ -315,7 +315,7 @@ def main():
         bpy.ops.object.delete(use_global=False)
     else:
         if revision<2:raise ValueError('Existing scene requires later revision')
-        bpy.ops.wm.open_mainfile(filepath=source,load_ui=False)
+        bpy.ops.wm.open_mainfile(filepath=source,load_ui=False,use_scripts=False)
     # Legacy scenes get IDs before ID-addressed operations; batch-created
     # objects receive IDs before subsequent steps in the same batch.
     ensure_object_ids(bpy.data.objects)
