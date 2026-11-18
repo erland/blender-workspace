@@ -23,7 +23,7 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
     GOOGLE_ALLOWED_EMAILS:'alice@example.org,bob@example.org'};
   const config=loadConfig(env);
   assert.equal(config.oauth.issuer,config.publicOrigin);
-  assert.equal(config.oauth.resource,config.publicOrigin);
+  assert.equal(config.oauth.resource,config.publicOrigin+'/mcp');
   assert.throws(()=>loadConfig({...env,OAUTH_SIGNING_KEY:undefined}));
   assert.throws(()=>loadConfig({...env,GOOGLE_ALLOWED_REDIRECT_ORIGINS:undefined}));
   const provider={
@@ -67,6 +67,9 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
   const discovery=await get('/.well-known/oauth-authorization-server');
   assert.equal(discovery.status,200);
   assert.equal((await discovery.json()).code_challenge_methods_supported[0],'S256');
+  const resource=await get('/.well-known/oauth-protected-resource/mcp');
+  assert.equal(resource.status,200);
+  assert.equal((await resource.json()).resource,config.oauth.resource);
   const jwks=await get('/jwks');assert.equal((await jwks.json()).keys[0].alg,'EdDSA');
   const invalid=await get('/register',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({redirect_uris:['https://evil.example/callback']})});
@@ -80,7 +83,7 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
   const challenge=createHash('sha256').update(verifier).digest('base64url');
   const authBase={response_type:'code',client_id:clientId,
     redirect_uri:'https://chatgpt.com/connector/callback',
-    scope:'workspace:read workspace:write',resource:config.publicOrigin,
+    scope:'workspace:read workspace:write',resource:config.oauth.resource,
     code_challenge:challenge,code_challenge_method:'S256',state:'client-state'};
   async function login(who,scopes='workspace:read workspace:write'){
     const auth=new URLSearchParams({...authBase,scope:scopes});
@@ -101,9 +104,21 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
     assert.equal(redirect.searchParams.get('state'),'client-state');
     assert.equal(redirect.searchParams.get('iss'),config.publicOrigin);
     const code=redirect.searchParams.get('code');
+    // Invalid client/redirect/PKCE/resource must NOT consume the one-time code.
+    for(const invalidParams of [
+      {code_verifier:'w'.repeat(64)},
+      {client_id:'unknown-client'},
+      {redirect_uri:'https://chatgpt.com/wrong-callback'},
+      {resource:'https://unrelated.example/mcp'}
+    ]){
+      const bad=await tokenForm({grant_type:'authorization_code',
+        client_id:clientId,redirect_uri:authBase.redirect_uri,code,code_verifier:verifier,
+        resource:config.oauth.resource,...invalidParams});
+      assert.equal(bad.status,400,JSON.stringify(bad.data));
+    }
     const exchanged=await tokenForm({grant_type:'authorization_code',
       client_id:clientId,redirect_uri:authBase.redirect_uri,
-      code,code_verifier:verifier,resource:config.publicOrigin});
+      code,code_verifier:verifier,resource:config.oauth.resource});
     assert.equal(exchanged.status,200,JSON.stringify(exchanged.data));
     const replay=await tokenForm({grant_type:'authorization_code',client_id:clientId,
       redirect_uri:authBase.redirect_uri,code,code_verifier:verifier});
@@ -133,10 +148,17 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
   assert.equal((await call(bob.access_token,'workspace_get_project',{projectId:p.id})).isError,true);
   assert.equal((await call(readonly.access_token,'workspace_create_project',{name:'not allowed'})).isError,true);
   assert.equal(output(await call(readonly.access_token,'workspace_get_project',{projectId:p.id})).project.id,p.id);
+  const wrongRefresh=await tokenForm({grant_type:'refresh_token',client_id:clientId,
+    refresh_token:alice.refresh_token,resource:'https://unrelated.example/mcp'});
+  assert.equal(wrongRefresh.status,400);
   const refreshed=await tokenForm({grant_type:'refresh_token',client_id:clientId,
-    refresh_token:alice.refresh_token,resource:config.publicOrigin});
+    refresh_token:alice.refresh_token,resource:config.oauth.resource});
   assert.equal(refreshed.status,200);
   assert.equal(output(await call(refreshed.data.access_token,'workspace_get_project',{projectId:p.id})).project.id,p.id);
   assert.equal((await tokenForm({grant_type:'refresh_token',client_id:clientId,
     refresh_token:alice.refresh_token})).status,400);
+  const parallel=await Promise.all(Array.from({length:2},()=>tokenForm({
+    grant_type:'refresh_token',client_id:clientId,refresh_token:bob.refresh_token,
+    resource:config.oauth.resource})));
+  assert.deepEqual(parallel.map(x=>x.status).sort(),[200,400]);
 });
