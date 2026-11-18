@@ -26,12 +26,13 @@ export class GoogleOAuthStore {
      [hash,record.clientId,record.redirectUri,record.googleSubject,record.email??null,
       record.scope,record.resource,record.challenge]);
   }
-  async consumeCode(hash:string):Promise<GrantRecord|undefined> {
+  async consumeCode(hash:string,clientId:string,redirectUri:string,challenge:string,resource?:string):Promise<GrantRecord|undefined> {
     const r=await this.pool.query<{
       client_id:string;redirect_uri:string;google_subject:string;identity_email:string|null;
       scope:string;resource:string;pkce_challenge:string
-    }>(`DELETE FROM bw_oauth_codes WHERE code_hash=$1 AND expires_at>now()
-       RETURNING client_id,redirect_uri,google_subject,identity_email,scope,resource,pkce_challenge`,[hash]);
+    }>(`DELETE FROM bw_oauth_codes WHERE code_hash=$1 AND client_id=$2 AND redirect_uri=$3 AND pkce_challenge=$4
+       AND ($5::text IS NULL OR resource=$5) AND expires_at>now()
+       RETURNING client_id,redirect_uri,google_subject,identity_email,scope,resource,pkce_challenge`,[hash,clientId,redirectUri,challenge,resource??null]);
     const x=r.rows[0];
     return x?{clientId:x.client_id,redirectUri:x.redirect_uri,googleSubject:x.google_subject,
       ...(x.identity_email?{email:x.identity_email}:{}),scope:x.scope,
@@ -43,12 +44,12 @@ export class GoogleOAuthStore {
       VALUES($1,$2,$3,$4,$5,$6,now()+interval '30 days')`,
       [hash,record.clientId,record.googleSubject,record.email??null,record.scope,record.resource]);
   }
-  async consumeRefresh(hash:string,clientId:string):Promise<RefreshRecord|undefined> {
+  async consumeRefresh(hash:string,clientId:string,resource?:string):Promise<RefreshRecord|undefined> {
     // Single-use rotation, serialized by PostgreSQL. Replays fail closed.
     const r=await this.pool.query<{
       client_id:string;google_subject:string;identity_email:string|null;scope:string;resource:string
-    }>(`DELETE FROM bw_oauth_refresh WHERE token_hash=$1 AND client_id=$2 AND expires_at>now()
-       RETURNING client_id,google_subject,identity_email,scope,resource`,[hash,clientId]);
+    }>(`DELETE FROM bw_oauth_refresh WHERE token_hash=$1 AND client_id=$2 AND ($3::text IS NULL OR resource=$3) AND expires_at>now()
+       RETURNING client_id,google_subject,identity_email,scope,resource`,[hash,clientId,resource??null]);
     const x=r.rows[0];
     return x?{clientId:x.client_id,googleSubject:x.google_subject,
       ...(x.identity_email?{email:x.identity_email}:{}),scope:x.scope,resource:x.resource}:undefined;
