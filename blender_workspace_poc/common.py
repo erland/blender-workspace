@@ -3,6 +3,7 @@ import os
 import hashlib
 from pathlib import Path
 import bpy
+from blender_workspace_poc.object_identity import ensure_object_ids,PROPERTY
 FRAME_RATE=24
 FRAME_END=49
 def ensure_output():
@@ -10,9 +11,11 @@ def ensure_output():
     out.mkdir(parents=True,exist_ok=True)
     return out
 def save_scene(path):
+    ensure_object_ids(bpy.data.objects)
     bpy.ops.wm.save_as_mainfile(filepath=str(path),compress=True)
 def export_glb(path):
-    bpy.ops.export_scene.gltf(filepath=str(path),export_format='GLB',use_selection=False,export_animations=True,export_skins=True,export_apply=False)
+    ensure_object_ids(bpy.data.objects)
+    bpy.ops.export_scene.gltf(filepath=str(path),export_format='GLB',use_selection=False,export_animations=True,export_skins=True,export_apply=False,export_extras=True)
 def inspect_scene():
     # Report the actual Blender scene. Object names/types are not constrained
     # by the demo model and are never inferred from filename conventions.
@@ -20,6 +23,7 @@ def inspect_scene():
     for obj in bpy.data.objects:
         objects.append({
             'name':obj.name,
+            'objectId':obj.get(PROPERTY),
             'type':obj.type,
             'parent':obj.parent.name if obj.parent else None,
             'materials':[m.name for m in obj.data.materials if m] if obj.type=='MESH' else [],

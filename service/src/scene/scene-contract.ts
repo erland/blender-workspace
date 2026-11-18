@@ -9,6 +9,7 @@ const transform=z.object({
 }).strict();
 const sceneObject=z.object({
   name:boundedName,
+  objectId:z.string().uuid().optional(),
   type:boundedName,
   parent:boundedName.nullable().optional(),
   materials:z.array(z.string().max(512)).max(256).default([]),
@@ -49,9 +50,14 @@ export async function inspectSavedScene(
   if(size.size>2*1024*1024)throw new Error('Scene report too large to inspect');
   const report=SceneReportSchema.parse(JSON.parse(await readFile(filepath,'utf8')));
   const names=new Set<string>();
+  const ids=new Set<string>();
   for(const item of report.scene.objects){
     if(names.has(item.name))throw new Error('Duplicate scene object name');
     names.add(item.name);
+    if(item.objectId){
+      if(ids.has(item.objectId))throw new Error('Duplicate scene object ID');
+      ids.add(item.objectId);
+    }
   }
   return report.scene;
 }

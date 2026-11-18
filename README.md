@@ -26,6 +26,9 @@ A Google-authenticated user can view saved GLB revisions in the browser;
 The read-only browser viewer can select named GLB mesh nodes and compare
 saved revisions side by side without running Blender or Modal.
 See [DEV-021 selection and comparison](service/docs/dev-021-object-picking-comparison.md).
+From DEV-022, generic Blender scene objects carry persistent UUIDs in the BLEND,
+scene report and GLB node extras; new duplicates get independent IDs, and old
+revisions remain readable. See [DEV-022 identity contract](service/docs/dev-022-stable-object-identities.md).
 See [DEV-020 viewer links](service/docs/dev-020-mcp-viewer-links.md).
 The earlier cube-monster example remains a regression/demo case, **not**
 a restriction on what scenes the service can represent.

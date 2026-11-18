@@ -8,6 +8,7 @@ from pathlib import Path
 import bpy
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.scene_operation_validation import validate_operation
+from blender_workspace_poc.object_identity import assign_new_object_id
 from blender_workspace_poc.common import ensure_output,save_scene,export_glb,write_manifest
 
 def apply_operation(operation):
@@ -21,6 +22,7 @@ def apply_operation(operation):
         obj=source.copy()
         obj.data=source.data.copy()
         obj.name=name
+        assign_new_object_id(obj)
         # Copies remain independently editable, including object transforms
         # and material slots. A fresh name never overwrites an existing object.
         bpy.context.scene.collection.objects.link(obj)

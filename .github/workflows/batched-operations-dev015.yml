@@ -88,6 +88,26 @@ jobs:
           assert next(x for x in two['scene']['objects'] if x['name']=='Desk Leg')['localTransform']['scale']==[1.0,1.0,1.0]
           top=next(x for x in two['scene']['objects'] if x['name']=='Desk Top')
           assert top['localTransform']['location']==[0.0,0.0,2.0]
+          # Stable Blender object IDs survive revisions and rename operations.
+          import uuid,struct
+          id1={o['name']:o['objectId'] for o in one['scene']['objects']}
+          id2={o['name']:o['objectId'] for o in two['scene']['objects']}
+          for mapping in (id1,id2):
+              assert len(set(mapping.values()))==len(mapping)
+              assert all(str(uuid.UUID(value,version=4))==value for value in mapping.values())
+          assert id1['Desk Top']==id2['Desk Top']
+          assert id1['Desk Leg']==id2['Desk Leg']
+          assert id2['Copied Leg']!=id1['Desk Leg']
+          # glTF JSON chunk must expose the exact object identity in node extras.
+          for folder,identities in [('first',id1),('second',id2)]:
+              raw=(Path('batch-artifacts')/folder/'scene.glb').read_bytes()
+              assert raw[:4]==b'glTF'
+              json_size,json_type=struct.unpack_from('<I4s',raw,12)
+              assert json_type==b'JSON'
+              gltf=json.loads(raw[20:20+json_size])
+              exported={n['name']:n.get('extras',{}).get('bw_object_id') for n in gltf['nodes']
+                        if n.get('name') in identities}
+              assert exported==identities,(folder,exported,identities)
           for name in ['first','second']:
               for ext in ['blend','glb','json']:
                   assert (Path('batch-artifacts')/name/('scene.'+ext)).stat().st_size>0
