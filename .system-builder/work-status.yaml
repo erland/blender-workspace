@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-021
-in_progress: DEV-021
+selected_step: DEV-022
+in_progress: DEV-022
 completed_steps:
   - DEV-001
   - DEV-002
@@ -102,15 +102,25 @@ verification:
       status: DEFERRED
       reason: Real Google/ChatGPT browser link opening remains untested
   dev021:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: GLB object selection, comparison viewer and session-secured revision listing require PR CI
+      status: PASS
+      source_sha: 4f687f9831d68ed3f5f28a13b18b3055ba3ba289
+      result: All 15 PR checks succeeded including GLB revision listing tests and headless Blender regression
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44341411580
     live_acceptance:
       status: DEFERRED
       reason: Real browser/iPad rendering and Google/ChatGPT identity flow postponed
+  dev022:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: Stable Blender object identity, GLB node extras and legacy backfill require PR CI
+    live_acceptance:
+      status: DEFERRED
+      reason: Live ChatGPT/Google/Modal and iPad object selection are not yet verified
 next:
-  recommended: VERIFY_DEV-021
-  reason: Verify all CI then review phase A usability before DEV-022 stable object identities
+  recommended: VERIFY_DEV-022
+  reason: Verify real Blender GLB ID export, check full CI, then plan safe parent hierarchy and ID-addressed operations
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
