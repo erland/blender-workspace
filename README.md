@@ -23,6 +23,9 @@ Existing scenes can be inspected through `workspace_inspect_scene`.
 A Google-authenticated user can view saved GLB revisions in the browser;
 `workspace_get_viewer_link` returns an owner-checked link from MCP, and
 `workspace_get_job` includes the link for completed GLB jobs.
+The read-only browser viewer can select named GLB mesh nodes and compare
+saved revisions side by side without running Blender or Modal.
+See [DEV-021 selection and comparison](service/docs/dev-021-object-picking-comparison.md).
 See [DEV-020 viewer links](service/docs/dev-020-mcp-viewer-links.md).
 The earlier cube-monster example remains a regression/demo case, **not**
 a restriction on what scenes the service can represent.
