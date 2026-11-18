@@ -142,7 +142,7 @@ def main():
     if not args.execute:
         print("DRY RUN: no Modal resources were started.")
         print(f"Iterations: {args.iterations} + one warmup per mode; timeout {JOB_TIMEOUT}s")
-        print(f"Pessimistic list-price envelope (both modes priced at Sandbox rate): ${max_reserved:.3f}")
+        print(f"Illustrative upper-reservation scenario (not a hard budget): ${scenario_cost:.3f}")
         print("Execute explicitly using --execute after verifying your Modal account budget.")
         return
     result=experiment(args.iterations)
