@@ -11,12 +11,12 @@ import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
 const access='x'.repeat(48),origin='http://127.0.0.1:3000';
 const config=loadConfig({MCP_ACCESS_TOKEN:access,PUBLIC_ORIGIN:origin,MCP_OWNER_KEY:'owner-a'});
 async function rpc(app,method,params={}){
-  const response=await app.inject({method:'POST',url:'/mcp',
-    headers:{authorization:'Bearer '+access,
+  const response=await fetch('http://127.0.0.1:'+app.server.address().port+'/mcp',{
+    method:'POST',headers:{authorization:'Bearer '+access,
       accept:'application/json, text/event-stream','content-type':'application/json'},
-    payload:{jsonrpc:'2.0',id:1,method,params}});
-  assert.equal(response.statusCode,200,response.body);
-  const body=response.body;
+    body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+  const body=await response.text();
+  assert.equal(response.status,200,body);
   const frame=body.split('\\n').find(x=>x.startsWith('data:'));
   return (frame?JSON.parse(frame.slice(5)):JSON.parse(body)).result;
 }
@@ -49,6 +49,7 @@ test('DEV-020 MCP links only verified owned committed GLB revisions',async t=>{
   // The actual browser route still independently checks the Google session.
   const app=createApp(config,{ownerKey:'owner-a',projects,jobs,artifacts:store},
     {google:{settingsSession:()=>undefined}});
+  await app.listen({port:0,host:'127.0.0.1'});
   t.after(()=>app.close());
   const tools=await rpc(app,'tools/list');
   assert.ok(tools.tools.some(x=>x.name==='workspace_get_viewer_link'));
@@ -79,6 +80,7 @@ test('DEV-020 MCP links only verified owned committed GLB revisions',async t=>{
 });
 test('DEV-020 does not advertise browser link tool when Google viewer is disabled',async t=>{
   const app=createApp(config,{ownerKey:'owner-a',projects:{},jobs:{}});
+  await app.listen({port:0,host:'127.0.0.1'});
   t.after(()=>app.close());
   const result=await rpc(app,'tools/list');
   assert.ok(!result.tools.some(x=>x.name==='workspace_get_viewer_link'));
