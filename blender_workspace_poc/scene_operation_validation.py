@@ -2,7 +2,7 @@
 import math
 import re
 from blender_workspace_poc.object_identity import valid_object_id
-KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh','bevel_mesh','subdivide_mesh','boolean_mesh')
+KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh','bevel_mesh','subdivide_mesh','boolean_mesh','extrude_face','mirror_mesh','array_mesh')
 PRIMITIVES=('cube','sphere','cylinder','cone','torus')
 def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
@@ -35,6 +35,9 @@ def validate_operation(value):
              'bevel_mesh':{'kind','name','objectId','width','segments'},
              'subdivide_mesh':{'kind','name','objectId','levels'},
              'boolean_mesh':{'kind','name','objectId','operandId','operation'},
+             'extrude_face':{'kind','name','objectId','faceIndex','offset'},
+             'mirror_mesh':{'kind','name','objectId','axis'},
+             'array_mesh':{'kind','name','objectId','count','offset'},
              'duplicate_object':{'kind','name','source','sourceId','location','scale','rotation'}}[kind]
     if set(value)-allowed:raise ValueError('Unrecognized operation field')
     name=value.get('name')
@@ -87,6 +90,20 @@ def validate_operation(value):
             raise ValueError('Invalid Boolean operation')
         if object_id is not None and object_id==operand_id:
             raise ValueError('Boolean target must differ from operand')
+    if kind=='extrude_face':
+        index=value.get('faceIndex')
+        if type(index) is not int or not 0<=index<=39999:
+            raise ValueError('Extrusion face index must be 0 to 39999')
+    if kind=='mirror_mesh' and value.get('axis') not in ('x','y','z'):
+        raise ValueError('Mirror axis must be x, y or z')
+    if kind=='array_mesh':
+        count=value.get('count')
+        if type(count) is not int or not 2<=count<=8:
+            raise ValueError('Array count must be 2 to 8')
+    if kind in ('extrude_face','array_mesh'):
+        offset=value.get('offset')
+        if not _vector(offset,-10,10) or not any(n!=0 for n in offset):
+            raise ValueError('Offset must be finite, nonzero and within [-10,10]')
     if kind=='add_mesh':
         vertices=value.get('vertices')
         faces=value.get('faces')
