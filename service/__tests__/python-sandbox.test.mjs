@@ -11,6 +11,7 @@ test('Python source is a separate, strictly bounded job type',()=>{
     {kind:'python_script',code:'  '},
     {kind:'python_script',code:'print(1)\0'},
     {kind:'python_script',code:'x'.repeat(16385)},
+    {kind:'python_script',code:'å'.repeat(9000)},
     {kind:'python_script',code:'print(1)',file:'/etc/passwd'},
     {kind:'python_script',code:23},
     {kind:'batch',operations:[{kind:'python_script',code:'print(1)'}]}
