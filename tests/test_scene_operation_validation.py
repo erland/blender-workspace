@@ -123,3 +123,34 @@ class SceneOperationValidationTests(unittest.TestCase):
             with self.subTest(invalid=invalid),self.assertRaises(ValueError):
                 validate_operation(invalid)
         self.assertEqual(validate_operation({'kind':'batch','operations':[cube]})['kind'],'batch')
+
+    def test_dev025_mesh_modifiers(self):
+        a='11111111-1111-4111-8111-111111111111'
+        b='22222222-2222-4222-8222-222222222222'
+        operations=[
+            {'kind':'bevel_mesh','objectId':a,'width':0.2,'segments':2},
+            {'kind':'subdivide_mesh','name':'Panel','levels':2},
+            {'kind':'boolean_mesh','objectId':a,'operandId':b,'operation':'difference'},
+            {'kind':'boolean_mesh','name':'Panel','operandId':b,'operation':'union'},
+            {'kind':'boolean_mesh','name':'Panel','operandId':b,'operation':'intersection'}
+        ]
+        for op in operations:
+            with self.subTest(op=op):
+                self.assertEqual(validate_operation(op),op)
+        for op in [
+            {'kind':'bevel_mesh','name':'Panel','width':0,'segments':1},
+            {'kind':'bevel_mesh','name':'Panel','width':float('nan'),'segments':1},
+            {'kind':'bevel_mesh','name':'Panel','width':3,'segments':1},
+            {'kind':'bevel_mesh','name':'Panel','width':0.1,'segments':4},
+            {'kind':'bevel_mesh','name':'Panel','width':0.1,'segments':True},
+            {'kind':'subdivide_mesh','name':'Panel','levels':0},
+            {'kind':'subdivide_mesh','name':'Panel','levels':3},
+            {'kind':'subdivide_mesh','name':'Panel','levels':1.5},
+            {'kind':'boolean_mesh','name':'Panel','operandId':b,'operation':'script'},
+            {'kind':'boolean_mesh','objectId':a,'operandId':a,'operation':'union'},
+            {'kind':'boolean_mesh','name':'Panel','operandId':'bad','operation':'union'},
+            {'kind':'boolean_mesh','name':'Panel','operandId':b,'operation':'union','python':'evil'},
+            {'kind':'bevel_mesh','name':'Panel','objectId':a,'width':0.1,'segments':1},
+        ]:
+            with self.subTest(invalid=op),self.assertRaises(ValueError):
+                validate_operation(op)
