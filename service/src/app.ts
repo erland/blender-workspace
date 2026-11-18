@@ -282,7 +282,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      registerProjectTools(server,{ownerKey:principal.ownerKey,
        projects:services.projects,jobs:services.jobs,
        ...(services.artifacts?{artifacts:services.artifacts}:{}),
-       ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{})},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
+       ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{}),
+       ...(options?.google?{viewerOrigin:config.publicOrigin}:{})},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
    }
    const transport=new NodeStreamableHTTPServerTransport({sessionIdGenerator:undefined});
    let closed=false;
