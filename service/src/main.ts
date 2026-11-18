@@ -6,6 +6,7 @@ import {JobRepository} from './jobs/job-repository.js';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {ModalAccountManager} from './modal/modal-accounts.js';
 import {ModalCliTokenVerifier} from './modal/modal-token-verifier.js';
+import {LocalArtifactStore} from './storage/artifact-store.js';
 
 const config=loadConfig();
 const databaseUrl=process.env.DATABASE_URL;
@@ -18,6 +19,7 @@ const modalAccounts=pool && process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY
     new ModalCliTokenVerifier()):undefined;
 const app=createApp(config,pool?{
   ownerKey:config.ownerKey,projects:new ProjectRepository(pool),jobs:new JobRepository(pool),
+  artifacts:new LocalArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'),
   ...(modalAccounts?{modalAccounts}:{})
 }:undefined,google?{google}:undefined);
 if(pool)app.addHook('onClose',async()=>{await pool.end();});
