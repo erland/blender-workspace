@@ -2,7 +2,8 @@
 import math
 import re
 from blender_workspace_poc.object_identity import valid_object_id
-KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh','bevel_mesh','subdivide_mesh','boolean_mesh','extrude_face','mirror_mesh','array_mesh','set_pbr_material')
+from blender_workspace_poc.glb_import_validation import decode_embedded_glb
+KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh','bevel_mesh','subdivide_mesh','boolean_mesh','extrude_face','mirror_mesh','array_mesh','set_pbr_material','import_glb')
 PRIMITIVES=('cube','sphere','cylinder','cone','torus')
 def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
@@ -27,6 +28,7 @@ def validate_operation(value):
     kind=value['kind']
     allowed={'add_primitive':{'kind','name','primitive','location','scale','color'},
              'add_mesh':{'kind','name','vertices','faces','location','scale','rotation','color'},
+             'import_glb':{'kind','name','glbBase64'},
              'set_transform':{'kind','name','objectId','location','scale','rotation'},
              'set_color':{'kind','name','objectId','color'},
              'set_pbr_material':{'kind','name','objectId','baseColor','metallic','roughness','opacity','emissionColor','emissionStrength'},
@@ -43,7 +45,7 @@ def validate_operation(value):
     if set(value)-allowed:raise ValueError('Unrecognized operation field')
     name=value.get('name')
     object_id=value.get('objectId')
-    if kind in ('add_primitive','duplicate_object','add_mesh'):
+    if kind in ('add_primitive','duplicate_object','add_mesh','import_glb'):
         if not _valid_name(name):raise ValueError('Invalid new object name')
     else:
         if (name is None)==(object_id is None):
@@ -112,6 +114,8 @@ def validate_operation(value):
         offset=value.get('offset')
         if not _vector(offset,-10,10) or not any(n!=0 for n in offset):
             raise ValueError('Offset must be finite, nonzero and within [-10,10]')
+    if kind=='import_glb':
+        decode_embedded_glb(value.get('glbBase64'))
     if kind=='add_mesh':
         vertices=value.get('vertices')
         faces=value.get('faces')
