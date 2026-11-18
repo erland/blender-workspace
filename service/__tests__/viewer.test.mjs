@@ -28,12 +28,15 @@ test('DEV-019 viewer uses Google cookie and never exposes bearer or session secr
   await writeFile(source,bytes);
   await store.publish({projectId:id,revision:1,expectedPreviousRevision:0,
     artifacts:[{name:'scene.glb',sourcePath:source}]});
+  await store.publish({projectId:id,revision:2,expectedPreviousRevision:1,
+    artifacts:[{name:'scene.glb',sourcePath:source}]});
   const services={
     ownerKey:'internal-test',
     projects:{
       async get(owner,project){return owner==='user-1'&&project===id?{id}:null;},
       async revisions(owner,project){return owner==='user-1'&&project===id?
-        [{revision:1,artifact_prefix:id+'/00000001'}]:[];}
+        [{revision:1,artifact_prefix:id+'/00000001'},
+         {revision:2,artifact_prefix:id+'/00000002'}]:[];}
     },
     jobs:{},artifacts:store
   };
@@ -50,6 +53,22 @@ test('DEV-019 viewer uses Google cookie and never exposes bearer or session secr
   assert.match(page.body,/viewer\/assets\/viewer\.js/);
   assert.doesNotMatch(page.body,/opaque-signed-session|only-server-visible|Bearer/);
   assert.match(page.headers['content-security-policy'],/script-src 'self'/);
+  const revisionsUrl='/viewer/api/projects/'+id+'/revisions';
+  const unauthedList=await app.inject({method:'GET',url:revisionsUrl});
+  assert.equal(unauthedList.statusCode,401);
+  const list=await app.inject({method:'GET',url:revisionsUrl,headers:{cookie}});
+  assert.equal(list.statusCode,200);
+  assert.deepEqual(list.json().revisions,[1,2]);
+  assert.equal(list.headers['cache-control'],'private, no-store');
+  const otherList=await app.inject({method:'GET',
+    url:'/viewer/api/projects/'+randomUUID()+'/revisions',headers:{cookie}});
+  assert.equal(otherList.statusCode,404);
+  const crossOriginList=await app.inject({method:'GET',url:revisionsUrl,
+    headers:{cookie,origin:'https://untrusted.example'}});
+  assert.equal(crossOriginList.statusCode,403);
+  assert.match(page.body,/revision-picker/);
+  assert.match(page.body,/comparison-viewport/);
+  assert.match(page.body,/copy-selection/);
   const file=await app.inject({method:'GET',url:glb,headers:{cookie}});
   assert.equal(file.statusCode,200);
   assert.equal(file.headers['content-type'],'model/gltf-binary');
@@ -68,4 +87,6 @@ test('DEV-019 viewer uses Google cookie and never exposes bearer or session secr
   await writeFile(tampered,'bad file');
   const corrupt=await app.inject({method:'GET',url:glb,headers:{cookie}});
   assert.equal(corrupt.statusCode,404);
+  const listAfterTamper=await app.inject({method:'GET',url:revisionsUrl,headers:{cookie}});
+  assert.deepEqual(listAfterTamper.json().revisions,[2]);
 });
