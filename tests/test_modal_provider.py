@@ -154,6 +154,32 @@ class ModalProviderTests(unittest.TestCase):
                 run(sdk,Path(tmp)/'out',revision=1,operation_file=str(op))
             sdk.Sandbox.create.assert_not_called()
 
+    def test_python_source_validation_before_allocating_modal(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            script=Path(tmp)/'code.py'
+            for source in ('', ' ', 'x'*16385, 'print(1)\\x00'):
+                script.write_text(source)
+                with self.assertRaises(ValueError):
+                    run(sdk,Path(tmp)/'out',revision=1,python_file=str(script))
+            sdk.Sandbox.create.assert_not_called()
+
+    def test_python_exec_uses_separate_sandbox_and_rejects_fake_outputs(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            script=Path(tmp)/'model.py'
+            script.write_text('import bpy\\nbpy.ops.mesh.primitive_cube_add()')
+            with self.assertRaises(ValueError):
+                run(sdk,Path(tmp)/'out',revision=1,python_file=str(script))
+            kwargs=sdk.Sandbox.create.call_args.kwargs
+            self.assertTrue(kwargs['block_network'])
+            self.assertNotIn('secrets',kwargs)
+            calls=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list
+            self.assertEqual(calls[0].args,(str(script.resolve()),'/workspace/out/model.py'))
+            args=sdk.Sandbox.create.return_value.exec.call_args.args
+            self.assertIn('apply_python.py',' '.join(args))
+            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+
     def test_revision_rejects_missing_source_without_starting_modal(self):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp:
