@@ -13,13 +13,16 @@ export function createApp(config:ServiceConfig,
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
    throw new Error('Internal owner identity mismatch');
- const app=Fastify({logger:{level:'info'},bodyLimit:256*1024,trustProxy:false});
+ const app=Fastify({logger:{level:'info'},disableRequestLogging:true,bodyLimit:256*1024,trustProxy:false});
  const principals=new WeakMap<object,Principal>();
  const keys=config.oauth?(options?.keys??options?.google?.verifierKeys??remoteJwks(config.oauth)):undefined;
  if(config.google&&!options?.google)throw new Error('Google OAuth mode requires an authorization server');
 
- if(config.oauth) app.get('/.well-known/oauth-protected-resource',
-   async()=>protectedResourceMetadata(config.oauth!));
+ if(config.oauth){
+   app.get('/.well-known/oauth-protected-resource',async()=>protectedResourceMetadata(config.oauth!));
+   app.get('/.well-known/oauth-protected-resource/mcp',
+     async()=>protectedResourceMetadata(config.oauth!));
+ }
  if(options?.google){
    app.addContentTypeParser('application/x-www-form-urlencoded',
      {parseAs:'string'},(_request,body,done)=>done(null,body));
