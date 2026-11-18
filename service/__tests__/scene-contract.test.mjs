@@ -25,6 +25,18 @@ test('generic scene parser retains arbitrary object names and materials, without
     {name:'Broken',type:'MESH',localTransform:{location:[NaN,0,0],rotationEuler:[0,0,0],scale:[1,1,1]}}
   ]}}));
 });
+test('DEV-022 scene reports accept legacy names and reject duplicated object IDs',()=>{
+  const stable='11111111-1111-4111-8111-111111111111';
+  const report={schema_version:1,scene:{objects:[
+    {name:'Before rename',type:'MESH',objectId:stable,materials:[],bones:[]},
+    {name:'Legacy object',type:'MESH',materials:[],bones:[]}
+  ]}};
+  assert.equal(SceneReportSchema.parse(report).scene.objects[0].objectId,stable);
+  assert.equal(SceneReportSchema.parse(report).scene.objects[1].objectId,undefined);
+  assert.throws(()=>SceneReportSchema.parse({...report,scene:{objects:[
+    {...report.scene.objects[0],objectId:'not-a-uuid'}
+  ]}}));
+});
 test('scene catalog reads only validated, SHA-verified revision artifacts',async t=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'bw-scenes-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
