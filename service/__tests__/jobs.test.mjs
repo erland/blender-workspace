@@ -113,7 +113,9 @@ test('rejects initial-demo replay on existing revision', {skip:!process.env.TEST
   await x.workflow.createDemo(x.owner,x.project.id);
   await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,0),JobConflict);
   const revision2=await x.jobs.reserve(x.owner,x.project.id,1);
-  await assert.rejects(()=>x.workflow.execute(x.owner,revision2.id),/Only initial demo/);
+  // The fixture intentionally only supports initial creation; revision 2 now requires
+  // a dedicated executor rather than being categorically unsupported.
+  await assert.rejects(()=>x.workflow.execute(x.owner,revision2.id),/Revision executor is not configured/);
   assert.equal((await x.jobs.get(x.owner,revision2.id)).status,'failed');
   assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
 });
