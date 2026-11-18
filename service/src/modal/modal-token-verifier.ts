@@ -6,7 +6,7 @@ export class ModalCliTokenVerifier implements ModalTokenVerifier {
   constructor(private readonly timeoutMs=30_000) {}
   async verify(token:ModalCredentials):Promise<void>{
     await new Promise<void>((resolve,reject)=>{
-      const env={...process.env,MODAL_TOKEN_ID:token.tokenId,MODAL_TOKEN_SECRET:token.tokenSecret};
+      const env:NodeJS.ProcessEnv={...process.env,MODAL_TOKEN_ID:token.tokenId,MODAL_TOKEN_SECRET:token.tokenSecret};
       delete env.MODAL_OAUTH_REFRESH_TOKEN;
       delete env.MODAL_OAUTH_CLIENT_ID;
       delete env.MODAL_OAUTH_CLIENT_SECRET;
