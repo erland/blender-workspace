@@ -65,15 +65,17 @@ def main():
     revision=int(revision)
     if not 1<=revision<=99999999:raise ValueError('Invalid revision')
     op=validate_operation(json.loads(Path(operation_file).read_text('utf8')))
+    actions=op['operations'] if op['kind']=='batch' else [op]
     if source=='NEW':
-        if revision!=1 or op['kind']!='add_primitive':
+        if revision!=1 or actions[0]['kind']!='add_primitive':
             raise ValueError('New scene requires initial primitive')
         bpy.ops.object.select_all(action='SELECT')
         bpy.ops.object.delete(use_global=False)
     else:
         if revision<2:raise ValueError('Existing scene requires later revision')
         bpy.ops.wm.open_mainfile(filepath=source,load_ui=False)
-    apply_operation(op)
+    for action in actions:
+        apply_operation(action)
     out=ensure_output()
     blend=out/'scene.blend';glb=out/'scene.glb'
     save_scene(blend)

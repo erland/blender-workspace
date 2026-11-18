@@ -5,7 +5,7 @@ import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {SceneEditSchema} from '../jobs/scene-edit.js';
-import {SceneOperationSchema} from '../jobs/scene-operation.js';
+import {SceneOperationSchema,isValidInitialSceneOperation} from '../jobs/scene-operation.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import {inspectSavedScene} from '../scene/scene-contract.js';
 
@@ -112,7 +112,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     }catch{return failure(new JobConflict('Scene metadata could not be verified'));}
   });
   server.registerTool('workspace_queue_scene_operation',{
-    description:'Queue one bounded Blender operation independent of model type: add a named primitive, set object transforms, set mesh color or delete an object. Starting a new scene requires add_primitive. Follow-up operations use saved revisions. No user Python code.',
+    description:'Queue one or a batch (1–20) of bounded Blender operations independent of model type: add named primitives, change transforms or color, delete objects. A new scene must begin with add_primitive. Operations execute in order in one immutable revision. No user Python code.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       operation:SceneOperationSchema,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,operation,note:jobNote})=>{
@@ -125,7 +125,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       if(project.current_revision!==expectedRevision)
         return failure(new JobConflict('Stale project revision'));
       if(expectedRevision===0){
-        if(operation.kind!=='add_primitive')
+        if(!isValidInitialSceneOperation(operation))
           return failure(new JobConflict('Initial scene must add a primitive'));
       }else{
         const history=await projects.revisions(ownerKey,projectId);

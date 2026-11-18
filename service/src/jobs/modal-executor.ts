@@ -3,7 +3,7 @@ import path from 'node:path';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
-import {parseSceneOperation,type SceneOperation} from './scene-operation.js';
+import {parseSceneOperation,isValidInitialSceneOperation,type SceneOperation} from './scene-operation.js';
 import type {BlenderExecutor} from './orchestrator.js';
 import type {ModalCredentials,ModalAccountManager} from '../modal/modal-accounts.js';
 
@@ -51,7 +51,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
       throw new RangeError('Invalid generic operation revision');
     if(inputBlend&&!path.isAbsolute(inputBlend))throw new RangeError('Invalid source path');
     const safe=parseSceneOperation(operation);
-    if(revision===1&&safe.kind!=='add_primitive')
+    if(revision===1&&!isValidInitialSceneOperation(safe))
       throw new RangeError('Initial scene must add a primitive');
     const folder=await mkdtemp(path.join(os.tmpdir(),'bw-scene-'));
     try{

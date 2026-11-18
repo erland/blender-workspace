@@ -31,7 +31,8 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         op_path=Path(operation_file).resolve()
         if not op_path.is_file():raise ValueError('Operation file missing')
         operation=validate_operation(json.loads(op_path.read_text('utf8')))
-        if revision==1 and operation['kind']!='add_primitive':
+        first=(operation['operations'][0] if operation['kind']=='batch' else operation)
+        if revision==1 and first['kind']!='add_primitive':
             raise ValueError('Initial scene requires primitive')
     if edit_file is not None:
         from blender_workspace_poc.scene_edit_validation import validate_edit

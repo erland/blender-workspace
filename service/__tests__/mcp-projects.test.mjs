@@ -109,6 +109,14 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
     '{"schema_version":1,"scene":{"objects":[]}}');
   assert.equal((await call('tools/call',{name:'workspace_inspect_scene',
     arguments:{projectId:newScene.id,revision:1}})).isError,true);
+  const batch={kind:'batch',operations:[
+    {kind:'add_primitive',name:'Desk top',primitive:'cube',scale:[2,1,0.1]},
+    {kind:'add_primitive',name:'Leg 1',primitive:'cylinder',location:[-0.8,0,-1]}]};
+  assert.equal((await otherCall('tools/call',{name:'workspace_queue_scene_operation',
+    arguments:{projectId:id,expectedRevision:0,operation:batch}})).isError,true);
+  assert.equal((await call('tools/call',{name:'workspace_queue_scene_operation',
+    arguments:{projectId:id,expectedRevision:0,
+      operation:{kind:'batch',operations:[{kind:'set_color',name:'X',color:[1,0,0]}]}}})).isError,true);
   const operation={kind:'add_primitive',name:'Building Block',primitive:'cube'};
   assert.equal((await otherCall('tools/call',{name:'workspace_queue_scene_operation',
     arguments:{projectId:id,expectedRevision:0,operation}})).isError,true);

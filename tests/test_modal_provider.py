@@ -120,6 +120,30 @@ class ModalProviderTests(unittest.TestCase):
             self.assertEqual(calls[1].args,(str(source.resolve()),'/workspace/out/input.blend'))
             self.assertEqual(len(report['artifacts']),3)
 
+    def test_generic_batch_creation_is_validated_and_uses_single_sandbox(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            spec=Path(tmp)/'batch.json'
+            spec.write_text(json.dumps({'kind':'batch','operations':[
+                {'kind':'add_primitive','name':'Tabletop','primitive':'cube'},
+                {'kind':'add_primitive','name':'Leg 1','primitive':'cylinder'},
+                {'kind':'set_transform','name':'Leg 1','scale':[0.2,0.2,2]}]}))
+            result=run(sdk,Path(tmp)/'out',revision=1,operation_file=str(spec))
+            self.assertEqual(result['status'],'PASS')
+            sdk.Sandbox.create.assert_called_once()
+            sdk.Sandbox.create.return_value.exec.assert_called_once()
+            self.assertEqual(len(result['artifacts']),3)
+            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+    def test_batch_rejects_invalid_first_creation_before_modal(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            spec=Path(tmp)/'batch.json'
+            spec.write_text(json.dumps({'kind':'batch','operations':[
+                {'kind':'set_color','name':'Cube','color':[1,0,0]},
+                {'kind':'add_primitive','name':'Cube','primitive':'cube'}]}))
+            with self.assertRaisesRegex(ValueError,'Initial scene'):
+                run(sdk,Path(tmp)/'out',revision=1,operation_file=str(spec))
+            sdk.Sandbox.create.assert_not_called()
     def test_generic_invalid_script_rejected_before_modal(self):
         sdk=self.sdk()
         with TemporaryDirectory() as tmp:

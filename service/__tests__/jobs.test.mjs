@@ -274,3 +274,39 @@ test('generic operation schema rejects scripts and unsafe payloads',()=>{
     assert.throws(()=>parseSceneOperation(x));
   }
 });
+
+test('bounded scene batches persist atomically and publish a single immutable revision', 
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  const edits=parseSceneOperation({kind:'batch',operations:[
+    {kind:'add_primitive',name:'Tabletop',primitive:'cube',scale:[3,2,0.1]},
+    {kind:'add_primitive',name:'Leg A',primitive:'cylinder',location:[-1,-0.6,-1]},
+    {kind:'set_color',name:'Leg A',color:[0.4,0.3,0.2]}]});
+  let received;
+  const workflow=new JobOrchestrator(x.jobs,x.store,{
+    async createDemo(){throw Error('Legacy demo should not run')},
+    async runSceneOperation(dir,owner,revision,operation,input){
+      received={owner,revision,operation,input};
+      for(const filename of ['scene.blend','scene.glb','scene.json'])
+        await writeFile(path.join(dir,filename),filename);
+    }
+  });
+  const job=await x.jobs.reserve(x.owner,x.project.id,0,'Table components',undefined,edits);
+  assert.deepEqual((await x.jobs.get(x.owner,job.id)).operation_spec,edits);
+  assert.equal((await workflow.execute(x.owner,job.id)).status,'completed');
+  assert.deepEqual(received,{owner:x.owner,revision:1,operation:edits,input:undefined});
+  assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
+  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
+  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,1,'Forbidden',undefined,edits),JobConflict);
+});
+test('batches reject nested, oversized or unsafe operation payloads',()=>{
+  const add={kind:'add_primitive',name:'Cube',primitive:'cube'};
+  assert.equal(parseSceneOperation({kind:'batch',operations:[add]}).kind,'batch');
+  for(const value of [
+    {kind:'batch',operations:[]},
+    {kind:'batch',operations:Array.from({length:21},()=>add)},
+    {kind:'batch',operations:[{kind:'batch',operations:[add]}]},
+    {kind:'batch',operations:[{...add,python:'import os'}]},
+    {kind:'batch',operations:[{kind:'delete_object',name:'x',path:'/etc'}]}
+  ])assert.throws(()=>parseSceneOperation(value));
+});
