@@ -1,9 +1,10 @@
 """Strict standalone validation of data-only scene edits."""
 import math
+EDITABLE_PARTS=('Body','LeftLeg','RightLeg','LeftEye','RightEye','LeftPupil','RightPupil')
 def validate_edit(value):
     if not isinstance(value,dict) or set(value)-{'target','color','location','scale'}:
         raise ValueError('Invalid edit fields')
-    if value.get('target')!='Body' or not any(k in value for k in ('color','location','scale')):
+    if value.get('target') not in EDITABLE_PARTS or not any(k in value for k in ('color','location','scale')):
         raise ValueError('Unsupported target or empty edit')
     for key,low,high in (('color',0,1),('location',-10,10),('scale',0.1,4)):
         if key in value:

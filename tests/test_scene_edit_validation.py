@@ -3,6 +3,11 @@ from blender_workspace_poc.scene_edit_validation import validate_edit
 class SceneEditTests(unittest.TestCase):
     def test_valid(self):
         self.assertEqual(validate_edit({'target':'Body','color':[0.2,0.6,1],'location':[0,-2,4],'scale':[1,2,0.5]})['target'],'Body')
+    def test_all_generated_mesh_names_are_supported(self):
+        names=('Body','LeftLeg','RightLeg','LeftEye','RightEye','LeftPupil','RightPupil')
+        for name in names:
+            with self.subTest(name=name):
+                self.assertEqual(validate_edit({'target':name,'color':[0.1,0.6,0.2]})['target'],name)
     def test_invalid(self):
         tests=[{'target':'Other','color':[1,0,0]},{'target':'Body','script':'x'},
             {'target':'Body'},{'target':'Body','color':[1,0,1.1]},

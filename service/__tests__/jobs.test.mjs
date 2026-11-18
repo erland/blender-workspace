@@ -10,7 +10,7 @@ import {ProjectRepository} from '../dist/db/projects.js';
 import {JobRepository,JobConflict} from '../dist/jobs/job-repository.js';
 import {JobOrchestrator} from '../dist/jobs/orchestrator.js';
 import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
-import {parseSceneEdit} from '../dist/jobs/scene-edit.js';
+import {parseSceneEdit,EDITABLE_PARTS} from '../dist/jobs/scene-edit.js';
 
 async function fixture(t) {
   const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:8});
@@ -222,4 +222,16 @@ test('strict edit rejects code injection, unknown target and invalid numeric tra
   }
   assert.deepEqual(parseSceneEdit({target:'Body',color:[0,0.4,1]}),
     {target:'Body',color:[0,0.4,1]});
+});
+
+test('only the seven generated Blender mesh names are allowed as edit targets',()=>{
+  assert.deepEqual(EDITABLE_PARTS,
+    ['Body','LeftLeg','RightLeg','LeftEye','RightEye','LeftPupil','RightPupil']);
+  for(const target of EDITABLE_PARTS){
+    const edit=parseSceneEdit({target,color:[0.3,0.4,0.5]});
+    assert.equal(edit.target,target);
+  }
+  for(const target of ['MonsterRig','Camera','Light','LeftLeg.001','Body.__class__','']){
+    assert.throws(()=>parseSceneEdit({target,color:[1,0,0]}));
+  }
 });

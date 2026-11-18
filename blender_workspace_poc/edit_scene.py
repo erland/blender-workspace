@@ -9,9 +9,9 @@ from blender_workspace_poc.common import ensure_output,save_scene,export_glb,wri
 from blender_workspace_poc.scene_edit_validation import validate_edit
 
 def apply_edit(edit):
-    obj=bpy.data.objects.get('Body')
+    obj=bpy.data.objects.get(edit['target'])
     if obj is None or obj.type!='MESH':
-        raise RuntimeError('Expected Body mesh missing')
+        raise RuntimeError('Expected editable mesh missing')
     if 'color' in edit:
         mat=obj.active_material
         if mat is None:raise RuntimeError('Body material missing')

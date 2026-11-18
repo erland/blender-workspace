@@ -44,8 +44,13 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   const names=toolList.tools.map(x=>x.name);
   for (const name of ['workspace_create_project','workspace_list_projects','workspace_get_project',
     'workspace_rename_project','workspace_list_revisions','workspace_queue_demo',
-    'workspace_queue_recolor_blue','workspace_queue_scene_edit','workspace_get_job'])
+    'workspace_queue_recolor_blue','workspace_queue_scene_edit',
+    'workspace_list_editable_parts','workspace_get_job'])
     assert.ok(names.includes(name),name);
+  const catalog=output(await call('tools/call',{name:'workspace_list_editable_parts',arguments:{}}));
+  assert.deepEqual(catalog.parts.map(x=>x.name),
+    ['Body','LeftLeg','RightLeg','LeftEye','RightEye','LeftPupil','RightPupil']);
+  for(const entry of catalog.parts)assert.deepEqual(entry.properties,['color','location','scale']);
   const created=output(await call('tools/call',{name:'workspace_create_project',arguments:{name:'Cube monster'}}));
   const id=created.project.id;
   t.after(async()=>{

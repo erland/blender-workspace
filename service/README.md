@@ -11,3 +11,7 @@ Implemented steps:
 The initial demo scene retains its armature and animation. **Only the predefined blue recolor is currently implemented**, not arbitrary 3D editing through ChatGPT.
 
 From `service/`: `npm install && npm run check`. Run `npm run db:migrate` before starting HTTP or worker processes. Build worker with `job-worker/Dockerfile` (repository-root build context). No live Google or personal Modal operation was executed in DEV-011 CI.
+
+## DEV-013 – Editable monster parts
+
+The strict structured edit contract now permits the generated meshes `Body`, `LeftLeg`, `RightLeg`, `LeftEye`, `RightEye`, `LeftPupil`, and `RightPupil`. The read-only `workspace_list_editable_parts` MCP tool lists these names and supported properties. The Blender worker still takes validated data-only JSON, never executable user scripts. Each request edits one target and creates an immutable revision; it cannot edit rig/animation, add meshes, or perform general-purpose modeling. Live Modal/Google acceptance remains deferred.

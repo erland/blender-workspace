@@ -4,8 +4,10 @@ const vector=z.tuple([z.number().finite().min(-10).max(10),
   z.number().finite().min(-10).max(10),z.number().finite().min(-10).max(10)]);
 const color=z.tuple([z.number().finite().min(0).max(1),
   z.number().finite().min(0).max(1),z.number().finite().min(0).max(1)]);
+/** Names are intentionally fixed to meshes present in create_monster.py. */
+export const EDITABLE_PARTS=["Body","LeftLeg","RightLeg","LeftEye","RightEye","LeftPupil","RightPupil"] as const;
 export const SceneEditSchema=z.object({
-  target:z.literal('Body'),
+  target:z.enum(["Body","LeftLeg","RightLeg","LeftEye","RightEye","LeftPupil","RightPupil"]),
   color:color.optional(),
   location:vector.optional(),
   scale:z.tuple([z.number().finite().min(0.1).max(4),

@@ -4,7 +4,7 @@ import type { ProjectRepository } from '../db/projects.js';
 import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
-import {SceneEditSchema} from '../jobs/scene-edit.js';
+import {SceneEditSchema,EDITABLE_PARTS} from '../jobs/scene-edit.js';
 
 export interface ProjectServices {
   ownerKey: string;
@@ -120,8 +120,17 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       return result({job:safeJob(job),message:'Queued Blender revision 2 for automatic dispatch'});
     }catch(e){return failure(e);}
   });
+  server.registerTool('workspace_list_editable_parts',{
+    description:'List the predefined Blender monster mesh parts that support safe structured color, location and scale edits. Does not inspect arbitrary uploaded files.',
+    inputSchema:{},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+  },async()=>{
+    const blocked=denied(READ_SCOPE);if(blocked)return blocked;
+    return result({parts:EDITABLE_PARTS.map(name=>({name,
+      properties:['color','location','scale']})),
+      coordinates:'absolute local object transforms; RGB normalized 0..1'});
+  });
   server.registerTool('workspace_queue_scene_edit',{
-    description:'Queue a safe structured edit to the Body of an existing Blender scene. Supply absolute RGB color (0–1), location (-10..10) and/or scale (0.1..4); only the Body target is supported. Does not run arbitrary scripts.',
+    description:'Queue a safe structured edit to one named mesh of the generated cube monster (Body, Legs, Eyes or Pupils). Supply RGB color (0–1), absolute local location (-10..10) and/or scale (0.1..4). Does not run arbitrary scripts.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(1).max(99999998),
       edit:SceneEditSchema,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,edit,note:jobNote})=>{

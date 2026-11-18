@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-012
-in_progress: DEV-012
+selected_step: DEV-013
+in_progress: DEV-013
 completed_steps:
   - DEV-001
   - DEV-002
@@ -18,36 +18,25 @@ verification:
     reason: Real Google/ChatGPT login acceptance intentionally postponed
   dev009:
     status: DEFERRED
-    reason: Live personal Modal credentials and billing isolation postponed
+    reason: Live per-user Modal execution and billing isolation postponed
   dev010:
     status: DEFERRED
-    code_ci:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44237803666
-    live_dispatch:
-      status: DEFERRED
+    reason: External dispatcher verification deferred; code CI passed
   dev011:
     status: DEFERRED
-    code_ci:
-      status: PASS
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44239330831
-    live_revision:
-      status: DEFERRED
+    reason: External revision verification deferred; code CI passed
   dev012:
-    status: PENDING
+    status: DEFERRED
     code_ci:
       status: PASS
       workflow_run: https://github.com/erland/blender-workspace/actions/runs/44241325634
-      source_sha: e490dbfc87483229cca8cd8363033b13df45155d
-      result: Python schema and mocked Modal tests, PostgreSQL/MCP tests, both Docker builds passed
-    regressions:
-      status: PASS
-      result: All 13 GitHub Actions workflows passed
     live_acceptance:
       status: DEFERRED
-      reason: Real Google login, personal Modal execution and structured Blender scene edit not yet tested end-to-end
+  dev013:
+    status: PENDING
+    reason: Await editable-part allowlist, read-only MCP catalog, Python/PostgreSQL/Modal mock and Docker CI
 next:
-  recommended: DEV-013
-  reason: Merge PR #16, then select next modeling capability while retaining deferred external integration tests
+  recommended: REPAIR-DEV-013
+  reason: Complete code verification before merge; keep real OAuth and Modal acceptance deferred
 blockers:
-  - Real Google/ChatGPT and owner-specific Modal acceptance deferred
+  - Live Google/ChatGPT and owner-specific Modal acceptance deferred
