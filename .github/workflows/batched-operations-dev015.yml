@@ -93,6 +93,11 @@ jobs:
             -v "$PWD/batch-parent.json:/workspace/spec.json:ro" \
             --entrypoint blender bw-blender:dev015 -b --factory-startup \
             --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 3
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts:/workspace/artifacts:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/tests/blender_verify_dev023.py -- \
+            /workspace/artifacts/second/scene.blend /workspace/artifacts/third/scene.blend
           python3 - <<'PY'
           import json,math
           from pathlib import Path
