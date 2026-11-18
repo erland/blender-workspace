@@ -112,7 +112,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     }catch{return failure(new JobConflict('Scene metadata could not be verified'));}
   });
   server.registerTool('workspace_queue_scene_operation',{
-    description:'Queue one or a batch (1–20) of bounded Blender operations independent of model type: add named primitives, change transforms or color, duplicate meshes, delete objects. A new scene must begin with add_primitive. Operations execute in order in one immutable revision. No user Python code.',
+    description:'Queue one or a batch (1–20) of bounded Blender operations independent of model type: add named primitives, change transforms or color, duplicate meshes, rename or delete objects. A new scene must begin with add_primitive. Operations execute in order in one immutable revision. No user Python code.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       operation:SceneOperationSchema,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,operation,note:jobNote})=>{
