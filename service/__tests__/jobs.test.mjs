@@ -465,3 +465,30 @@ test('DEV-027 PBR material operation validates bounds and excludes executable fi
     (({roughness,...rest})=>rest)(valid)
   ])assert.throws(()=>parseSceneOperation(bad));
 });
+
+test('DEV-028 GLB import accepts bounded embedded bytes and rejects unsafe references',()=>{
+  const makeGlb=(gltf)=>{
+    const text=Buffer.from(JSON.stringify(gltf));
+    const json=Buffer.concat([text,Buffer.alloc((4-text.length%4)%4,32)]);
+    const buf=Buffer.alloc(20+json.length);
+    buf.write('glTF',0,'ascii');buf.writeUInt32LE(2,4);
+    buf.writeUInt32LE(buf.length,8);buf.writeUInt32LE(json.length,12);
+    buf.write('JSON',16,'ascii');json.copy(buf,20);
+    return buf.toString('base64');
+  };
+  const data={asset:{version:'2.0'},meshes:[{primitives:[]}],nodes:[{mesh:0}],
+    scenes:[{nodes:[0]}],accessors:[],buffers:[]};
+  const valid={kind:'import_glb',name:'Reusable asset',glbBase64:makeGlb(data)};
+  assert.deepEqual(parseSceneOperation(valid),valid);
+  assert.equal(parseSceneOperation({kind:'batch',operations:[valid]}).operations.length,1);
+  for(const invalid of [
+    {...valid,glbBase64:'https://example.org/file.glb'},
+    {...valid,glbBase64:'A'.repeat(160004)},
+    {...valid,glbBase64:Buffer.from('GLB?').toString('base64')},
+    {...valid,glbBase64:makeGlb({...data,buffers:[{uri:'https://untrusted.example/a.bin',byteLength:8}]})},
+    {...valid,glbBase64:makeGlb({...data,accessors:[{count:9999999}]})},
+    {...valid,name:'../bad'},
+    {...valid,script:'unsafe'},
+    (({glbBase64,...rest})=>rest)(valid)
+  ])assert.throws(()=>parseSceneOperation(invalid));
+});

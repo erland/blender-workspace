@@ -1,3 +1,4 @@
+import {inspectEmbeddedGlb,MAX_GLB_BASE64} from './glb-import.js';
 import {z} from 'zod';
 const xyz=z.tuple([z.number().finite().min(-100).max(100),z.number().finite().min(-100).max(100),z.number().finite().min(-100).max(100)]);
 const scale=z.tuple([z.number().finite().min(0.01).max(100),z.number().finite().min(0.01).max(100),z.number().finite().min(0.01).max(100)]);
@@ -30,6 +31,12 @@ const oneTarget=(x:{name?:string;objectId?:string})=>Boolean(x.name)!==Boolean(x
 export const SingleSceneOperationSchema=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('add_primitive'),name,primitive:z.enum(['cube','sphere','cylinder','cone','torus']),
    location:xyz.optional(),scale:scale.optional(),color:rgb.optional()}).strict(),
+ z.object({kind:z.literal('import_glb'),name,
+   glbBase64:z.string().min(28).max(MAX_GLB_BASE64)}).strict()
+   .superRefine((op,ctx)=>{
+     try{inspectEmbeddedGlb(op.glbBase64);}
+     catch{ctx.addIssue({code:'custom',message:'Invalid or unsupported embedded GLB',path:['glbBase64']});}
+   }),
  z.object({kind:z.literal('add_mesh'),name,vertices:verticesSchema,
    faces:facesSchema,location:xyz.optional(),scale:scale.optional(),
    rotation:xyz.optional(),color:rgb.optional()}).strict().superRefine((mesh,ctx)=>{
@@ -88,7 +95,7 @@ export const SceneOperationSchema=z.union([SingleSceneOperationSchema,
 ]);
 export type SceneOperation=z.infer<typeof SceneOperationSchema>;
 export function isValidInitialSceneOperation(op:SceneOperation):boolean{
- return op.kind==='add_primitive'||op.kind==='add_mesh'||(op.kind==='batch'&&
-   (op.operations[0]?.kind==='add_primitive'||op.operations[0]?.kind==='add_mesh'));
+ return op.kind==='add_primitive'||op.kind==='add_mesh'||op.kind==='import_glb'||(op.kind==='batch'&&
+   (op.operations[0]?.kind==='add_primitive'||op.operations[0]?.kind==='add_mesh'||op.operations[0]?.kind==='import_glb'));
 }
 export function parseSceneOperation(value:unknown):SceneOperation{return SceneOperationSchema.parse(value);}
