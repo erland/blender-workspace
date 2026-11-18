@@ -40,9 +40,19 @@ verification:
       status: DEFERRED
   dev015:
     status: PENDING
-    reason: Await batch schema, PostgreSQL/MCP, mocked Modal and real headless Blender tests
+    code_ci:
+      status: PASS
+      source_sha: 4d28dfde68f4f7f910f04fe9916df4e57f58cf9e
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44252887932
+      result: 25 Python tests, 42 Node/PostgreSQL/MCP tests, real headless Blender batched creation/edit of two immutable revisions, Docker builds PASS
+    regressions:
+      status: PASS
+      result: All 16 GitHub Actions workflows passed
+    live_acceptance:
+      status: DEFERRED
+      reason: No real Google/ChatGPT login or personal Modal billing/execution performed
 next:
-  recommended: REPAIR-DEV-015
-  reason: Complete CI before merge and preserve deferred external acceptance
+  recommended: DEV-016
+  reason: Merge PR #19 then extend generic geometric capabilities without requiring one Modal job per object; keep external acceptance deferred
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
