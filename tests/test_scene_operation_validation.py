@@ -99,3 +99,27 @@ class SceneOperationValidationTests(unittest.TestCase):
         ]:
             with self.subTest(invalid=invalid),self.assertRaises(ValueError):
                 validate_operation(invalid)
+
+    def test_dev024_custom_mesh_bounds(self):
+        cube={'kind':'add_mesh','name':'Custom triangular part',
+              'vertices':[[0,0,0],[2,0,0],[0,2,0],[0,0,1]],
+              'faces':[[0,1,2],[0,2,3]],'color':[0.4,0.7,0.9]}
+        self.assertEqual(validate_operation(cube),cube)
+        for invalid in [
+            {**cube,'vertices':[[0,0,0],[2,0,0]]},
+            {**cube,'vertices':[[0,0,0],[1,0,0],[float('inf'),1,0]]},
+            {**cube,'vertices':[[0,0,0],[1,0,0],[101,1,0]]},
+            {**cube,'faces':[]},
+            {**cube,'faces':[[0,1]]},
+            {**cube,'faces':[[0,1,1]]},
+            {**cube,'faces':[[0,1,5]]},
+            {**cube,'faces':[[0,1,-1]]},
+            {**cube,'faces':[[0,1,True]]},
+            {**cube,'faces':[[0,1,2,3,0]]},
+            {**cube,'faces':[[0,1,2]]*2049},
+            {**cube,'python':'print(1)'},
+            {**cube,'color':[3,0,0]},
+        ]:
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                validate_operation(invalid)
+        self.assertEqual(validate_operation({'kind':'batch','operations':[cube]})['kind'],'batch')
