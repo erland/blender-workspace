@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-022
-in_progress: DEV-022
+selected_step: DEV-023
+in_progress: DEV-023
 completed_steps:
   - DEV-001
   - DEV-002
@@ -112,15 +112,25 @@ verification:
       status: DEFERRED
       reason: Real browser/iPad rendering and Google/ChatGPT identity flow postponed
   dev022:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: Stable Blender object identity, GLB node extras and legacy backfill require PR CI
+      status: PASS
+      source_sha: 5e1b03505b4a06b9cbe8c49c2694a785d7e3dc35
+      result: All 15 pull-request workflow checks passed, including real GLB node ID metadata
+      workflow_run: https://github.com/erland/blender-workspace/pull/27/checks
     live_acceptance:
       status: DEFERRED
       reason: Live ChatGPT/Google/Modal and iPad object selection are not yet verified
+  dev023:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: UUID-targeted operations and hierarchy behavior need full PR CI verification
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT, browser and personal Modal acceptance still deferred
 next:
-  recommended: VERIFY_DEV-022
-  reason: Verify real Blender GLB ID export, check full CI, then plan safe parent hierarchy and ID-addressed operations
+  recommended: VERIFY_DEV-023
+  reason: Verify three-revision real Blender hierarchy tests and all CI before merging; next is general custom mesh geometry
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred

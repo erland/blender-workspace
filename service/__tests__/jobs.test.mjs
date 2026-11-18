@@ -341,3 +341,31 @@ test('rename_object supports single operations and batches, rejecting invalid na
     {kind:'rename_object',name:'Leg'}
   ])assert.throws(()=>parseSceneOperation(bad));
 });
+
+test('DEV-023 ID-addressed operations and safe parenting validate strictly',()=>{
+  const id='11111111-1111-4111-8111-111111111111';
+  const parent='22222222-2222-4222-8222-222222222222';
+  const valid=[
+    {kind:'set_transform',objectId:id,location:[1,2,3]},
+    {kind:'set_color',objectId:id,color:[0.1,0.3,0.5]},
+    {kind:'rename_object',objectId:id,newName:'Renamed piece'},
+    {kind:'delete_object',objectId:id},
+    {kind:'duplicate_object',sourceId:id,name:'Duplicated piece'},
+    {kind:'set_parent',objectId:id,parentId:parent},
+    {kind:'set_parent',name:'Child',parentId:null}
+  ];
+  for(const op of valid)assert.deepEqual(parseSceneOperation(op),op);
+  assert.equal(parseSceneOperation({kind:'batch',operations:valid}).operations.length,valid.length);
+  for(const bad of [
+    {kind:'set_color',objectId:id,name:'Conflicting name',color:[1,0,0]},
+    {kind:'set_transform',location:[1,0,0]},
+    {kind:'set_parent',name:'Child'},
+    {kind:'set_parent',objectId:id,parentId:id},
+    {kind:'set_parent',objectId:id,parentId:'not-uuid'},
+    {kind:'set_parent',objectId:id,parentId:parent,python:'print(1)'},
+    {kind:'rename_object',objectId:id,name:'Old',newName:'New'},
+    {kind:'duplicate_object',sourceId:id,source:'Old',name:'Clone'},
+    {kind:'duplicate_object',sourceId:'bogus',name:'Clone'},
+    {kind:'delete_object',objectId:'../path'}
+  ]) assert.throws(()=>parseSceneOperation(bad),JSON.stringify(bad));
+});

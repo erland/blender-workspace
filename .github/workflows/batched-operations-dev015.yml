@@ -71,6 +71,49 @@ jobs:
             -v "$PWD/batch-edit.json:/workspace/spec.json:ro" \
             --entrypoint blender bw-blender:dev015 -b --factory-startup \
             --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 2
+          # Derive object IDs from the saved scene; do not fabricate or address by name.
+          mkdir -p batch-artifacts/third
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          scene=json.loads(Path('batch-artifacts/second/scene.json').read_text())
+          ids={obj['name']:obj['objectId'] for obj in scene['scene']['objects']}
+          operations={'kind':'batch','operations':[
+              {'kind':'set_parent','objectId':ids['Copied Leg'],'parentId':ids['Desk Top']},
+              {'kind':'rename_object','objectId':ids['Copied Leg'],'newName':'Parented Leg'},
+              {'kind':'set_color','objectId':ids['Desk Leg'],'color':[0.2,0.8,0.3]},
+              {'kind':'set_parent','objectId':ids['Desk Leg'],'parentId':None}
+          ]}
+          # The last operation deliberately unparents an existing, unparented object.
+          Path('batch-parent.json').write_text(json.dumps(operations))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/third:/workspace/out" \
+            -v "$PWD/batch-artifacts/second:/workspace/previous:ro" \
+            -v "$PWD/batch-parent.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 3
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts:/workspace/artifacts:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/tests/blender_verify_dev023.py -- \
+            /workspace/artifacts/second/scene.blend /workspace/artifacts/third/scene.blend
+          python3 - <<'PY'
+          import json,math
+          from pathlib import Path
+          older=json.loads(Path('batch-artifacts/second/scene.json').read_text())['scene']['objects']
+          newer=json.loads(Path('batch-artifacts/third/scene.json').read_text())['scene']['objects']
+          before={o['name']:o for o in older}
+          after={o['name']:o for o in newer}
+          assert 'Copied Leg' not in after
+          child=after['Parented Leg']
+          assert child['objectId']==before['Copied Leg']['objectId']
+          assert child['parent']=='Desk Top'
+          assert child['localTransform']['location'] != before['Copied Leg']['localTransform']['location']
+          assert after['Desk Top']['objectId']==before['Desk Top']['objectId']
+          assert after['Desk Leg']['objectId']==before['Desk Leg']['objectId']
+          assert (Path('batch-artifacts/third/scene.glb')).stat().st_size>0
+          PY
           python3 - <<'PY'
           import json
           from pathlib import Path

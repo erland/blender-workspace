@@ -8,14 +8,38 @@ from pathlib import Path
 import bpy
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.scene_operation_validation import validate_operation
-from blender_workspace_poc.object_identity import assign_new_object_id
+from blender_workspace_poc.object_identity import assign_new_object_id,ensure_object_ids,PROPERTY
 from blender_workspace_poc.common import ensure_output,save_scene,export_glb,write_manifest
 
+def find_by_id(object_id):
+    matches=[obj for obj in bpy.data.objects if obj.get(PROPERTY)==object_id]
+    if len(matches)!=1:
+        raise ValueError('Object ID not found or ambiguous')
+    return matches[0]
+
+def resolve_target(operation,selector='objectId',name_key='name'):
+    if selector in operation:
+        return find_by_id(operation[selector])
+    obj=bpy.data.objects.get(operation[name_key])
+    if obj is None:raise ValueError('Object not found')
+    return obj
+
+def set_parent_preserving_world(obj,parent):
+    if parent is obj:
+        raise ValueError('Cannot parent object to itself')
+    cursor=parent
+    while cursor is not None:
+        if cursor is obj:raise ValueError('Object hierarchy cycle forbidden')
+        cursor=cursor.parent
+    original=obj.matrix_world.copy()
+    obj.parent=parent
+    obj.matrix_world=original
+
 def apply_operation(operation):
-    kind=operation['kind'];name=operation['name']
-    existing=bpy.data.objects.get(name)
+    kind=operation['kind'];name=operation.get('name')
+    existing=bpy.data.objects.get(name) if name is not None else None
     if kind=='duplicate_object':
-        source=bpy.data.objects.get(operation['source'])
+        source=resolve_target(operation,'sourceId','source')
         if source is None or source.type!='MESH':
             raise ValueError('Source mesh object not found')
         if existing is not None:raise ValueError('Object name already exists')
@@ -52,8 +76,12 @@ def apply_operation(operation):
             obj.data.materials.append(mat)
         else:return
     else:
-        if existing is None:raise ValueError('Object not found')
-        obj=existing
+        obj=resolve_target(operation)
+        name=obj.name
+        if kind=='set_parent':
+            parent=find_by_id(operation['parentId']) if operation['parentId'] is not None else None
+            set_parent_preserving_world(obj,parent)
+            return
         if kind=='rename_object':
             if bpy.data.objects.get(operation['newName']) is not None:
                 raise ValueError('Object name already exists')
@@ -98,8 +126,12 @@ def main():
     else:
         if revision<2:raise ValueError('Existing scene requires later revision')
         bpy.ops.wm.open_mainfile(filepath=source,load_ui=False)
+    # Legacy scenes get IDs before ID-addressed operations; batch-created
+    # objects receive IDs before subsequent steps in the same batch.
+    ensure_object_ids(bpy.data.objects)
     for action in actions:
         apply_operation(action)
+        ensure_object_ids(bpy.data.objects)
     out=ensure_output()
     blend=out/'scene.blend';glb=out/'scene.glb'
     save_scene(blend)
