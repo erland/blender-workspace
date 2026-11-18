@@ -492,3 +492,31 @@ test('DEV-028 GLB import accepts bounded embedded bytes and rejects unsafe refer
     (({glbBase64,...rest})=>rest)(valid)
   ])assert.throws(()=>parseSceneOperation(invalid));
 });
+
+test('DEV-029 Python jobs preserve owner authorization and atomic scene revisions',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+    const x=await fixture(t);
+    const spec={kind:'python_script',code:'import bpy\\nbpy.ops.mesh.primitive_cube_add()'};
+    const calls=[];
+    const executor={
+      async createDemo(){throw Error('Demo execution must not be selected')},
+      async runPythonScript(dir,owner,revision,code,source){
+        calls.push({owner,revision,code,source});
+        for(const filename of ['scene.blend','scene.glb','scene.json'])
+          await writeFile(path.join(dir,filename),'mock-'+revision+'-'+filename);
+      }
+    };
+    const workflow=new JobOrchestrator(x.jobs,x.store,executor);
+    await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,0,'unauthorized',undefined,spec),JobConflict);
+    const initial=await x.jobs.reserve(x.owner,x.project.id,0,'python initial',undefined,spec);
+    assert.deepEqual((await x.jobs.get(x.owner,initial.id)).operation_spec,spec);
+    assert.equal((await workflow.execute(x.owner,initial.id)).status,'completed');
+    assert.equal(calls[0].source,undefined);
+    assert.equal(calls[0].owner,x.owner);
+    const next=await x.jobs.reserve(x.owner,x.project.id,1,'python edit',undefined,spec);
+    assert.equal((await workflow.execute(x.owner,next.id)).status,'completed');
+    assert.equal(calls[1].revision,2);
+    assert.ok(calls[1].source.endsWith('/scene.blend'));
+    assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2]);
+    assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,2);
+  });
