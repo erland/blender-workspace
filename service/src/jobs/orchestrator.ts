@@ -7,8 +7,9 @@ import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-s
 export interface BlenderExecutor {
   /** Produce trusted outputs for the current demo. DEV-006 only creates revision 1. */
   createDemo(outDir:string,owner:string):Promise<void>;
+  reviseDemo?(outDir:string,owner:string,inputBlend:string):Promise<void>;
 }
-const FILES=['monster_v1.blend','monster_v1.glb','monster_v1.json'] as const;
+const artifactFiles=(revision:number)=>['blend','glb','json'].map(ext=>`monster_v${revision}.${ext}`);
 export class JobOrchestrator {
   constructor(private readonly jobs:JobRepository,
               private readonly files:LocalArtifactStore,
@@ -25,16 +26,26 @@ export class JobOrchestrator {
   async executeClaimed(job:Job):Promise<Job> {
     if(job.status!=='running')throw new Error('Only running jobs can execute');
     const owner=job.owner_key,jobId=job.id;
-    // Existing project modifications are not supported by the DEV-002 Modal runner yet.
-    if(job.expected_revision!==0) {
-      await this.jobs.markFailed(owner,jobId,'Only initial demo generation is supported');
-      throw new Error('Only initial demo generation is supported');
+    // Currently supported transformations: initial creation and a controlled
+    // blue recolor of the previous .blend scene. No arbitrary Blender scripts.
+    if(job.expected_revision>1) {
+      await this.jobs.markFailed(owner,jobId,'Only revisions 1 and 2 are supported');
+      throw new Error('Only revisions 1 and 2 are supported');
     }
     const temp=await mkdtemp(path.join(os.tmpdir(),'bw-job-'));
     let published=false;
     try {
-      await this.executor.createDemo(temp,job.owner_key);
-      const artifacts:IncomingArtifact[]=FILES.map(name=>({name,sourcePath:path.join(temp,name)}));
+      if(job.expected_revision===0){
+        await this.executor.createDemo(temp,job.owner_key);
+      }else{
+        if(!this.executor.reviseDemo)throw new Error('Revision executor is not configured');
+        // Validate manifest bytes and hashes before copying the input to Modal.
+        // Ownership is guaranteed by the claimed, owner-scoped database job.
+        const input=await this.files.verifiedArtifactPath(job.project_id,1,'monster_v1.blend');
+        await this.executor.reviseDemo(temp,job.owner_key,input);
+      }
+      const artifacts:IncomingArtifact[]=artifactFiles(job.requested_revision)
+        .map(name=>({name,sourcePath:path.join(temp,name)}));
       await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
         expectedPreviousRevision:job.expected_revision,artifacts});
       published=true;

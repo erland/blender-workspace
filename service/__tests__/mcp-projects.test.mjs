@@ -43,7 +43,8 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   const toolList=await call('tools/list');
   const names=toolList.tools.map(x=>x.name);
   for (const name of ['workspace_create_project','workspace_list_projects','workspace_get_project',
-    'workspace_rename_project','workspace_list_revisions','workspace_queue_demo','workspace_get_job'])
+    'workspace_rename_project','workspace_list_revisions','workspace_queue_demo',
+    'workspace_queue_recolor_blue','workspace_get_job'])
     assert.ok(names.includes(name),name);
   const created=output(await call('tools/call',{name:'workspace_create_project',arguments:{name:'Cube monster'}}));
   const id=created.project.id;
@@ -61,6 +62,8 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   assert.equal((await otherCall('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}})).isError,true);
   const renamed=output(await call('tools/call',{name:'workspace_rename_project',arguments:{projectId:id,name:'New name'}}));
   assert.equal(renamed.project.name,'New name');
+  assert.equal((await call('tools/call',{name:'workspace_queue_recolor_blue',
+    arguments:{projectId:id}})).isError,true);
   const queued=output(await call('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}}));
   assert.equal(queued.job.status,'pending');
   assert.match(queued.message,/automatic worker dispatch/);

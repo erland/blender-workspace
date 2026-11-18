@@ -101,6 +101,24 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       return result({job:safeJob(job),message:'Queued for automatic worker dispatch'});
     } catch(e) {return failure(e);}
   });
+  server.registerTool('workspace_queue_recolor_blue', {
+    description:'Create revision 2 from your saved revision 1 Blender scene by recoloring the cube-monster body blue. Only this predefined, safe edit is supported.',
+    inputSchema:{projectId:uuid,note:note.optional()},...schemes(WRITE_SCOPE)
+  },async({projectId,note:jobNote})=>{
+    const block=denied(WRITE_SCOPE);if(block)return block;
+    try{
+      if(modalAccounts && !(await modalAccounts.status(ownerKey)).connected)
+        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
+      const project=await projects.get(ownerKey,projectId);
+      if(!project)return failure(new JobConflict('Project not found'));
+      if(project.current_revision!==1)return failure(new JobConflict('Revision 1 is required'));
+      const versions=await projects.revisions(ownerKey,projectId);
+      if(!versions.some(v=>v.revision===1 && v.artifact_prefix))
+        return failure(new JobConflict('Verified source revision is required'));
+      const job=await jobs.reserve(ownerKey,projectId,1,jobNote??'Recolor monster blue');
+      return result({job:safeJob(job),message:'Queued Blender revision 2 for automatic dispatch'});
+    }catch(e){return failure(e);}
+  });
   if(modalAccounts){
     server.registerTool('workspace_modal_status',{
       description:'Read whether your own Modal account is connected; never returns credentials.',

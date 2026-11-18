@@ -23,13 +23,23 @@ export class ModalPythonExecutor implements BlenderExecutor {
     if (!path.isAbsolute(repoRoot))throw new RangeError('Worker root must be absolute');
   }
   async createDemo(outDir:string,owner:string):Promise<void> {
+    return this.runRevision(outDir,owner,1);
+  }
+  async reviseDemo(outDir:string,owner:string,inputBlend:string):Promise<void> {
+    if(!path.isAbsolute(inputBlend))throw new RangeError('Revision input must be absolute');
+    return this.runRevision(outDir,owner,2,inputBlend);
+  }
+  private async runRevision(outDir:string,owner:string,revision:number,inputBlend?:string):Promise<void> {
     if(!owner?.trim())throw new Error('Missing job owner');
     if(!this.accounts&&!this.legacy)throw new Error('Personal Modal account service unavailable');
     const token=this.accounts?await this.accounts.requireConnected(owner):undefined;
     const env=token?modalJobEnv(token):process.env;
     const script=path.join(this.repoRoot,'modal_provider','runner.py');
     await new Promise<void>((resolve,reject)=>{
-      const proc=spawn('python3',[script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib','8192'],
+      const args=[script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib','8192',
+        '--revision',String(revision)];
+      if(inputBlend)args.push('--input-blend',inputBlend);
+      const proc=spawn('python3',args,
         {cwd:this.repoRoot,stdio:['ignore','pipe','pipe'],env});
       let ended=false;
       const timer=setTimeout(()=>proc.kill('SIGKILL'),this.timeoutMs);
