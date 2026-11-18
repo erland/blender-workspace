@@ -15,6 +15,7 @@ export interface ProjectServices {
   jobs: JobRepository;
   modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
   artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'>;
+  viewerOrigin?:string;
 }
 const uuid = z.string().uuid();
 const cleanName = z.string().trim().min(1).max(200);
@@ -39,7 +40,18 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
-  const {ownerKey,projects,jobs,modalAccounts,artifacts}=deps;
+  const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin}=deps;
+  const viewerLink=(projectId:string,revision:number)=>
+    viewerOrigin+'/viewer/'+encodeURIComponent(projectId)+'/revisions/'+revision;
+  async function ownedViewerRevision(projectId:string,revision:number):Promise<boolean>{
+    if(!viewerOrigin||!artifacts)return false;
+    const project=await projects.get(ownerKey,projectId);
+    if(!project)return false;
+    const revisions=await projects.revisions(ownerKey,projectId);
+    if(!revisions.some(v=>v.revision===revision&&v.artifact_prefix))return false;
+    try{await artifacts.verifiedArtifactPath(projectId,revision,'scene.glb');return true;}
+    catch{return false;}
+  }
   const allowed=permissions??new Set([READ_SCOPE,WRITE_SCOPE]);
   const denied=(scope:string)=>allowed.has(scope)?null:{
     isError:true,
@@ -111,6 +123,21 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       return result({projectId,revision,scene});
     }catch{return failure(new JobConflict('Scene metadata could not be verified'));}
   });
+  if(viewerOrigin){
+    server.registerTool('workspace_get_viewer_link',{
+      description:'Get a browser link to an already saved GLB scene revision you own. The link does not contain access tokens. Opening it requires your own Google browser login; no Blender/Modal job is started.',
+      inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999)},
+      annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+    },async({projectId,revision})=>{
+      const block=denied(READ_SCOPE);if(block)return block;
+      try{
+        if(!await ownedViewerRevision(projectId,revision))
+          return failure(new JobConflict('Saved GLB revision not found'));
+        return result({projectId,revision,viewerUrl:viewerLink(projectId,revision),
+          requiresGoogleLogin:true,modalExecution:false});
+      }catch{return failure(new JobConflict('Saved GLB revision not found'));}
+    });
+  }
   server.registerTool('workspace_queue_scene_operation',{
     description:'Queue one or a batch (1–20) of bounded Blender operations independent of model type: add named primitives, change transforms or color, duplicate meshes, rename or delete objects. A new scene must begin with add_primitive. Operations execute in order in one immutable revision. No user Python code.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
@@ -224,7 +251,12 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
   }, async ({jobId}) => {
     const block=denied(READ_SCOPE);if(block)return block;
     try {const j=await jobs.get(ownerKey,jobId);
-      return j?result({job:safeJob(j)}):failure(new JobConflict('Job not found'));
+      if(!j)return failure(new JobConflict('Job not found'));
+      const job=safeJob(j);
+      if(j.status==='completed'&&await ownedViewerRevision(j.project_id,j.requested_revision))
+        return result({job,viewerUrl:viewerLink(j.project_id,j.requested_revision),
+          requiresGoogleLogin:true});
+      return result({job});
     } catch(e){return failure(e);}
   });
 }
