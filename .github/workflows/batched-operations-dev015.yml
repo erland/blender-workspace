@@ -312,3 +312,56 @@ jobs:
             --entrypoint blender bw-blender:dev015 -b --factory-startup \
             --python /workspace/tests/blender_verify_dev027.py -- \
             /workspace/artifacts/pbr-source /workspace/artifacts/pbr-edited
+
+          # DEV-028: re-import a saved, self-contained GLB as a new project scene.
+          mkdir -p batch-artifacts/imported batch-artifacts/import-edited
+          python3 - <<'PY'
+          import json,base64
+          from pathlib import Path
+          source=Path('batch-artifacts/custom/scene.glb').read_bytes()
+          assert len(source)<=120000, 'GLB import test fixture exceeds bounded payload size'
+          operation={'kind':'import_glb','name':'Asset',
+                     'glbBase64':base64.b64encode(source).decode('ascii')}
+          Path('glb-import.json').write_text(json.dumps(operation))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/imported:/workspace/out" \
+            -v "$PWD/glb-import.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- NEW /workspace/spec.json 1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          source=json.loads(Path('batch-artifacts/custom/scene.json').read_text())
+          imported=json.loads(Path('batch-artifacts/imported/scene.json').read_text())
+          old={o['objectId'] for o in source['scene']['objects']}
+          objs=[o for o in imported['scene']['objects'] if o['type']=='MESH']
+          assert objs and all(o['name'].startswith('Asset_') for o in objs)
+          assert all(o['objectId'] not in old for o in objs)
+          op={'kind':'set_transform','objectId':objs[0]['objectId'],'location':[2,1,0]}
+          Path('glb-import-edit.json').write_text(json.dumps(op))
+          PY
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/batch-artifacts/import-edited:/workspace/out" \
+            -v "$PWD/batch-artifacts/imported:/workspace/previous:ro" \
+            -v "$PWD/glb-import-edit.json:/workspace/spec.json:ro" \
+            --entrypoint blender bw-blender:dev015 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- /workspace/previous/scene.blend /workspace/spec.json 2
+          python3 - <<'PY'
+          import json,struct
+          from pathlib import Path
+          source=json.loads(Path('batch-artifacts/imported/scene.json').read_text())
+          edited=json.loads(Path('batch-artifacts/import-edited/scene.json').read_text())
+          first={o['objectId']:o for o in source['scene']['objects'] if o['type']=='MESH'}
+          second={o['objectId']:o for o in edited['scene']['objects'] if o['type']=='MESH'}
+          assert first.keys()==second.keys()
+          assert any(o['localTransform']['location']==[2.0,1.0,0.0] for o in second.values())
+          assert Path('batch-artifacts/import-edited/scene.blend').stat().st_size>0
+          raw=Path('batch-artifacts/import-edited/scene.glb').read_bytes()
+          assert raw[:4]==b'glTF'
+          size,kind=struct.unpack_from('<I4s',raw,12)
+          assert kind==b'JSON'
+          gltf=json.loads(raw[20:20+size])
+          ids={n.get('extras',{}).get('bw_object_id') for n in gltf['nodes']}
+          assert set(first).issubset(ids)
+          PY
