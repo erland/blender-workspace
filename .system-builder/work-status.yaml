@@ -26,10 +26,20 @@ verification:
       reason: Live personal Modal execution and billing isolation postponed
   dev010:
     status: PENDING
-    reason: Await PostgreSQL-backed multi-worker atomic claim, recovery quarantine, job/credential isolation, regression tests and Docker build
+    code_ci:
+      status: PASS
+      source_sha: 5a0221d2140c317bbe8239adb0f775a63efe0d9a
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44237803666
+      result: 32/32 PostgreSQL and MCP tests passed; concurrent worker claims, isolation, failures, crash quarantine and Docker image verified
+    regression_ci:
+      status: PASS
+      result: All 10 PR workflows passed, including DEV-006, DEV-008 and DEV-009
+    live_dispatch:
+      status: DEFERRED
+      reason: No production Coolify dispatcher or per-user billable Modal sandbox run performed
 next:
-  recommended: REPAIR-DEV-010
-  reason: Fix any CI issues before approving the code portion; do not assert live Modal/Google acceptance
+  recommended: DEV-011
+  reason: Merge PR #14 and continue with Blender scene revision support; retain deferred DEV-008/009/010 live acceptance gates
 blockers:
   - Live OAuth/Google acceptance deferred
   - Live per-user Modal cost/account verification deferred
