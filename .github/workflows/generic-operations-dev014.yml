@@ -54,20 +54,20 @@ jobs:
       - name: Verify real generic Blender create and edit
         run: |
           mkdir -p generic-evidence/r1 generic-evidence/r2
-          printf '%s\\n' '{"kind":"add_primitive","name":"Modern Column","primitive":"cylinder","location":[1,2,0],"color":[0.3,0.5,0.8]}' > generic-op-create.json
-          printf '%s\\n' '{"kind":"set_transform","name":"Modern Column","location":[3,2,1],"scale":[1,1,2]}' > generic-op-edit.json
-          docker run --rm --user "$(id -u):$(id -g)" \\
-            -v "$PWD/generic-evidence/r1:/workspace/out" \\
-            -v "$PWD/generic-op-create.json:/workspace/generic-operation.json:ro" \\
-            --entrypoint blender bw-blender:dev014 -b --factory-startup \\
-            --python /workspace/blender_workspace_poc/apply_operation.py -- \\
+          printf '%s\n' '{"kind":"add_primitive","name":"Modern Column","primitive":"cylinder","location":[1,2,0],"color":[0.3,0.5,0.8]}' > generic-op-create.json
+          printf '%s\n' '{"kind":"set_transform","name":"Modern Column","location":[3,2,1],"scale":[1,1,2]}' > generic-op-edit.json
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/generic-evidence/r1:/workspace/out" \
+            -v "$PWD/generic-op-create.json:/workspace/generic-operation.json:ro" \
+            --entrypoint blender bw-blender:dev014 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- \
             NEW /workspace/generic-operation.json 1
-          docker run --rm --user "$(id -u):$(id -g)" \\
-            -v "$PWD/generic-evidence/r2:/workspace/out" \\
-            -v "$PWD/generic-evidence/r1:/workspace/previous:ro" \\
-            -v "$PWD/generic-op-edit.json:/workspace/generic-operation.json:ro" \\
-            --entrypoint blender bw-blender:dev014 -b --factory-startup \\
-            --python /workspace/blender_workspace_poc/apply_operation.py -- \\
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/generic-evidence/r2:/workspace/out" \
+            -v "$PWD/generic-evidence/r1:/workspace/previous:ro" \
+            -v "$PWD/generic-op-edit.json:/workspace/generic-operation.json:ro" \
+            --entrypoint blender bw-blender:dev014 -b --factory-startup \
+            --python /workspace/blender_workspace_poc/apply_operation.py -- \
             /workspace/previous/scene.blend /workspace/generic-operation.json 2
           python3 - <<'PY'
           import json
