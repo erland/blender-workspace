@@ -19,6 +19,12 @@ export class JobOrchestrator {
   }
   async execute(owner:string,jobId:string):Promise<Job> {
     const job=await this.jobs.claim(owner,jobId);
+    return this.executeClaimed(job);
+  }
+  /** A claimed row is supplied by JobRepository.claimNext (or claim). */
+  async executeClaimed(job:Job):Promise<Job> {
+    if(job.status!=='running')throw new Error('Only running jobs can execute');
+    const owner=job.owner_key,jobId=job.id;
     // Existing project modifications are not supported by the DEV-002 Modal runner yet.
     if(job.expected_revision!==0) {
       await this.jobs.markFailed(owner,jobId,'Only initial demo generation is supported');

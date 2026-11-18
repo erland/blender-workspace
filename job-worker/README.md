@@ -1,18 +1,17 @@
-# One-shot Blender Modal worker
+# Blender Workspace job worker
 
-The worker executes short-lived sandbox jobs with isolated artifacts. DEV-009 adds per-user Modal credentials.
+Build a separate Docker image using `job-worker/Dockerfile`, context repository root.
 
-Set `DATABASE_URL`, `ARTIFACT_ROOT`, `MODAL_WORKER_ROOT` and `MODAL_CREDENTIAL_ENCRYPTION_KEY` (same encryption key securely provided to service and worker).
+## DEV-010 – automatic dispatcher
 
-Use a trusted operator to associate an account with the authenticated owner key. Pass credentials over protected stdin, not command-line parameters:
+Run with command `dispatch` as a **dedicated continuously running Coolify service**, with access to PostgreSQL and the persistent project artifact volume. It polls for pending jobs and atomically claims them across worker replicas using PostgreSQL row locks. Each job runs with its verified owner's encrypted Modal credentials (DEV-009), not a shared Modal account.
 
-```sh
-# The stdin payload is a JSON object with tokenId and tokenSecret.
-# Do not save tokens in shell history or log files.
-cat /secure/credentials.json | docker run -i --rm --network trusted \
-  --env-file /secure/worker.env \
-  -v /persistent/artifacts:/data/blender-workspace \
-  blender-workspace-worker:dev009 modal-connect 'oauth:authenticated-owner-hash'
-```
+Full environment/deployment/recovery steps: [DEV-010 dispatcher](../service/docs/dev-010-dispatcher.md).
 
-`modal-status OWNER`, `modal-test OWNER`, `modal-disconnect OWNER` and `run OWNER JOB_ID` are supported; only trusted operators should invoke them. A connected Modal account is required before running a job. A Google-authenticated self-service settings page is available at `/settings/login` when the MCP service has the encryption key and Google mode configured. Real Google and Modal verification remain deferred. The `MODAL_EXECUTION_MODE=legacy` option is strictly for the existing single-owner DEV-006 integration test; never use it in public deployments.
+## Trusted operator commands (not user-accessible)
+
+`run OWNER JOB_ID`, `recover OWNER JOB_ID`, `modal-status OWNER`, `modal-test OWNER`, `modal-disconnect OWNER`, and `modal-connect OWNER` (JSON credentials via protected stdin) remain available for protected administrative use only.
+
+Never expose the CLI on a public HTTP endpoint. Do not set `MODAL_EXECUTION_MODE=legacy` in the dispatcher service. A manual, explicitly isolated DEV-006 Modal live test still uses legacy mode to preserve its original regression fixture.
+
+Google-authenticated browser settings for Modal account provisioning are served by the MCP application at `/settings/login`; never send Modal tokens as MCP tool arguments.

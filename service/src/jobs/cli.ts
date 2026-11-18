@@ -21,11 +21,21 @@ if(!accounts&&!legacy)throw new Error('Personal Modal credentials required; lega
 const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),
   new ModalPythonExecutor(worker,18*60_000,accounts,legacy));
 const [command,owner,argument]=process.argv.slice(2);
-if(!owner || (!argument&&!['modal-status','modal-test','modal-disconnect','modal-connect'].includes(command)))
-  throw new Error('Usage: create/run/recover OWNER ARG | modal-connect/status/test/disconnect OWNER');
+if(command!=='dispatch' &&
+  (!owner || (!argument&&!['modal-status','modal-test','modal-disconnect','modal-connect'].includes(command))))
+  throw new Error('Usage: dispatch | create/run/recover OWNER ARG | modal-connect/status/test/disconnect OWNER');
 
 try {
-  if(command==='create'){
+  if(command==='dispatch'){
+    if(!accounts || legacy)throw new Error('Dispatcher requires personal Modal accounts; legacy mode forbidden');
+    const pollMs=Number(process.env.MODAL_DISPATCH_POLL_MS??'2000');
+    const graceMinutes=Number(process.env.MODAL_STALE_JOB_MINUTES??'30');
+    const dispatcher=new JobDispatcher(jobs,workflow,{pollMs,graceMinutes});
+    const controller=new AbortController();
+    process.once('SIGTERM',()=>controller.abort());
+    process.once('SIGINT',()=>controller.abort());
+    await dispatcher.run(controller.signal);
+  } else if(command==='create'){
     const project=await projects.create(owner,argument);
     const job=await workflow.createDemo(owner,project.id);
     console.log(JSON.stringify({projectId:project.id,jobId:job.id,status:job.status}));

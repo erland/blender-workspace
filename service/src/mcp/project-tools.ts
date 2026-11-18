@@ -90,7 +90,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     catch(e){return failure(e);}
   });
   server.registerTool('workspace_queue_demo', {
-    description: 'Queue the first cube-monster demonstration revision. This does not start Modal immediately; an internal worker must execute the pending job.',
+    description: 'Queue the first cube-monster demonstration revision for automatic execution by the separate dispatcher. Requires a connected Modal account.',
     inputSchema: {projectId:uuid,note:note.optional()},...schemes(WRITE_SCOPE)
   }, async ({projectId,note:jobNote}) => {
     const block=denied(WRITE_SCOPE);if(block)return block;
@@ -98,7 +98,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       if(modalAccounts && !(await modalAccounts.status(ownerKey)).connected)
         return failure(new JobConflict('Connect your Modal account before queueing jobs'));
       const job=await jobs.reserve(ownerKey,projectId,0,jobNote??'Create cube monster');
-      return result({job:safeJob(job),message:'Queued; awaiting worker execution'});
+      return result({job:safeJob(job),message:'Queued for automatic worker dispatch'});
     } catch(e) {return failure(e);}
   });
   if(modalAccounts){

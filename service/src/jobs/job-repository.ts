@@ -35,6 +35,33 @@ export class JobRepository {
       throw e;
     } finally { client.release(); }
   }
+  /** Multiple dispatchers can claim distinct jobs without duplicate execution. */
+  async claimNext():Promise<Job|null> {
+    const r=await this.pool.query<Job>(`WITH next AS (
+      SELECT j.id FROM bw_jobs j
+      JOIN bw_projects p ON p.id=j.project_id
+      JOIN bw_modal_accounts a ON a.owner_key=j.owner_key AND a.status='connected'
+      WHERE j.status='pending' AND p.owner_key=j.owner_key
+        AND p.deleted_at IS NULL
+      ORDER BY j.created_at,j.id
+      FOR UPDATE OF j SKIP LOCKED LIMIT 1
+    )
+    UPDATE bw_jobs j SET status='running',updated_at=now()
+    FROM next WHERE j.id=next.id AND j.status='pending'
+    RETURNING j.*`);
+    return r.rows[0]??null;
+  }
+  /** Quarantine stale running jobs; never re-run a potentially billed Modal job automatically. */
+  async quarantineStaleRunning(minAgeMinutes=30):Promise<number>{
+    if(!Number.isInteger(minAgeMinutes)||minAgeMinutes<20||minAgeMinutes>10080)
+      throw new RangeError('Invalid stale-job interval');
+    const r=await this.pool.query(`UPDATE bw_jobs
+      SET status='needs_recovery',error_message='Worker stopped unexpectedly; inspect artifacts before recovery',
+        updated_at=now()
+      WHERE status='running' AND updated_at < now()-($1::integer * interval '1 minute')
+      RETURNING id`,[minAgeMinutes]);
+    return r.rowCount??0;
+  }
   async get(owner:string,id:string):Promise<Job|null> {
     if (!owner.trim() || owner.length>200) throw new RangeError('Invalid owner');
     const r=await this.pool.query<Job>(

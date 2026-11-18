@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-009
-in_progress: DEV-009
+selected_step: DEV-010
+in_progress: DEV-010
 completed_steps:
   - DEV-001
   - DEV-002
@@ -15,23 +15,21 @@ completed_steps:
 verification:
   dev008:
     status: DEFERRED
-    reason: Code merged and CI green; real Google OAuth/ChatGPT acceptance explicitly deferred
+    reason: Live Google OAuth/ChatGPT login acceptance intentionally postponed
   dev009:
-    status: PENDING
+    status: DEFERRED
     code_ci:
       status: PASS
-      source_sha: 3b7dad3fa2061803e2fb84e771592719a74d5592
-      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44235945997
-      result: 28 automated tests PASS, both Docker images built; Google settings, AES-256-GCM, PostgreSQL, owner routing and transient Modal failures verified with simulated providers
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44236176622
     live_modal:
       status: DEFERRED
-      reason: No real personal Modal account verification, user-specific execution or billing test performed
-    live_google:
-      status: DEFERRED
-      reason: No external ChatGPT/Google callback against Coolify performed
+      reason: Live personal Modal execution and billing isolation postponed
+  dev010:
+    status: PENDING
+    reason: Await PostgreSQL-backed multi-worker atomic claim, recovery quarantine, job/credential isolation, regression tests and Docker build
 next:
-  recommended: DEV-010
-  reason: Proceed with opt-in job dispatcher using owner-scoped Modal credentials; retain outstanding live security acceptance gates
+  recommended: REPAIR-DEV-010
+  reason: Fix any CI issues before approving the code portion; do not assert live Modal/Google acceptance
 blockers:
-  - DEV-008 external Google OAuth/ChatGPT verification intentionally deferred
-  - DEV-009 live per-owner Modal integration and billing verification deferred
+  - Live OAuth/Google acceptance deferred
+  - Live per-user Modal cost/account verification deferred

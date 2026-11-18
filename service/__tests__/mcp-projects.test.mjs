@@ -63,7 +63,7 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   assert.equal(renamed.project.name,'New name');
   const queued=output(await call('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}}));
   assert.equal(queued.job.status,'pending');
-  assert.match(queued.message,/awaiting worker/);
+  assert.match(queued.message,/automatic worker dispatch/);
   assert.equal((await call('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}})).isError,true);
   assert.equal(output(await call('tools/call',{name:'workspace_get_job',arguments:{jobId:queued.job.id}})).job.status,'pending');
   assert.equal((await otherCall('tools/call',{name:'workspace_get_job',arguments:{jobId:queued.job.id}})).isError,true);
