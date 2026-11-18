@@ -4,7 +4,7 @@ WORKDIR /app/service
 COPY service/package.json service/tsconfig.json ./
 RUN npm install --no-audit --no-fund
 COPY service/src ./src
-RUN npm run build && npm prune --omit=dev
+RUN npm run build:server && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
