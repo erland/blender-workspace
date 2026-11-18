@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-016
-in_progress: DEV-016
+selected_step: DEV-017
+in_progress: DEV-017
 completed_steps:
   - DEV-001
   - DEV-002
@@ -52,15 +52,25 @@ verification:
       status: DEFERRED
       reason: No real Google/ChatGPT login or personal Modal billing/execution performed
   dev016:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: New duplicate-object contract and real headless Blender regression await PR CI
+      status: PASS
+      source_sha: 74f1e1b8885ec625e5be0de66f27a448a895b4a2
+      result: All 15 pull request GitHub Actions workflows succeeded, including real headless Blender duplication test
+      workflow_run: https://github.com/erland/blender-workspace/actions/runs/44258778209
     live_acceptance:
       status: DEFERRED
       reason: Real Google/ChatGPT and user-billed Modal execution postponed
+  dev017:
+    status: PENDING
+    code_ci:
+      status: PENDING
+      reason: Rename operation implementation and tests awaiting pull-request CI
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT login and user-billed Modal execution postponed
 next:
-  recommended: VERIFY_DEV-016
-  reason: Verify PR CI, repair any failures, and record confirmed source revision before completion
+  recommended: VERIFY_DEV-017
+  reason: Run and inspect all required CI, repair failures, then record verified revision
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred

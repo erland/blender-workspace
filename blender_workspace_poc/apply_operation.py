@@ -52,6 +52,11 @@ def apply_operation(operation):
     else:
         if existing is None:raise ValueError('Object not found')
         obj=existing
+        if kind=='rename_object':
+            if bpy.data.objects.get(operation['newName']) is not None:
+                raise ValueError('Object name already exists')
+            obj.name=operation['newName']
+            return
         if kind=='delete_object':
             bpy.data.objects.remove(obj,do_unlink=True)
             return

@@ -47,6 +47,19 @@ class SceneOperationValidationTests(unittest.TestCase):
             with self.subTest(invalid=invalid),self.assertRaises(ValueError):
                 validate_operation(invalid)
 
+    def test_rename_object_contract(self):
+        operation={'kind':'rename_object','name':'Desk leg','newName':'Table leg'}
+        self.assertEqual(validate_operation(operation),operation)
+        for invalid in [
+            {'kind':'rename_object','name':'Desk leg','newName':'Desk leg'},
+            {'kind':'rename_object','name':'Desk leg','newName':'../escape'},
+            {'kind':'rename_object','name':'Desk leg'},
+            {'kind':'rename_object','name':'Desk leg','newName':'Valid','script':'danger'},
+            {'kind':'rename_object','name':'Desk leg','newName':42},
+        ]:
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                validate_operation(invalid)
+
     def test_rejects_untrusted_instructions(self):
         bad=[
             {'kind':'run_python','name':'x','code':'print(1)'},
