@@ -32,7 +32,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         if not python_source.is_file():
             raise ValueError('Python source file missing')
         raw=python_source.read_bytes()
-        if not 1<=len(raw)<=16384 or b'\\x00' in raw or not raw.strip():
+        if not 1<=len(raw)<=16384 or b'\x00' in raw or not raw.strip():
             raise ValueError('Invalid Python source length or content')
     if operation_file is not None:
         from blender_workspace_poc.scene_operation_validation import validate_operation
