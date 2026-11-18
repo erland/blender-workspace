@@ -1,0 +1,55 @@
+name: DEV-012 Structured scene edits
+on:
+  pull_request:
+    paths:
+      - 'service/**'
+      - 'modal_provider/**'
+      - 'blender_workspace_poc/**'
+      - 'tests/**'
+      - '.github/workflows/scene-edits-dev012.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'service/**'
+      - 'modal_provider/**'
+      - 'blender_workspace_poc/**'
+      - 'tests/**'
+      - '.github/workflows/scene-edits-dev012.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  structured-scene-edit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: blender_test
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: blender_workspace_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://blender_test:ci-only-password@127.0.0.1:5432/blender_workspace_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test mocked Modal and Blender edit schema
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Test PostgreSQL and MCP edit contracts
+        working-directory: service
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Build service and worker images
+        run: |
+          docker build -f service/Dockerfile -t bw-service:dev012 service
+          docker build -f job-worker/Dockerfile -t bw-worker:dev012 .

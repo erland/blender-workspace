@@ -4,6 +4,7 @@ import type { ProjectRepository } from '../db/projects.js';
 import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
+import {SceneEditSchema} from '../jobs/scene-edit.js';
 
 export interface ProjectServices {
   ownerKey: string;
@@ -118,6 +119,27 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       const job=await jobs.reserve(ownerKey,projectId,1,jobNote??'Recolor monster blue');
       return result({job:safeJob(job),message:'Queued Blender revision 2 for automatic dispatch'});
     }catch(e){return failure(e);}
+  });
+  server.registerTool('workspace_queue_scene_edit',{
+    description:'Queue a safe structured edit to the Body of an existing Blender scene. Supply absolute RGB color (0–1), location (-10..10) and/or scale (0.1..4); only the Body target is supported. Does not run arbitrary scripts.',
+    inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(1).max(99999998),
+      edit:SceneEditSchema,note:note.optional()},...schemes(WRITE_SCOPE)
+  },async({projectId,expectedRevision,edit,note:jobNote})=>{
+    const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
+    try{
+      if(modalAccounts && !(await modalAccounts.status(ownerKey)).connected)
+        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
+      const project=await projects.get(ownerKey,projectId);
+      if(!project)return failure(new JobConflict('Project not found'));
+      if(project.current_revision!==expectedRevision)
+        return failure(new JobConflict('Stale project revision'));
+      const versions=await projects.revisions(ownerKey,projectId);
+      if(!versions.some(v=>v.revision===expectedRevision&&v.artifact_prefix))
+        return failure(new JobConflict('Saved predecessor revision is required'));
+      const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
+        jobNote??'Structured Body scene edit',edit);
+      return result({job:safeJob(job),edit,message:'Queued structured scene edit'});
+    }catch(error){return failure(error);}
   });
   if(modalAccounts){
     server.registerTool('workspace_modal_status',{
