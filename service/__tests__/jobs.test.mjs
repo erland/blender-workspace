@@ -310,3 +310,19 @@ test('batches reject nested, oversized or unsafe operation payloads',()=>{
     {kind:'batch',operations:[{kind:'delete_object',name:'x',path:'/etc'}]}
   ])assert.throws(()=>parseSceneOperation(value));
 });
+
+test('duplicate operation accepts bounded batches and rejects unsafe references',()=>{
+  const op={kind:'duplicate_object',source:'Leg',name:'Leg 2',
+    location:[2,0,0],scale:[1,1,1]};
+  assert.deepEqual(parseSceneOperation(op),op);
+  assert.equal(parseSceneOperation({kind:'batch',operations:[
+    {kind:'add_primitive',name:'Leg',primitive:'cylinder'},op]}).kind,'batch');
+  for(const bad of [
+    {...op,name:'Leg'},
+    {...op,source:'../Leg'},
+    {...op,script:'import os'},
+    {...op,scale:[0,1,1]},
+    {...op,location:[Infinity,0,0]},
+    {kind:'duplicate_object',name:'New'}
+  ])assert.throws(()=>parseSceneOperation(bad));
+});

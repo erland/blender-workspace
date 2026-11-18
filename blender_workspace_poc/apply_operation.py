@@ -13,6 +13,23 @@ from blender_workspace_poc.common import ensure_output,save_scene,export_glb,wri
 def apply_operation(operation):
     kind=operation['kind'];name=operation['name']
     existing=bpy.data.objects.get(name)
+    if kind=='duplicate_object':
+        source=bpy.data.objects.get(operation['source'])
+        if source is None or source.type!='MESH':
+            raise ValueError('Source mesh object not found')
+        if existing is not None:raise ValueError('Object name already exists')
+        obj=source.copy()
+        obj.data=source.data.copy()
+        obj.name=name
+        # Copies remain independently editable, including object transforms
+        # and material slots. A fresh name never overwrites an existing object.
+        bpy.context.scene.collection.objects.link(obj)
+        obj.parent=None
+        obj.matrix_parent_inverse.identity()
+        if 'location' in operation:obj.location=tuple(operation['location'])
+        if 'scale' in operation:obj.scale=tuple(operation['scale'])
+        if 'rotation' in operation:obj.rotation_euler=tuple(operation['rotation'])
+        return
     if kind=='add_primitive':
         if existing is not None:raise ValueError('Object name already exists')
         primitives={

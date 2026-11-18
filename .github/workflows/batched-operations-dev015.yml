@@ -59,7 +59,7 @@ jobs:
         run: |
           mkdir -p batch-artifacts/first batch-artifacts/second
           echo '{"kind":"batch","operations":[{"kind":"add_primitive","name":"Desk Top","primitive":"cube","scale":[3,1,0.2]},{"kind":"add_primitive","name":"Desk Leg","primitive":"cylinder","location":[-1,0,-1]},{"kind":"set_color","name":"Desk Leg","color":[0.2,0.5,0.8]}]}' > batch-create.json
-          echo '{"kind":"batch","operations":[{"kind":"set_transform","name":"Desk Top","location":[0,0,2]},{"kind":"add_primitive","name":"Desk Lamp","primitive":"sphere","location":[0,0,3]}]}' > batch-edit.json
+          echo '{"kind":"batch","operations":[{"kind":"set_transform","name":"Desk Top","location":[0,0,2]},{"kind":"duplicate_object","source":"Desk Leg","name":"Desk Leg Copy","location":[1,0,-1],"scale":[0.5,0.5,1]},{"kind":"set_color","name":"Desk Leg Copy","color":[0.9,0.1,0.2]},{"kind":"add_primitive","name":"Desk Lamp","primitive":"sphere","location":[0,0,3]}]}' > batch-edit.json
           docker run --rm --user "$(id -u):$(id -g)" \
             -v "$PWD/batch-artifacts/first:/workspace/out" \
             -v "$PWD/batch-create.json:/workspace/spec.json:ro" \
@@ -79,7 +79,12 @@ jobs:
           names1={x['name'] for x in one['scene']['objects']}
           names2={x['name'] for x in two['scene']['objects']}
           assert {'Desk Top','Desk Leg'} <= names1
-          assert {'Desk Top','Desk Leg','Desk Lamp'} <= names2
+          assert {'Desk Top','Desk Leg','Desk Leg Copy','Desk Lamp'} <= names2
+          assert 'Desk Leg Copy' not in names1
+          copy=next(x for x in two['scene']['objects'] if x['name']=='Desk Leg Copy')
+          assert copy['localTransform']['location']==[1.0,0.0,-1.0]
+          assert copy['localTransform']['scale']==[0.5,0.5,1.0]
+          assert next(x for x in two['scene']['objects'] if x['name']=='Desk Leg')['localTransform']['scale']==[1.0,1.0,1.0]
           top=next(x for x in two['scene']['objects'] if x['name']=='Desk Top')
           assert top['localTransform']['location']==[0.0,0.0,2.0]
           for name in ['first','second']:

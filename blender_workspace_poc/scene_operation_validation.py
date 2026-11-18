@@ -1,7 +1,7 @@
 """Strict, standalone validation of bounded data-only Blender operations."""
 import math
 import re
-KINDS=('add_primitive','set_transform','set_color','delete_object')
+KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object')
 PRIMITIVES=('cube','sphere','cylinder','cone','torus')
 def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
@@ -24,11 +24,17 @@ def validate_operation(value):
     allowed={'add_primitive':{'kind','name','primitive','location','scale','color'},
              'set_transform':{'kind','name','location','scale','rotation'},
              'set_color':{'kind','name','color'},
-             'delete_object':{'kind','name'}}[kind]
+             'delete_object':{'kind','name'},
+             'duplicate_object':{'kind','name','source','location','scale','rotation'}}[kind]
     if set(value)-allowed:raise ValueError('Unrecognized operation field')
     name=value.get('name')
     if not isinstance(name,str) or not 1<=len(name.strip())<=100 or re.search(r'[\x00-\x1f/\\]',name):
         raise ValueError('Invalid object name')
+    if kind=='duplicate_object':
+        source=value.get('source')
+        if not isinstance(source,str) or not 1<=len(source.strip())<=100 or re.search(r'[\x00-\x1f/\\]',source):
+            raise ValueError('Invalid source object name')
+        if source==name:raise ValueError('Duplicate target must have a different name')
     if kind=='add_primitive' and value.get('primitive') not in PRIMITIVES:
         raise ValueError('Invalid primitive')
     if kind=='set_transform' and not any(k in value for k in ('location','scale','rotation')):
