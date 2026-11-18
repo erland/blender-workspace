@@ -1,0 +1,42 @@
+name: Modal Function vs Sandbox benchmark harness (offline validation)
+
+on:
+  pull_request:
+    paths:
+      - "experiments/**"
+      - "tests/blender_modal_benchmark.py"
+      - ".github/workflows/modal-runtime-comparison-check.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python syntax
+        run: python3 -m py_compile experiments/modal_function_vs_sandbox.py tests/blender_modal_benchmark.py
+      - name: Validate dry run without Modal token or cloud compute
+        run: |
+          python3 -m pip install 'modal>=1.6,<2'
+          python3 experiments/modal_function_vs_sandbox.py --iterations 1
+      - name: Build identical Blender benchmark image locally
+        run: docker build -f Dockerfile -t blender-modal-benchmark:ci .
+      - name: Execute fixed workload with headless Blender (no Modal)
+        run: |
+          docker run --rm --entrypoint blender blender-modal-benchmark:ci \
+            -b --factory-startup --python /workspace/tests/blender_modal_benchmark.py \
+            | tee blender-benchmark.log
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          markers=[line.split('BW_MODAL_BENCH_RESULT ',1)[1]
+                   for line in Path('blender-benchmark.log').read_text().splitlines()
+                   if 'BW_MODAL_BENCH_RESULT ' in line]
+          assert len(markers)==1
+          result=json.loads(markers[0])
+          assert result['mesh_objects']==43
+          assert result['vertices']>300 and result['polygons']>300
+          assert result['glb_bytes']>1000
+          assert result['blender_seconds']>0
+          PY
