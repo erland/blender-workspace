@@ -20,6 +20,10 @@ operation or a batch of 1–20 ordered operations. Supported operations:
 The first operation in a new scene must add a primitive. A batch produces
 one immutable revision (`scene.blend`, `scene.glb`, `scene.json`).
 Existing scenes can be inspected through `workspace_inspect_scene`.
+A Google-authenticated user can view saved GLB revisions in the browser;
+`workspace_get_viewer_link` returns an owner-checked link from MCP, and
+`workspace_get_job` includes the link for completed GLB jobs.
+See [DEV-020 viewer links](service/docs/dev-020-mcp-viewer-links.md).
 The earlier cube-monster example remains a regression/demo case, **not**
 a restriction on what scenes the service can represent.
 
