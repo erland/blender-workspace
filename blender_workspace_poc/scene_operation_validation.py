@@ -2,7 +2,7 @@
 import math
 import re
 from blender_workspace_poc.object_identity import valid_object_id
-KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh')
+KINDS=('add_primitive','set_transform','set_color','delete_object','duplicate_object','rename_object','set_parent','add_mesh','bevel_mesh','subdivide_mesh','boolean_mesh')
 PRIMITIVES=('cube','sphere','cylinder','cone','torus')
 def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
@@ -32,6 +32,9 @@ def validate_operation(value):
              'delete_object':{'kind','name','objectId'},
              'rename_object':{'kind','name','objectId','newName'},
              'set_parent':{'kind','name','objectId','parentId'},
+             'bevel_mesh':{'kind','name','objectId','width','segments'},
+             'subdivide_mesh':{'kind','name','objectId','levels'},
+             'boolean_mesh':{'kind','name','objectId','operandId','operation'},
              'duplicate_object':{'kind','name','source','sourceId','location','scale','rotation'}}[kind]
     if set(value)-allowed:raise ValueError('Unrecognized operation field')
     name=value.get('name')
@@ -66,6 +69,24 @@ def validate_operation(value):
             raise ValueError('Invalid parent object ID')
         if object_id is not None and object_id==parent_id:
             raise ValueError('Self parenting forbidden')
+    if kind=='bevel_mesh':
+        width=value.get('width')
+        segments=value.get('segments')
+        if type(width) not in (int,float) or not math.isfinite(width) or not 0.001<=width<=2:
+            raise ValueError('Bevel width must be finite and between 0.001 and 2')
+        if type(segments) is not int or not 1<=segments<=3:
+            raise ValueError('Bevel segments must be 1 to 3')
+    if kind=='subdivide_mesh':
+        levels=value.get('levels')
+        if type(levels) is not int or not 1<=levels<=2:
+            raise ValueError('Subdivision levels must be 1 or 2')
+    if kind=='boolean_mesh':
+        operand_id=value.get('operandId')
+        if not valid_object_id(operand_id):raise ValueError('Invalid Boolean operand ID')
+        if value.get('operation') not in ('union','difference','intersection'):
+            raise ValueError('Invalid Boolean operation')
+        if object_id is not None and object_id==operand_id:
+            raise ValueError('Boolean target must differ from operand')
     if kind=='add_mesh':
         vertices=value.get('vertices')
         faces=value.get('faces')
