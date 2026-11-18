@@ -1,0 +1,120 @@
+name: Modal Function vs Sandbox benchmark
+
+on:
+  pull_request:
+    paths:
+      - "experiments/**"
+      - "tests/blender_modal_benchmark.py"
+      - ".github/workflows/modal-runtime-comparison-check.yml"
+  workflow_dispatch:
+    inputs:
+      run_modal:
+        description: 'Start billable Modal Function and Sandbox jobs?'
+        type: boolean
+        required: true
+        default: false
+      iterations:
+        description: 'Measured runs per mode (plus one warm-up each)'
+        type: choice
+        required: true
+        default: '3'
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modal-benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python syntax
+        run: python3 -m py_compile experiments/modal_function_vs_sandbox.py tests/blender_modal_benchmark.py
+      - name: Validate dry run without Modal token or cloud compute
+        run: |
+          python3 -m pip install 'modal>=1.6,<2'
+          python3 experiments/modal_function_vs_sandbox.py --iterations 1
+      - name: Build identical Blender benchmark image locally
+        run: docker build -f Dockerfile -t blender-modal-benchmark:ci .
+      - name: Execute fixed workload with headless Blender (no Modal)
+        run: |
+          docker run --rm --entrypoint blender blender-modal-benchmark:ci \
+            -b --factory-startup --python /workspace/tests/blender_modal_benchmark.py \
+            | tee blender-benchmark.log
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          markers=[line.split('BW_MODAL_BENCH_RESULT ',1)[1]
+                   for line in Path('blender-benchmark.log').read_text().splitlines()
+                   if 'BW_MODAL_BENCH_RESULT ' in line]
+          assert len(markers)==1
+          result=json.loads(markers[0])
+          assert result['mesh_objects']==43
+          assert result['vertices']>300 and result['polygons']>300
+          assert result['glb_bytes']>1000
+          assert result['blender_seconds']>0
+          PY
+
+  run-modal-benchmark:
+    # Never run paid Modal work for pull requests or unconfirmed dispatches.
+    if: github.event_name == 'workflow_dispatch' && inputs.run_modal == true
+    needs: validate-benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    # Optional protection: configure an approval gate for this environment.
+    environment: modal-benchmark
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Modal credentials are configured
+        run: |
+          if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
+            echo "::error::Configure MODAL_TOKEN_ID and MODAL_TOKEN_SECRET as environment secrets for modal-benchmark."
+            exit 1
+          fi
+      - name: Install Modal SDK
+        run: python3 -m pip install 'modal>=1.6,<2'
+      - name: Run the billable benchmark explicitly requested by dispatch
+        run: |
+          python3 experiments/modal_function_vs_sandbox.py \
+            --execute \
+            --iterations "${{ inputs.iterations }}" \
+            --output modal-benchmark-results.json
+      - name: Publish comparison in GitHub Actions summary
+        if: success()
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('modal-benchmark-results.json').read_text())
+          rows=['## Modal Function vs Sandbox – measured results',
+                '',f"Iterations per mode: {data['iterations_per_mode']} (plus one warm-up)",
+                '','| Runtime | Median wall time | Blender execution | Startup + transport |',
+                '|---|---:|---:|---:|']
+          for runtime in ('function','sandbox'):
+              v=data['medians'][runtime]
+              rows.append(f"| {runtime} | {v['median_client_wall_seconds']:.3f} s | {v['median_blender_seconds']:.3f} s | {v['median_startup_and_transport_seconds']:.3f} s |")
+          rows.extend(['','Costs in the JSON are illustrative. Confirm actual Modal billing.'])
+          Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('\n'.join(rows)+'\n')
+          PY
+      - name: Upload comparison JSON as GitHub Actions artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modal-function-vs-sandbox-results
+          path: modal-benchmark-results.json
+          if-no-files-found: warn
+          retention-days: 14
