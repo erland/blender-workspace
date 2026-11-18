@@ -10,7 +10,7 @@ import bpy
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.object_identity import ensure_object_ids
-from blender_workspace_poc.common import ensure_output, save_scene, export_glb, write_manifest
+from blender_workspace_poc.common import ensure_output, export_glb, write_manifest
 
 def main():
     if '--' not in sys.argv:
@@ -51,7 +51,9 @@ def main():
         raise ValueError('Scene topology exceeds output limits')
     out=ensure_output()
     blend,glb,report=(out/'scene.blend',out/'scene.glb',out/'scene.json')
-    save_scene(blend)
+    # An uncompressed BLEND allows the trusted controller to verify its
+    # native BLENDER header without parsing untrusted compressed input.
+    bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=False)
     export_glb(glb)
     write_manifest(report,'sandbox_python',[blend,glb])
     print('BW_SANDBOX_PYTHON PASS',flush=True)
