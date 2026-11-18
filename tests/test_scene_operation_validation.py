@@ -206,3 +206,31 @@ class SceneOperationValidationTests(unittest.TestCase):
         ]:
             with self.subTest(bad=bad),self.assertRaises(ValueError):
                 validate_operation(bad)
+
+    def test_dev028_embedded_glb_validation(self):
+        import json,struct,base64
+        content={'asset':{'version':'2.0'},'meshes':[{'primitives':[]}],
+                 'nodes':[{'mesh':0}],'scenes':[{'nodes':[0]}],
+                 'accessors':[],'buffers':[]}
+        payload=json.dumps(content,separators=(',',':')).encode()
+        payload+=b' ' * (-len(payload)%4)
+        raw=b'glTF'+struct.pack('<II',2,len(payload)+20)+struct.pack('<I4s',len(payload),b'JSON')+payload
+        valid={'kind':'import_glb','name':'Imported part','glbBase64':base64.b64encode(raw).decode()}
+        self.assertEqual(validate_operation(valid),valid)
+        self.assertEqual(validate_operation({'kind':'batch','operations':[valid]})['kind'],'batch')
+        for bad in [
+            {**valid,'glbBase64':'not base64 / filename'},
+            {**valid,'glbBase64':base64.b64encode(b'GLB?').decode()},
+            {**valid,'glbBase64':'A'*160004},
+            {**valid,'name':'../bad'},
+            {**valid,'python':'unsafe'},
+            {k:v for k,v in valid.items() if k!='glbBase64'},
+        ]:
+            with self.subTest(bad=str(bad)[:80]),self.assertRaises(ValueError):
+                validate_operation(bad)
+        external={**content,'buffers':[{'uri':'https://evil.example/data.bin','byteLength':8}]}
+        serialized=json.dumps(external).encode()
+        serialized+=b' '*(-len(serialized)%4)
+        attack=b'glTF'+struct.pack('<II',2,len(serialized)+20)+struct.pack('<I4s',len(serialized),b'JSON')+serialized
+        with self.assertRaises(ValueError):
+            validate_operation({**valid,'glbBase64':base64.b64encode(attack).decode()})
