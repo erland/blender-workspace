@@ -8,7 +8,7 @@ def _vector(value,low,high):
     return (isinstance(value,list) and len(value)==3 and
         all(type(x) in (float,int) and math.isfinite(x) and low<=x<=high for x in value))
 def _valid_name(value):
-    return isinstance(value,str) and 1<=len(value.strip())<=100 and re.search(r'[\\x00-\\x1f/\\\\]',value) is None
+    return isinstance(value,str) and 1<=len(value.strip())<=100 and re.search(r'[\x00-\x1f/\\]',value) is None
 
 def validate_operation(value):
     if isinstance(value,dict) and value.get('kind')=='batch':
