@@ -35,6 +35,11 @@ test('per-owner Modal secrets are AES-GCM encrypted, isolated, replaceable and r
   await manager.saveAndTest(a,'ak-new','as-new');
   assert.equal((await manager.requireConnected(a)).tokenId,'ak-new');
   await manager.test(a);
+  const originalVerify=verifier.verify;
+  verifier.verify=async()=>{throw new Error('Temporary Modal network outage');};
+  await assert.rejects(()=>manager.test(a),/validation failed/);
+  assert.equal((await manager.status(a)).connected,true,'transient outages must not revoke credentials');
+  verifier.verify=originalVerify;
   await pool.query('UPDATE bw_modal_accounts SET auth_tag=$2 WHERE owner_key=$1',[a,randomBytes(16)]);
   await assert.rejects(()=>manager.requireConnected(a),/could not be decrypted/);
   await manager.disconnect(a);
