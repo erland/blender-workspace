@@ -7,7 +7,6 @@ const numbers=z.tuple([z.number().finite(),z.number().finite(),z.number().finite
 const transform=z.object({
   location:numbers,rotationEuler:numbers,scale:numbers
 }).strict();
-const qualityCheckNames=['boundaryEdges','nonManifoldEdges','looseEdges','isolatedVertices','degenerateFaces'] as const;
 const counter=z.number().int().nonnegative().max(1_000_000_000);
 const geometry=z.object({
   vertexCount:counter,edgeCount:counter,faceCount:counter,triangleCount:counter,
