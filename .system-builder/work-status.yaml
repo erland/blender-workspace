@@ -201,16 +201,16 @@ verification:
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
     status: IN_PROGRESS
-    scope: "Phase E3B verified - retired typed Blender workers, validators and superseded CI"
+    scope: "Final DEV-034 cleanup: retired demo, typed schemas, Docker entrypoint and regression tests; CI pending"
     code_ci:
-      status: PASS
-      source_sha: 405b755c311f38d242ceb8df3a3a97ea29bc03d4
-      result: All 4 triggered PR workflows passed, including Python-first Blender smoke, scene inspection, saved revisions and PBR material reuse across revisions
+      status: PENDING
+      previous_verified_sha: 405b755c311f38d242ceb8df3a3a97ea29bc03d4
+      reason: Final cleanup implementation requires fresh Python-first integration, TypeScript and Docker CI
     cleanup_remaining:
-      - Remove retired TypeScript schemas and remaining demo worker scripts and CI
+      - Verify final full relevant CI after deleting old TS and demo workers
 next:
-  recommended: DEV-034E3C
-  reason: Remove retired monster demo and old TypeScript schemas with dependency-safe CI replacement; run final full Python-first and inspection regression
+  recommended: VERIFY_DEV-034_FINAL
+  reason: Run and repair CI for final Python-first cleanup; mark DEV-034 complete only on verified implementation SHA
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
