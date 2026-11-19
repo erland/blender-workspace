@@ -5,6 +5,7 @@ import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
+import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import {inspectSavedScene,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
 
@@ -190,12 +191,14 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     });
   }
   server.registerTool('workspace_queue_python_script',{
-    description:'Queue Blender Python in a short-lived, network-blocked Modal Sandbox. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
+    description:'Validate Python syntax in the MCP service before queueing Blender Python in a short-lived, network-blocked Modal Sandbox. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       code:PythonScriptSchema.shape.code,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,code,note:jobNote})=>{
     const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
     try{
+      // Syntax errors are actionable and never reserve a job or start Modal.
+      await preflightPython(code);
       if(!modalAccounts||!(await modalAccounts.status(ownerKey)).connected)
         return failure(new JobConflict('Connect your Modal account before queueing Python'));
       if(!artifacts)return failure(new JobConflict('Scene artifacts are not configured'));
@@ -214,7 +217,14 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
         jobNote??'Sandboxed Blender Python',undefined,spec);
       return result({job:safeJob(job),execution:'modal-sandbox',
         message:'Queued Blender Python for isolated execution; one immutable scene revision'});
-    }catch{return failure(new JobConflict('Python job could not be queued'));}
+    }catch(error){
+      if(error instanceof PythonSyntaxError)
+        return failure(new JobConflict(error.message));
+      // Fail closed on missing interpreter/timeouts rather than bill Modal.
+      if(error instanceof Error && error.message.startsWith('Python syntax preflight'))
+        return failure(new JobConflict(error.message));
+      return failure(new JobConflict('Python job could not be queued'));
+    }
   });
   if(modalAccounts){
     server.registerTool('workspace_modal_status',{
