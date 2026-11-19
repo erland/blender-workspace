@@ -201,18 +201,18 @@ verification:
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
     status: IN_PROGRESS
-    scope: "Phase B - add Python-only revision, tamper, and recovery regression coverage before legacy deletion"
+    scope: "Phase C - migrate legacy job and dispatcher tests to Python-first"
     code_ci:
       status: PENDING
-      reason: DEV-034A boundary workflow passed on PR #42; DEV-034B PostgreSQL regression CI pending
+      reason: DEV-034B PostgreSQL regression CI passed on PR #43; DEV-034C test migration CI pending
     cleanup_remaining:
-      - Verify Python-only revision and recovery regression CI
-      - Migrate remaining legacy tests and CI to Python first
+      - Verify migrated job and dispatcher tests in PostgreSQL CI
+      - Migrate remaining legacy worker and Modal CI to Python first
       - Remove old job dispatch and Modal runner branches
       - Remove unused structured operations and demo workers
 next:
   recommended: VERIFY_DEV-034
-  reason: Verify DEV-034B PostgreSQL regression workflow, then remove retired implementation and tests in a subsequent bounded step
+  reason: Verify DEV-034C migrated job and dispatcher suites, then remove retired internal implementation branches
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:

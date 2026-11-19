@@ -3,520 +3,103 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
 import {applyMigrations} from '../dist/db/migrations.js';
 import {ProjectRepository} from '../dist/db/projects.js';
 import {JobRepository,JobConflict} from '../dist/jobs/job-repository.js';
 import {JobOrchestrator} from '../dist/jobs/orchestrator.js';
 import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
-import {parseSceneEdit} from '../dist/jobs/scene-edit.js';
-import {parseSceneOperation} from '../dist/jobs/scene-operation.js';
+import {parsePythonScript} from '../dist/jobs/python-script.js';
 
-async function fixture(t) {
+const spec=parsePythonScript({kind:'python_script',code:'import bpy\nbpy.ops.mesh.primitive_cube_add()'});
+
+async function fixture(t,run){
   const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:8});
   await applyMigrations(pool);
-  const base=await mkdtemp(path.join(os.tmpdir(),'bw-jobs-'));
+  const root=await mkdtemp(path.join(os.tmpdir(),'bw-jobs-python-'));
   const owner='test-'+randomUUID(),other='test-'+randomUUID();
   const projects=new ProjectRepository(pool),jobs=new JobRepository(pool);
-  const project=await projects.create(owner,'Job test monster');
+  const project=await projects.create(owner,'Arbitrary Python 3D model');
   t.after(async()=>{
-    try {
+    try{
       await pool.query('DELETE FROM bw_jobs WHERE project_id=$1',[project.id]);
       await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[project.id]);
       await pool.query('DELETE FROM bw_projects WHERE id=$1',[project.id]);
-    } finally { await pool.end(); await rm(base,{recursive:true,force:true});}
+    }finally{await pool.end();await rm(root,{recursive:true,force:true});}
   });
-  const store=new LocalArtifactStore(base);
-  const executor={count:0,async createDemo(dir) {
-    this.count++;
-    for(const name of ['monster_v1.blend','monster_v1.glb','monster_v1.json'])
-      await writeFile(path.join(dir,name),Buffer.from('mock-'+name));
+  const store=new LocalArtifactStore(root);
+  let executions=0;
+  const executor={async runPythonScript(dir,who,revision,source,input){
+    executions++;
+    if(run)return run({dir,who,revision,source,input});
+    for(const filename of ['scene.blend','scene.glb','scene.json'])
+      await writeFile(path.join(dir,filename),'mock-'+revision+'-'+filename);
   }};
   const workflow=new JobOrchestrator(jobs,store,executor);
-  return {pool,base,owner,other,projects,jobs,project,store,executor,workflow};
+  return {pool,owner,other,projects,jobs,project,store,workflow,
+    getExecutions:()=>executions};
 }
 
-test('runs one job across metadata and immutable volume', {skip:!process.env.TEST_DATABASE_URL},async t=>{
+test('Python jobs enforce owner, one active job, and revision locking',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
   const x=await fixture(t);
-  const finished=await x.workflow.createDemo(x.owner,x.project.id);
-  assert.equal(finished.status,'completed');
-  assert.equal(x.executor.count,1);
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
-  const revision=(await x.projects.revisions(x.owner,x.project.id))[0];
-  assert.equal(revision.artifact_prefix,x.project.id+'/00000001');
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
-  const manifest=await x.store.inspect(x.project.id,1);
-  assert.equal(manifest.artifacts.length,3);
-  assert.equal((await x.jobs.get(x.other,finished.id)),null);
-  const same=await x.workflow.recover(x.owner,finished.id);
-  assert.equal(same.status,'completed');
-  assert.equal(x.executor.count,1);
-});
-
-test('unique active job, stale revision and ownership isolation', {skip:!process.env.TEST_DATABASE_URL}, async t=>{
-  const x=await fixture(t);
-  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,0),JobConflict);
-  const job=await x.jobs.reserve(x.owner,x.project.id,0);
-  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,0),JobConflict);
-  assert.equal((await x.jobs.get(x.owner,job.id)).status,'pending');
+  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,0,'Other',undefined,spec),JobConflict);
+  const job=await x.jobs.reserve(x.owner,x.project.id,0,'Start scene',undefined,spec);
+  assert.deepEqual((await x.jobs.get(x.owner,job.id)).operation_spec,spec);
+  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,0,'Duplicate',undefined,spec),JobConflict);
   await assert.rejects(()=>x.workflow.execute(x.other,job.id),JobConflict);
   assert.equal((await x.jobs.get(x.owner,job.id)).status,'pending');
-  await x.workflow.execute(x.owner,job.id);
-  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,0),JobConflict);
+  const completed=await x.workflow.execute(x.owner,job.id);
+  assert.equal(completed.status,'completed');
+  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
+  assert.equal(x.getExecutions(),1);
+  assert.equal((await x.workflow.recover(x.owner,job.id)).status,'completed');
+  assert.equal(x.getExecutions(),1);
+  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,0,'Stale',undefined,spec),JobConflict);
 });
 
-test('worker failures remain failed; no revision is created', {skip:!process.env.TEST_DATABASE_URL}, async t=>{
-  const x=await fixture(t);
-  const runner={async createDemo(){throw new Error('Modal unavailable');}};
-  const service=new JobOrchestrator(x.jobs,x.store,runner);
-  await assert.rejects(()=>service.createDemo(x.owner,x.project.id),/Modal unavailable/);
+test('Python worker failure leaves no revision and can be retried as a new job',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  let fails=true;
+  const x=await fixture(t,async({dir,revision})=>{
+    if(fails){fails=false;throw Error('Blender unavailable');}
+    for(const ext of ['blend','glb','json'])
+      await writeFile(path.join(dir,'scene.'+ext),'mock-'+revision+'-'+ext);
+  });
+  const first=await x.jobs.reserve(x.owner,x.project.id,0,'Attempt 1',undefined,spec);
+  await assert.rejects(()=>x.workflow.execute(x.owner,first.id),/Blender unavailable/);
+  assert.equal((await x.jobs.get(x.owner,first.id)).status,'failed');
   assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,0);
   assert.deepEqual(await x.store.listRevisions(x.project.id),[]);
-  const row=await x.pool.query('SELECT status FROM bw_jobs WHERE project_id=$1',[x.project.id]);
-  assert.equal(row.rows[0].status,'failed');
-  assert.equal((await x.workflow.createDemo(x.owner,x.project.id)).status,'completed');
+  const retry=await x.jobs.reserve(x.owner,x.project.id,0,'Attempt 2',undefined,spec);
+  assert.equal((await x.workflow.execute(x.owner,retry.id)).status,'completed');
+  assert.equal(x.getExecutions(),2);
 });
 
-test('DB failure after artifact publish is recoverable without reexecuting worker',
+test('Corrupted published Python artifacts cannot be recovered after DB failure',
   {skip:!process.env.TEST_DATABASE_URL},async t=>{
   const x=await fixture(t);
-  const real=x.jobs.finalize.bind(x.jobs);
-  let once=true;
-  x.jobs.finalize=async(...args)=>{
-    if(once){once=false;throw new Error('transient database failure');}
-    return real(...args);
-  };
-  await assert.rejects(()=>x.workflow.createDemo(x.owner,x.project.id),/transient database failure/);
-  assert.equal(x.executor.count,1);
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
+  x.jobs.finalize=async()=>{throw Error('Database finalize failed');};
+  const job=await x.jobs.reserve(x.owner,x.project.id,0,'Publish',undefined,spec);
+  await assert.rejects(()=>x.workflow.execute(x.owner,job.id),/Database finalize failed/);
+  assert.equal((await x.jobs.get(x.owner,job.id)).status,'needs_recovery');
+  const glb=await x.store.verifiedArtifactPath(x.project.id,1,'scene.glb');
+  await writeFile(glb,'tampered GLB');
+  await assert.rejects(()=>x.workflow.recover(x.owner,job.id),/checksum mismatch/i);
   assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,0);
-  const row=await x.pool.query('SELECT * FROM bw_jobs WHERE project_id=$1',[x.project.id]);
-  assert.equal(row.rows[0].status,'needs_recovery');
-  const recovered=await x.workflow.recover(x.owner,row.rows[0].id);
-  assert.equal(recovered.status,'completed');
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
-  assert.equal(x.executor.count,1);
+  assert.equal(x.getExecutions(),1);
 });
 
-test('tampering blocks recovery and preserves journal', {skip:!process.env.TEST_DATABASE_URL},async t=>{
-  const x=await fixture(t);
-  x.jobs.finalize=async()=>{throw new Error('commit failed');};
-  await assert.rejects(()=>x.workflow.createDemo(x.owner,x.project.id),/commit failed/);
-  const row=await x.pool.query('SELECT id FROM bw_jobs WHERE project_id=$1',[x.project.id]);
-  const p=await x.store.verifiedArtifactPath(x.project.id,1,'monster_v1.glb');
-  await writeFile(p,'tampered');
-  await assert.rejects(()=>x.workflow.recover(x.owner,row.rows[0].id),/checksum mismatch/);
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,0);
-});
-
-test('rejects initial-demo replay on existing revision', {skip:!process.env.TEST_DATABASE_URL},async t=>{
-  const x=await fixture(t);
-  await x.workflow.createDemo(x.owner,x.project.id);
-  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,0),JobConflict);
-  const revision2=await x.jobs.reserve(x.owner,x.project.id,1);
-  // The fixture intentionally only supports initial creation; revision 2 now requires
-  // a dedicated executor rather than being categorically unsupported.
-  await assert.rejects(()=>x.workflow.execute(x.owner,revision2.id),/Revision executor is not configured/);
-  assert.equal((await x.jobs.get(x.owner,revision2.id)).status,'failed');
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
-});
-
-test('revision 2 reads verified original .blend and publishes immutable v2 without changing v1',
-  {skip:!process.env.TEST_DATABASE_URL},async t=>{
-  const x=await fixture(t);
-  const v1=await x.workflow.createDemo(x.owner,x.project.id);
-  assert.equal(v1.status,'completed');
-  const original=await x.store.verifiedArtifactPath(x.project.id,1,'monster_v1.blend');
-  const before=(await import('node:fs/promises')).readFile;
-  const originalBytes=await before(original);
-  let received=null;
-  const revisionExecutor={
-    async createDemo(){throw Error('Should not recreate')},
-    async reviseDemo(dir,owner,input){
-      received={owner,input};
-      for(const filename of ['monster_v2.blend','monster_v2.glb','monster_v2.json'])
-        await writeFile(path.join(dir,filename),'recolored-'+filename);
-    }
-  };
-  const workflow=new JobOrchestrator(x.jobs,x.store,revisionExecutor);
-  const reserved=await x.jobs.reserve(x.owner,x.project.id,1,'Blue body');
-  const finished=await workflow.execute(x.owner,reserved.id);
-  assert.equal(finished.status,'completed');
-  assert.deepEqual(received,{owner:x.owner,input:original});
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,2);
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2]);
-  assert.deepEqual(await before(original),originalBytes);
-  assert.deepEqual((await x.store.inspect(x.project.id,2,true)).artifacts.map(a=>a.name),
-    ['monster_v2.blend','monster_v2.glb','monster_v2.json']);
-  assert.equal((await x.jobs.get(x.other,reserved.id)),null);
-  const unsupported=await x.jobs.reserve(x.owner,x.project.id,2);
-  await assert.rejects(()=>workflow.execute(x.owner,unsupported.id),/structured edit is required/);
-  assert.equal((await x.jobs.get(x.owner,unsupported.id)).status,'failed');
-});
-
-test('corrupt prior scene blocks revision before Modal and publishes nothing',
-  {skip:!process.env.TEST_DATABASE_URL},async t=>{
-  const x=await fixture(t);
-  await x.workflow.createDemo(x.owner,x.project.id);
-  const original=await x.store.verifiedArtifactPath(x.project.id,1,'monster_v1.blend');
-  await writeFile(original,'tampered input');
-  let runs=0;
-  const workflow=new JobOrchestrator(x.jobs,x.store,{
-    async createDemo(){throw Error('Unexpected creation')},
-    async reviseDemo(){runs++;}
-  });
-  const reserved=await x.jobs.reserve(x.owner,x.project.id,1);
-  await assert.rejects(()=>workflow.execute(x.owner,reserved.id),/checksum mismatch/i);
-  assert.equal(runs,0);
-  assert.equal((await x.jobs.get(x.owner,reserved.id)).status,'failed');
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
-});
-
-test('validated structured edit can create immutable revision 3 from v2, and command survives DB reload',
-  {skip:!process.env.TEST_DATABASE_URL},async t=>{
-  const x=await fixture(t);
-  await x.workflow.createDemo(x.owner,x.project.id);
-  const v2executor={async createDemo(){throw Error('unexpected')},async reviseDemo(dir){
-    for(const name of ['monster_v2.blend','monster_v2.glb','monster_v2.json'])
-      await writeFile(path.join(dir,name),'version-2-'+name);
-  }};
-  const workflow2=new JobOrchestrator(x.jobs,x.store,v2executor);
-  const blue=await x.jobs.reserve(x.owner,x.project.id,1,'Blue');
-  await workflow2.execute(x.owner,blue.id);
-  const original=await x.store.verifiedArtifactPath(x.project.id,2,'monster_v2.blend');
-  const initial=await (await import('node:fs/promises')).readFile(original);
-  const edit=parseSceneEdit({target:'Body',color:[0.8,0.3,0.2],scale:[1,1.5,1],
-    location:[0,0,1]});
-  const reserved=await x.jobs.reserve(x.owner,x.project.id,2,'Structured edit',edit);
-  const fromDb=await x.jobs.get(x.owner,reserved.id);
-  assert.deepEqual(fromDb.edit_spec,edit);
-  let call;
-  const workflow3=new JobOrchestrator(x.jobs,x.store,{
-    async createDemo(){throw Error('unexpected')},
-    async editScene(dir,owner,input,revision,received){
-      call={owner,input,revision,received};
-      for(const name of ['monster_v3.blend','monster_v3.glb','monster_v3.json'])
-        await writeFile(path.join(dir,name),'version-3-'+name);
-    }
-  });
-  const completed=await workflow3.execute(x.owner,reserved.id);
-  assert.equal(completed.status,'completed');
-  assert.deepEqual(call,{owner:x.owner,input:original,revision:3,received:edit});
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,3);
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2,3]);
-  assert.deepEqual(await (await import('node:fs/promises')).readFile(original),initial);
-  assert.equal((await x.store.inspect(x.project.id,3)).artifacts.length,3);
-  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,3,'Cross-tenant',edit),JobConflict);
-  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,2,'Stale',edit),JobConflict);
-});
-test('strict edit rejects code injection, unknown target and invalid numeric transforms',()=>{
-  for(const edit of [{target:'Body',python:'__import__("os")'},
-    {target:'Leg',color:[1,0,0]},
-    {target:'Body',scale:[0,1,1]},
-    {target:'Body',location:[11,0,0]},
-    {target:'Body',color:[NaN,0,0]},
-    {target:'Body'},
-    {target:'Body',color:[1,2,3]}]){
-    assert.throws(()=>parseSceneEdit(edit));
-  }
-  assert.deepEqual(parseSceneEdit({target:'Body',color:[0,0.4,1]}),
-    {target:'Body',color:[0,0.4,1]});
-});
-
-test('generic scene revisions support arbitrary 3D assets, immutable file names and owner isolation',
-  {skip:!process.env.TEST_DATABASE_URL},async t=>{
-  const x=await fixture(t);
-  const called=[];
-  const runner={
-    async createDemo(){throw Error('Legacy demo must not run')},
-    async runSceneOperation(dir,owner,revision,operation,input){
-      called.push({owner,revision,operation,input});
-      for(const filename of ['scene.blend','scene.glb','scene.json'])
-        await writeFile(path.join(dir,filename),
-          filename==='scene.json'?JSON.stringify({schema_version:1,scene:{objects:[
-            {name:operation.name,type:'MESH',materials:[],bones:[]}]}}):
-          'generic-'+revision+'-'+filename);
-    }
-  };
-  const flow=new JobOrchestrator(x.jobs,x.store,runner);
-  const create=parseSceneOperation({kind:'add_primitive',name:'Architectural Column',primitive:'cylinder',
-    location:[0,1,2],color:[0.4,0.5,0.6]});
-  const reserved=await x.jobs.reserve(x.owner,x.project.id,0,'Start arbitrary scene',undefined,create);
-  assert.deepEqual((await x.jobs.get(x.owner,reserved.id)).operation_spec,create);
-  assert.equal((await flow.execute(x.owner,reserved.id)).status,'completed');
-  assert.equal(called[0].input,undefined);
-  const original=await x.store.verifiedArtifactPath(x.project.id,1,'scene.blend');
-  const originalBytes=await (await import('node:fs/promises')).readFile(original);
-  const edit=parseSceneOperation({kind:'set_transform',name:'Architectural Column',
-    location:[4,0,1],scale:[1,1,2]});
-  const next=await x.jobs.reserve(x.owner,x.project.id,1,'Adjust column',undefined,edit);
-  assert.equal((await flow.execute(x.owner,next.id)).status,'completed');
-  assert.deepEqual(called[1],{owner:x.owner,revision:2,operation:edit,input:original});
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,2);
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2]);
-  assert.deepEqual(await (await import('node:fs/promises')).readFile(original),originalBytes);
-  assert.deepEqual((await x.store.inspect(x.project.id,2)).artifacts.map(a=>a.name),
-    ['scene.blend','scene.glb','scene.json']);
-  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,2,'Attack',undefined,edit),JobConflict);
-  await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,1,'Stale',undefined,edit),JobConflict);
-});
-test('generic operation schema rejects scripts and unsafe payloads',()=>{
-  for(const x of [
-    {kind:'exec_python',name:'A',source:'import os'},
-    {kind:'add_primitive',name:'../x',primitive:'cube'},
-    {kind:'add_primitive',name:'X',primitive:'mesh_from_url'},
-    {kind:'set_transform',name:'X'},
-    {kind:'set_transform',name:'X',location:[NaN,0,0]},
-    {kind:'set_color',name:'X',color:[1,2,0]},
-    {kind:'delete_object',name:'X',shell:'rm -rf /'}]){
-    assert.throws(()=>parseSceneOperation(x));
-  }
-});
-
-test('bounded scene batches persist atomically and publish a single immutable revision', 
-  {skip:!process.env.TEST_DATABASE_URL},async t=>{
-  const x=await fixture(t);
-  const edits=parseSceneOperation({kind:'batch',operations:[
-    {kind:'add_primitive',name:'Tabletop',primitive:'cube',scale:[3,2,0.1]},
-    {kind:'add_primitive',name:'Leg A',primitive:'cylinder',location:[-1,-0.6,-1]},
-    {kind:'set_color',name:'Leg A',color:[0.4,0.3,0.2]}]});
-  let received;
-  const workflow=new JobOrchestrator(x.jobs,x.store,{
-    async createDemo(){throw Error('Legacy demo should not run')},
-    async runSceneOperation(dir,owner,revision,operation,input){
-      received={owner,revision,operation,input};
-      for(const filename of ['scene.blend','scene.glb','scene.json'])
-        await writeFile(path.join(dir,filename),filename);
-    }
-  });
-  const job=await x.jobs.reserve(x.owner,x.project.id,0,'Table components',undefined,edits);
-  assert.deepEqual((await x.jobs.get(x.owner,job.id)).operation_spec,edits);
-  assert.equal((await workflow.execute(x.owner,job.id)).status,'completed');
-  assert.deepEqual(received,{owner:x.owner,revision:1,operation:edits,input:undefined});
-  assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
-  assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
-  await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,1,'Forbidden',undefined,edits),JobConflict);
-});
-test('batches reject nested, oversized or unsafe operation payloads',()=>{
-  const add={kind:'add_primitive',name:'Cube',primitive:'cube'};
-  assert.equal(parseSceneOperation({kind:'batch',operations:[add]}).kind,'batch');
+test('Python scripts reject injection fields, NUL, oversized and non-UTF8-bound content',()=>{
   for(const value of [
-    {kind:'batch',operations:[]},
-    {kind:'batch',operations:Array.from({length:21},()=>add)},
-    {kind:'batch',operations:[{kind:'batch',operations:[add]}]},
-    {kind:'batch',operations:[{...add,python:'import os'}]},
-    {kind:'batch',operations:[{kind:'delete_object',name:'x',path:'/etc'}]}
-  ])assert.throws(()=>parseSceneOperation(value));
+    {kind:'python_script',code:''},
+    {kind:'python_script',code:'   '},
+    {kind:'python_script',code:'print(1)\0'},
+    {kind:'python_script',code:'x'.repeat(16385)},
+    {kind:'python_script',code:'å'.repeat(9000)},
+    {kind:'python_script',code:'print(1)',path:'/etc/passwd'},
+    {kind:'batch',operations:[spec]}
+  ])assert.throws(()=>parsePythonScript(value));
+  assert.deepEqual(parsePythonScript(spec),spec);
 });
-
-test('duplicate operation accepts bounded batches and rejects unsafe references',()=>{
-  const op={kind:'duplicate_object',source:'Leg',name:'Leg 2',
-    location:[2,0,0],scale:[1,1,1]};
-  assert.deepEqual(parseSceneOperation(op),op);
-  assert.equal(parseSceneOperation({kind:'batch',operations:[
-    {kind:'add_primitive',name:'Leg',primitive:'cylinder'},op]}).kind,'batch');
-  for(const bad of [
-    {...op,name:'Leg'},
-    {...op,source:'../Leg'},
-    {...op,script:'import os'},
-    {...op,scale:[0,1,1]},
-    {...op,location:[Infinity,0,0]},
-    {kind:'duplicate_object',name:'New'}
-  ])assert.throws(()=>parseSceneOperation(bad));
-});
-
-test('rename_object supports single operations and batches, rejecting invalid names',()=>{
-  const rename={kind:'rename_object',name:'Leg',newName:'Table leg'};
-  assert.deepEqual(parseSceneOperation(rename),rename);
-  assert.equal(parseSceneOperation({kind:'batch',operations:[
-    {kind:'add_primitive',name:'Leg',primitive:'cylinder'},rename,
-    {kind:'set_color',name:'Table leg',color:[1,0,0]}]}).kind,'batch');
-  for(const bad of [
-    {...rename,newName:'Leg'},
-    {...rename,newName:'../bad'},
-    {...rename,newName:''},
-    {...rename,python:'print(1)'},
-    {kind:'rename_object',name:'Leg'}
-  ])assert.throws(()=>parseSceneOperation(bad));
-});
-
-test('DEV-023 ID-addressed operations and safe parenting validate strictly',()=>{
-  const id='11111111-1111-4111-8111-111111111111';
-  const parent='22222222-2222-4222-8222-222222222222';
-  const valid=[
-    {kind:'set_transform',objectId:id,location:[1,2,3]},
-    {kind:'set_color',objectId:id,color:[0.1,0.3,0.5]},
-    {kind:'rename_object',objectId:id,newName:'Renamed piece'},
-    {kind:'delete_object',objectId:id},
-    {kind:'duplicate_object',sourceId:id,name:'Duplicated piece'},
-    {kind:'set_parent',objectId:id,parentId:parent},
-    {kind:'set_parent',name:'Child',parentId:null}
-  ];
-  for(const op of valid)assert.deepEqual(parseSceneOperation(op),op);
-  assert.equal(parseSceneOperation({kind:'batch',operations:valid}).operations.length,valid.length);
-  for(const bad of [
-    {kind:'set_color',objectId:id,name:'Conflicting name',color:[1,0,0]},
-    {kind:'set_transform',location:[1,0,0]},
-    {kind:'set_parent',name:'Child'},
-    {kind:'set_parent',objectId:id,parentId:id},
-    {kind:'set_parent',objectId:id,parentId:'not-uuid'},
-    {kind:'set_parent',objectId:id,parentId:parent,python:'print(1)'},
-    {kind:'rename_object',objectId:id,name:'Old',newName:'New'},
-    {kind:'duplicate_object',sourceId:id,source:'Old',name:'Clone'},
-    {kind:'duplicate_object',sourceId:'bogus',name:'Clone'},
-    {kind:'delete_object',objectId:'../path'}
-  ]) assert.throws(()=>parseSceneOperation(bad),JSON.stringify(bad));
-});
-
-test('DEV-024 bounded custom mesh schema rejects unsafe indices and payloads',()=>{
-  const mesh={kind:'add_mesh',name:'Custom part',
-    vertices:[[0,0,0],[2,0,0],[0,2,0],[0,0,1]],
-    faces:[[0,1,2],[0,2,3]],color:[0.3,0.5,0.8]};
-  assert.deepEqual(parseSceneOperation(mesh),mesh);
-  assert.equal(parseSceneOperation({kind:'batch',operations:[mesh]}).operations.length,1);
-  for(const invalid of [
-    {...mesh,vertices:[[0,0,0],[1,0,0]]},
-    {...mesh,vertices:[[0,0,0],[1,0,0],[Infinity,1,0]]},
-    {...mesh,vertices:[[0,0,0],[1,0,0],[101,1,0]]},
-    {...mesh,faces:[]},
-    {...mesh,faces:[[0,1]]},
-    {...mesh,faces:[[0,1,1]]},
-    {...mesh,faces:[[0,1,5]]},
-    {...mesh,faces:[[0,1,-1]]},
-    {...mesh,faces:[[0,1,1.5]]},
-    {...mesh,faces:[[0,1,2,3,0]]},
-    {...mesh,faces:Array.from({length:2049},()=>[0,1,2])},
-    {...mesh,vertices:Array.from({length:1025},()=>[0,0,0])},
-    {...mesh,python:'unsafe'},
-    {...mesh,color:[2,0,0]}
-  ])assert.throws(()=>parseSceneOperation(invalid),JSON.stringify(invalid).slice(0,180));
-});
-
-test('DEV-025 bounded mesh modifiers validate operation targets and parameters',()=>{
-  const a='11111111-1111-4111-8111-111111111111';
-  const b='22222222-2222-4222-8222-222222222222';
-  for(const op of [
-    {kind:'bevel_mesh',objectId:a,width:0.1,segments:2},
-    {kind:'subdivide_mesh',name:'Panel',levels:2},
-    {kind:'boolean_mesh',objectId:a,operandId:b,operation:'difference'},
-    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'union'},
-    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'intersection'}
-  ])assert.deepEqual(parseSceneOperation(op),op);
-  for(const bad of [
-    {kind:'bevel_mesh',name:'Panel',width:0,segments:1},
-    {kind:'bevel_mesh',name:'Panel',width:Infinity,segments:1},
-    {kind:'bevel_mesh',name:'Panel',width:2.1,segments:1},
-    {kind:'bevel_mesh',name:'Panel',width:0.1,segments:4},
-    {kind:'subdivide_mesh',name:'Panel',levels:3},
-    {kind:'subdivide_mesh',name:'Panel',levels:0},
-    {kind:'subdivide_mesh',name:'Panel',levels:1.5},
-    {kind:'boolean_mesh',objectId:a,operandId:a,operation:'union'},
-    {kind:'boolean_mesh',name:'Panel',operandId:'invalid',operation:'difference'},
-    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'script'},
-    {kind:'boolean_mesh',name:'Panel',operandId:b,operation:'union',code:'evil'},
-    {kind:'bevel_mesh',objectId:a,name:'Panel',width:0.1,segments:1}
-  ])assert.throws(()=>parseSceneOperation(bad));
-});
-
-test('DEV-026 mesh extrude, mirror and array reject unsafe inputs',()=>{
-  const id='11111111-1111-4111-8111-111111111111';
-  const good=[
-    {kind:'extrude_face',objectId:id,faceIndex:0,offset:[0,0,1]},
-    {kind:'mirror_mesh',name:'Panel',axis:'x'},
-    {kind:'array_mesh',objectId:id,count:3,offset:[2,0,0]},
-  ];
-  for(const op of good)assert.deepEqual(parseSceneOperation(op),op);
-  for(const bad of [
-    {kind:'extrude_face',name:'Panel',faceIndex:-1,offset:[0,0,1]},
-    {kind:'extrude_face',name:'Panel',faceIndex:40000,offset:[0,0,1]},
-    {kind:'extrude_face',name:'Panel',faceIndex:1.5,offset:[0,0,1]},
-    {kind:'extrude_face',name:'Panel',faceIndex:1,offset:[0,0,0]},
-    {kind:'extrude_face',name:'Panel',faceIndex:1,offset:[NaN,0,1]},
-    {kind:'mirror_mesh',name:'Panel',axis:'bad'},
-    {kind:'array_mesh',name:'Panel',count:1,offset:[2,0,0]},
-    {kind:'array_mesh',name:'Panel',count:9,offset:[2,0,0]},
-    {kind:'array_mesh',name:'Panel',count:2,offset:[0,0,0]},
-    {kind:'array_mesh',name:'Panel',count:2,offset:[11,0,0]},
-    {kind:'array_mesh',name:'Panel',count:2,offset:[1,0,0],python:'evil'},
-    {kind:'mirror_mesh',name:'Panel',objectId:id,axis:'x'},
-  ])assert.throws(()=>parseSceneOperation(bad));
-});
-
-test('DEV-027 PBR material operation validates bounds and excludes executable fields',()=>{
-  const valid={kind:'set_pbr_material',objectId:'11111111-1111-4111-8111-111111111111',
-    baseColor:[0.1,0.3,0.6],metallic:0.8,roughness:0.2,
-    opacity:0.55,emissionColor:[0.2,0.1,0],emissionStrength:0.4};
-  assert.deepEqual(parseSceneOperation(valid),valid);
-  assert.equal(parseSceneOperation({kind:'batch',operations:[valid]}).operations.length,1);
-  for(const bad of [
-    {...valid,baseColor:[1.2,0,0]},
-    {...valid,baseColor:[NaN,0,0]},
-    {...valid,emissionColor:[0,0]},
-    {...valid,metallic:-0.1},
-    {...valid,roughness:1.1},
-    {...valid,opacity:Infinity},
-    {...valid,emissionStrength:2},
-    {...valid,emissionStrength:'0.5'},
-    {...valid,objectId:'invalid'},
-    {...valid,name:'Other'},
-    {...valid,python:'evil'},
-    (({roughness,...rest})=>rest)(valid)
-  ])assert.throws(()=>parseSceneOperation(bad));
-});
-
-test('DEV-028 GLB import accepts bounded embedded bytes and rejects unsafe references',()=>{
-  const makeGlb=(gltf)=>{
-    const text=Buffer.from(JSON.stringify(gltf));
-    const json=Buffer.concat([text,Buffer.alloc((4-text.length%4)%4,32)]);
-    const buf=Buffer.alloc(20+json.length);
-    buf.write('glTF',0,'ascii');buf.writeUInt32LE(2,4);
-    buf.writeUInt32LE(buf.length,8);buf.writeUInt32LE(json.length,12);
-    buf.write('JSON',16,'ascii');json.copy(buf,20);
-    return buf.toString('base64');
-  };
-  const data={asset:{version:'2.0'},meshes:[{primitives:[]}],nodes:[{mesh:0}],
-    scenes:[{nodes:[0]}],accessors:[],buffers:[]};
-  const valid={kind:'import_glb',name:'Reusable asset',glbBase64:makeGlb(data)};
-  assert.deepEqual(parseSceneOperation(valid),valid);
-  assert.equal(parseSceneOperation({kind:'batch',operations:[valid]}).operations.length,1);
-  for(const invalid of [
-    {...valid,glbBase64:'https://example.org/file.glb'},
-    {...valid,glbBase64:'A'.repeat(160004)},
-    {...valid,glbBase64:Buffer.from('GLB?').toString('base64')},
-    {...valid,glbBase64:makeGlb({...data,buffers:[{uri:'https://untrusted.example/a.bin',byteLength:8}]})},
-    {...valid,glbBase64:makeGlb({...data,accessors:[{count:9999999}]})},
-    {...valid,name:'../bad'},
-    {...valid,script:'unsafe'},
-    (({glbBase64,...rest})=>rest)(valid)
-  ])assert.throws(()=>parseSceneOperation(invalid));
-});
-
-test('DEV-029 Python jobs preserve owner authorization and atomic scene revisions',
-  {skip:!process.env.TEST_DATABASE_URL},async t=>{
-    const x=await fixture(t);
-    const spec={kind:'python_script',code:'import bpy\\nbpy.ops.mesh.primitive_cube_add()'};
-    const calls=[];
-    const executor={
-      async createDemo(){throw Error('Demo execution must not be selected')},
-      async runPythonScript(dir,owner,revision,code,source){
-        calls.push({owner,revision,code,source});
-        for(const filename of ['scene.blend','scene.glb','scene.json'])
-          await writeFile(path.join(dir,filename),'mock-'+revision+'-'+filename);
-      }
-    };
-    const workflow=new JobOrchestrator(x.jobs,x.store,executor);
-    await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,0,'unauthorized',undefined,spec),JobConflict);
-    const initial=await x.jobs.reserve(x.owner,x.project.id,0,'python initial',undefined,spec);
-    assert.deepEqual((await x.jobs.get(x.owner,initial.id)).operation_spec,spec);
-    assert.equal((await workflow.execute(x.owner,initial.id)).status,'completed');
-    assert.equal(calls[0].source,undefined);
-    assert.equal(calls[0].owner,x.owner);
-    const next=await x.jobs.reserve(x.owner,x.project.id,1,'python edit',undefined,spec);
-    assert.equal((await workflow.execute(x.owner,next.id)).status,'completed');
-    assert.equal(calls[1].revision,2);
-    assert.ok(calls[1].source.endsWith('/scene.blend'));
-    assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2]);
-    assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,2);
-  });

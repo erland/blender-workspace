@@ -33,3 +33,15 @@ Sandbox isolation or finish removal of the internal legacy branches.
 4. Run full surviving CI including real headless Blender and repeat the contract check.
 
 Live Google/ChatGPT OAuth, personal Modal billing and browser/iPad acceptance remain deferred.
+
+## DEV-034C migration
+
+The legacy `jobs.test.mjs` and `dispatcher.test.mjs` suites were converted to
+Python-only queue jobs with `scene.blend` / `scene.glb` / `scene.json` artifacts.
+They retain owner authorization, atomic job claiming, stale revision rejection,
+worker failure, tampered-artifact rejection, retry and recovery checks.
+The separate DEV-034B PostgreSQL recovery tests provide additional immutable
+revision coverage. Older typed operation schema tests are intentionally retired
+from these suites: these operations are no longer an MCP product contract.
+Remaining internal implementation and Python legacy runner tests are to be
+removed after CI acceptance of this test migration.
