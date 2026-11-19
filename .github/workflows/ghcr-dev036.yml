@@ -1,0 +1,130 @@
+name: DEV-036 Verify and publish GHCR images
+
+on:
+  pull_request:
+    paths:
+      - 'service/**'
+      - 'job-worker/**'
+      - 'modal_provider/**'
+      - 'blender_workspace_poc/**'
+      - 'Dockerfile'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/ghcr-dev036.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ghcr-dev036-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: blender_test
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: blender_workspace_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://blender_test:ci-only-password@127.0.0.1:5432/blender_workspace_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify TypeScript, MCP, owner-scoped jobs and PostgreSQL
+        working-directory: service
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Verify Python Modal controller, artifact validation and GHCR pin
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          python3 -m compileall -q modal_provider blender_workspace_poc tests
+      - name: Build images for offline deployment regression
+        run: |
+          docker build -f service/Dockerfile -t bw-mcp:dev036 service
+          docker build -f job-worker/Dockerfile \
+            --build-arg MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }} \
+            -t bw-worker:dev036 .
+          docker build -f Dockerfile -t bw-blender:dev036 .
+      - name: Assert service preflight, pinned job worker, and real Blender smoke
+        run: |
+          docker run --rm --entrypoint python3 bw-mcp:dev036 \
+            -I -c "compile('import bpy', '<ci>', 'exec')"
+          docker run --rm --entrypoint python3 bw-worker:dev036 \
+            -c "import os; assert os.environ['MODAL_BLENDER_IMAGE']=='ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}'"
+          docker run --rm bw-blender:dev036
+
+  publish:
+    # PRs and feature-branch dispatches can never push packages or start Modal.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish pinned Blender image first
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}
+          cache-from: type=gha,scope=blender
+          cache-to: type=gha,scope=blender,mode=max
+      - name: Publish pinned Job Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./job-worker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/erland/blender-workspace-job-worker:sha-${{ github.sha }}
+          build-args: |
+            MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+      - name: Publish pinned MCP service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./service
+          file: ./service/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/erland/blender-workspace-mcp:sha-${{ github.sha }}
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,scope=mcp,mode=max
+      - name: Document matching image references
+        run: |
+          echo "### DEV-036 immutable GHCR set" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Use **one commit SHA for the three images**:' >> "$GITHUB_STEP_SUMMARY"
+          echo ' - `ghcr.io/erland/blender-workspace-mcp:sha-${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo ' - `ghcr.io/erland/blender-workspace-job-worker:sha-${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo ' - `ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The Blender GHCR package must be public for owner-billed Modal accounts to pull it.' >> "$GITHUB_STEP_SUMMARY"
