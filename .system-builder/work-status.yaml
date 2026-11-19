@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: code_complete_live_acceptance_deferred
 mode: CHANGE
 selected_step: DEV-035
-in_progress: DEV-035
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
@@ -13,6 +13,7 @@ completed_steps:
   - DEV-006
   - DEV-007
   - DEV-034
+  - DEV-035
 verification:
   dev008:
     status: DEFERRED
@@ -212,17 +213,19 @@ verification:
       status: DEFERRED
       reason: Real user OAuth, owner-billed Modal execution and browser/iPad acceptance require configured external services and devices
   dev035:
-    status: IN_PROGRESS
+    status: COMPLETE
     scope: "Reject malformed Python syntax inside Coolify service before PostgreSQL reservation or Modal billing"
+    source_pr: https://github.com/erland/blender-workspace/pull/50
     code_ci:
-      status: PENDING
-      reason: DEV-035 preflight TypeScript/MCP and Docker integration CI not yet verified
+      status: PASS
+      source_sha: 01ea368b29861cba863abb9e5e1f371b31f0cce1
+      result: All 19 PR workflows succeeded, including preflight without Modal, Coolify service Docker image, MCP/OAuth, database, and real Blender regressions
     live_acceptance:
       status: DEFERRED
       reason: Owner-billed Modal, Google/ChatGPT and browser/iPad live acceptance not executed
 next:
-  recommended: VERIFY_DEV-035
-  reason: Run syntax error, fail-closed job reservation and Coolify Docker regression CI; then mark DEV-035 complete with source SHA
+  recommended: LIVE_ACCEPTANCE_WHEN_READY
+  reason: DEV-035 is code complete with 19 passing CI checks; no more syntax preflight DEV steps are planned. Verify real owner-funded Modal and OAuth/browser acceptance separately when available
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
