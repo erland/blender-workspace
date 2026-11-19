@@ -44,8 +44,17 @@ const sceneObject=z.object({
   localTransform:transform.optional(),
   geometry:geometry.optional()
 }).strip();
+const color=z.tuple([z.number().finite().min(0).max(1),
+  z.number().finite().min(0).max(1),z.number().finite().min(0).max(1)]);
+const factor=z.number().finite().min(0).max(1);
+const materialAsset=z.object({
+  name:boundedName,baseColor:color,metallic:factor,roughness:factor,
+  opacity:factor,emissionColor:color,emissionStrength:factor,
+  usedBy:z.array(boundedName).max(512)
+}).strict();
 const sceneSchema=z.object({
   objects:z.array(sceneObject).max(10_000),
+  materialLibrary:z.array(materialAsset).max(128).optional(),
   blender_version:z.string().max(128).optional(),
   fps:z.number().finite().nonnegative().optional(),
   frame_start:z.number().int().optional(),
@@ -123,4 +132,19 @@ export function geometryValidation(scene:SceneDescription,objectId?:string){
     findings,
     note:'Diagnostic snapshot of base mesh topology only; not a proof of watertightness, printable geometry, evaluated modifiers or export readiness'
   };
+}
+
+/** Catalog is optional for older immutable revisions. No guessed assets. */
+export function materialCatalog(scene:SceneDescription){
+  const library=scene.materialLibrary;
+  if(library===undefined)return {
+    available:false,reason:'Material catalog is absent from this saved revision',
+    materials:[] as z.infer<typeof materialAsset>[]
+  };
+  const usedNames=new Set<string>();
+  for(const asset of library){
+    if(usedNames.has(asset.name))throw new Error('Duplicate library material');
+    usedNames.add(asset.name);
+  }
+  return {available:true,materials:library};
 }
