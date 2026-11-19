@@ -1,4 +1,5 @@
 import pg from 'pg';
+import {databasePoolConfig} from './db/pool-config.js';
 import {createApp} from './app.js';
 import {loadConfig} from './config.js';
 import {ProjectRepository} from './db/projects.js';
@@ -9,10 +10,10 @@ import {ModalCliTokenVerifier} from './modal/modal-token-verifier.js';
 import {LocalArtifactStore} from './storage/artifact-store.js';
 
 const config=loadConfig();
-const databaseUrl=process.env.DATABASE_URL;
-if(Boolean(databaseUrl)!==(config.authMode!=='internal'||Boolean(config.ownerKey)))
-  throw new Error('DATABASE_URL and identity configuration must be configured together');
-const pool=databaseUrl?new pg.Pool({connectionString:databaseUrl,max:5,connectionTimeoutMillis:5000}):undefined;
+const databaseConfig=databasePoolConfig();
+if(Boolean(databaseConfig)!==(config.authMode!=='internal'||Boolean(config.ownerKey)))
+  throw new Error('PostgreSQL connection and identity configuration must be configured together');
+const pool=databaseConfig?new pg.Pool(databaseConfig):undefined;
 const google=config.google&&pool?new GoogleOAuthServer(config.google,pool):undefined;
 const modalAccounts=pool && process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY
   ?ModalAccountManager.fromBase64(pool,process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY,

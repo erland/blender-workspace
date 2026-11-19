@@ -81,6 +81,16 @@ viewer operations use Three.js/WebGL and **do not start Modal rendering**.
 
 ## Deployment and verification
 
+For Coolify, use [the Docker Compose definition](deploy/coolify.compose.yaml)
+and [step-by-step configuration guide](docs/dev-037-coolify-compose.md).
+The stack uses an **existing shared PostgreSQL server** (no PostgreSQL
+container) with a **dedicated database and role**, and accepts `PGHOST`,
+`PGPORT`, `PGUSER`, `PGPASSWORD` and `PGDATABASE` as separate
+Coolify environment variables. Enter `PGPASSWORD` as a **secret** in
+Coolify; no password-bearing `DATABASE_URL` is needed. A one-shot
+migration job must finish before the MCP service and worker start.
+
+
 DEV-036 uses three SHA-pinned GHCR images: the MCP service and an independent
 Coolify Job Worker, plus a Blender image pulled by owner-funded Modal Sandboxes.
 See [GHCR and Coolify deployment](docs/dev-036-ghcr.md). PRs verify but never
