@@ -1,0 +1,48 @@
+{
+  "kind": "batch",
+  "operations": [
+    {
+      "kind": "add_primitive",
+      "name": "Desk",
+      "primitive": "cube"
+    },
+    {
+      "kind": "add_primitive",
+      "name": "Leg",
+      "primitive": "cylinder",
+      "location": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "kind": "create_pbr_material",
+      "materialName": "Brushed Aluminium",
+      "baseColor": [
+        0.35,
+        0.45,
+        0.6
+      ],
+      "metallic": 0.9,
+      "roughness": 0.3,
+      "opacity": 1,
+      "emissionColor": [
+        0,
+        0,
+        0
+      ],
+      "emissionStrength": 0
+    },
+    {
+      "kind": "assign_material",
+      "name": "Desk",
+      "materialName": "Brushed Aluminium"
+    },
+    {
+      "kind": "assign_material",
+      "name": "Leg",
+      "materialName": "Brushed Aluminium"
+    }
+  ]
+}
