@@ -1,0 +1,38 @@
+name: DEV-031 Browser GLB visual inspection (offline CI)
+
+on:
+  pull_request:
+    paths:
+      - "service/viewer/**"
+      - "service/src/viewer-page.ts"
+      - "service/__tests__/viewer-visual-inspection.test.mjs"
+      - "service/__tests__/viewer.test.mjs"
+      - ".github/workflows/viewer-dev031.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  viewer-inspection:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install, compile and bundle browser viewer
+        working-directory: service
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build
+      - name: Verify camera presets, overlays and existing viewer security
+        working-directory: service
+        run: |
+          node --test __tests__/viewer-visual-inspection.test.mjs __tests__/viewer.test.mjs
+      - name: Confirm bundled client has no remote rendering dependency
+        working-directory: service
+        run: |
+          test -s dist/viewer.js
+          ! grep -E 'https://|MODAL_TOKEN_ID|MODAL_TOKEN_SECRET' dist/viewer.js
