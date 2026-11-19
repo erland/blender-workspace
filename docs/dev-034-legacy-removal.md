@@ -113,3 +113,20 @@ Python-only artifacts; live execution remains optional and billable.
 The old demo scripts and their dedicated historical workflows are still
 present. Removing those files without migrating remaining CI dependencies
 would break checks, so their deletion is a separate E3B step.
+
+## DEV-034E3B: retired typed Blender workers
+
+Removed the obsolete Python Blender `apply_operation.py`, `edit_scene.py`,
+`scene_operation_validation.py`, `scene_edit_validation.py` and
+`glb_import_validation.py`, their typed operation unit tests and four
+legacy Blender verifiers. Also retired dedicated CI for DEV-012 structured
+edits, DEV-014 generic operations and DEV-015 batched operations. These
+workflows existed exclusively to run now-unsupported typed authoring paths.
+
+The Python-first worker `apply_python.py`, shared scene/geometry/material
+helpers, owner authorization, immutable revisions, the baseline Blender
+Python-first smoke, and isolated Python Sandbox CI are retained. Generic
+job/revision and Modal tests remain. The old monster demo and retired
+TypeScript schemas are deliberately **not** removed in this change; they
+will be handled in a separately verified step. Verification of this PR is
+pending.
