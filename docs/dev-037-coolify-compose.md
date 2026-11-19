@@ -135,3 +135,17 @@ not part of the deployed Coolify Compose file.
 Real deployment to your external PostgreSQL, GHCR registry access,
 Google/ChatGPT OAuth and a user-funded Modal run are manual
 acceptance tests, not claimed to be verified by unit tests.
+
+## Safari settings form compatibility
+
+Safari may submit a same-origin HTML form with `Origin: null` while
+sending `Sec-Fetch-Site: same-origin`. Settings POST routes accept this
+**specific** combination, in addition to the exact configured
+`PUBLIC_ORIGIN`, but still require a valid signed settings session
+and its matching per-session CSRF field. Missing `Origin`, an unrelated
+origin, or `Origin: null` with missing/cross-site Fetch Metadata is
+rejected. No CORS wildcard or proxy override is needed.
+
+If settings POST still fails with HTTP 403, use browser developer tools
+to check the **Origin** and **Sec-Fetch-Site** request headers without
+copying cookies, CSRF tokens or Modal credentials into logs or tickets.

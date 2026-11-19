@@ -88,7 +88,14 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          {bodyLimit:4096},async(request,reply)=>{
          const session=google.settingsSession(request.headers.cookie);
          if(!session)return secure(reply).code(401).send('Unauthorized');
-         if(request.headers.origin!==config.publicOrigin)
+         // Safari can send Origin: null for a same-origin HTML form navigation.
+         // Accept it only with explicit browser Fetch Metadata; the signed
+         // settings session and the per-session CSRF field are required below.
+         // Missing Origin or cross-site/none Fetch Metadata never bypasses this.
+         const origin=request.headers.origin;
+         const sameOriginSafari=origin==='null'&&
+           request.headers['sec-fetch-site']==='same-origin';
+         if(origin!==config.publicOrigin&&!sameOriginSafari)
            return secure(reply).code(403).send('Forbidden');
          if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
            return secure(reply).code(415).send('Unsupported Media Type');
