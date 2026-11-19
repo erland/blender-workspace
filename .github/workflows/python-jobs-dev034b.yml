@@ -1,0 +1,44 @@
+name: DEV-034B Python job revision and recovery regressions
+on:
+  pull_request:
+    paths:
+      - 'service/src/jobs/**'
+      - 'service/src/storage/**'
+      - 'service/__tests__/python-job-regressions.test.mjs'
+      - '.github/workflows/python-jobs-dev034b.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  python-job-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: blender_test
+          POSTGRES_PASSWORD: ci-password-not-for-production
+          POSTGRES_DB: blender_workspace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://blender_test:ci-password-not-for-production@127.0.0.1:5432/blender_workspace_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile service
+        working-directory: service
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build:server
+      - name: Verify Python-only job revision and recovery
+        working-directory: service
+        run: node --test __tests__/python-job-regressions.test.mjs
