@@ -6,6 +6,7 @@ from pathlib import Path
 import bpy
 
 from blender_workspace_poc.common import inspect_scene, write_manifest
+from blender_workspace_poc.object_identity import ensure_object_ids
 
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
@@ -14,6 +15,7 @@ bpy.context.object.name='Closed Cube'
 bpy.ops.mesh.primitive_plane_add(size=2,location=(-2,0,0))
 bpy.context.object.name='Open Plane'
 bpy.context.view_layer.update()
+ensure_object_ids(bpy.data.objects)
 scene=inspect_scene()
 objects={o['name']:o for o in scene['objects']}
 cube=objects['Closed Cube']['geometry']
