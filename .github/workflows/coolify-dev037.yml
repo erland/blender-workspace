@@ -1,0 +1,118 @@
+name: DEV-037 Coolify Compose / external PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/coolify.compose.yaml'
+      - 'docs/dev-037-coolify-compose.md'
+      - 'service/src/db/pool-config.ts'
+      - 'service/src/db/migrate-cli.ts'
+      - 'service/src/jobs/cli.ts'
+      - 'service/src/main.ts'
+      - 'service/__tests__/db-pool-config.test.mjs'
+      - '.github/workflows/coolify-dev037.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: blender_test
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: blender_workspace_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://blender_test:ci-only-password@127.0.0.1:5432/blender_workspace_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: TypeScript build, OAuth/MCP/PG integration and discrete config tests
+        working-directory: service
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Render Coolify Compose with dummy variables
+        env:
+          BW_IMAGE_SHA: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          PGHOST: private-postgresql.example
+          PGPORT: '5432'
+          PGUSER: blender_workspace_app
+          PGPASSWORD: ci-only-not-production
+          PGDATABASE: blender_workspace
+          PUBLIC_ORIGIN: https://blender.example.org
+          GOOGLE_CLIENT_ID: ci-client-id
+          GOOGLE_CLIENT_SECRET: ci-only-google-secret
+          GOOGLE_ALLOWED_REDIRECT_ORIGINS: https://chatgpt.com
+          GOOGLE_ALLOWED_EMAILS: someone@example.com
+          OAUTH_SIGNING_KEY: ci-only-signing-secret
+          OAUTH_SESSION_SECRET: ci-only-session-secret
+          MODAL_CREDENTIAL_ENCRYPTION_KEY: ci-only-encryption-secret
+        run: |
+          docker compose -f deploy/coolify.compose.yaml config --format json > "$RUNNER_TEMP/coolify.json"
+          python3 - "$RUNNER_TEMP/coolify.json" <<'PY'
+          import json,sys
+          compose=json.load(open(sys.argv[1]))
+          services=compose['services']
+          assert set(services)=={'migrate','mcp','job-worker'},set(services)
+          assert 'postgres' not in services
+          for name in services:
+              env=services[name]['environment']
+              assert env['PGHOST']=='private-postgresql.example'
+              assert env['PGPASSWORD']=='ci-only-not-production'
+              assert env['PGDATABASE']=='blender_workspace'
+              assert 'DATABASE_URL' not in env
+              assert services[name]['image'].endswith(':sha-'+'a'*40)
+          assert services['migrate']['command']==['node','dist/db/migrate-cli.js']
+          assert services['mcp']['depends_on']['migrate']['condition']=='service_completed_successfully'
+          assert services['job-worker']['depends_on']['migrate']['condition']=='service_completed_successfully'
+          assert services['job-worker']['command']==['dispatch']
+          assert 'ports' not in services['job-worker']
+          assert 'ports' not in services['migrate']
+          def volume(service):
+              return next(x['source'] for x in service['volumes']
+                          if x['target']=='/data/blender-workspace')
+          assert volume(services['mcp'])==volume(services['job-worker'])
+          print('DEV-037 Compose external PG, env secret, migrations and shared volume: PASS')
+          PY
+      - name: Build service image containing migration runner
+        run: |
+          docker build -f service/Dockerfile -t bw-mcp:dev037 service
+          docker run --rm --entrypoint node bw-mcp:dev037 -e \
+            "import('node:fs').then(fs => {if (!fs.existsSync('/app/dist/db/migrate-cli.js') || !fs.existsSync('/app/migrations')) process.exit(1)})"
+      - name: Validate Compose fails closed on missing PostgreSQL password
+        env:
+          BW_IMAGE_SHA: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          PGHOST: db
+          PGPORT: '5432'
+          PGUSER: u
+          PGDATABASE: db
+          PUBLIC_ORIGIN: https://blender.example.org
+          GOOGLE_CLIENT_ID: dummy
+          GOOGLE_CLIENT_SECRET: dummy
+          GOOGLE_ALLOWED_REDIRECT_ORIGINS: https://chatgpt.com
+          GOOGLE_ALLOWED_EMAILS: someone@example.com
+          OAUTH_SIGNING_KEY: dummy
+          OAUTH_SESSION_SECRET: dummy
+          MODAL_CREDENTIAL_ENCRYPTION_KEY: dummy
+        run: |
+          unset PGPASSWORD
+          if docker compose -f deploy/coolify.compose.yaml config >/dev/null 2>&1; then
+            echo 'Compose must fail when PGPASSWORD is missing' >&2
+            exit 1
+          fi
