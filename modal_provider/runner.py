@@ -39,10 +39,17 @@ def safe_failure_code(phase, error):
     # These checks classify known SDK failures without echoing any exception
     # message, traceback, Python source, token or filesystem path.
     kind = type(error).__name__.lower()
+    # SDK exception class is sometimes generic (RemoteError). Inspect only for
+    # classification; the underlying message is never emitted or persisted.
+    detail = str(error).lower()[:2000]
     if phase == "modal_start":
-        if "auth" in kind or "permission" in kind or "unauthorized" in kind:
+        if ("auth" in kind or "permission" in kind or "unauthorized" in kind or
+                "permission denied" in detail or "unauthorized" in detail or
+                "invalid token" in detail):
             return "authentication_failed"
-        if "image" in kind or "notfound" in kind:
+        if ("image" in kind or "notfound" in kind or
+                "manifest unknown" in detail or "image not found" in detail or
+                "pull access denied" in detail):
             return "image_unavailable"
         return "sandbox_start_failed"
     return {
@@ -132,9 +139,10 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         report["status"] = "PASS"
         return report
     except Exception as exc:
-        report["error_type"] = type(exc).__name__
-        report["error"] = str(exc)[:1000]
-        raise RunnerDiagnostic(phase, safe_failure_code(phase, exc)) from None
+        code = safe_failure_code(phase, exc)
+        report["failure_phase"] = phase
+        report["failure_code"] = code
+        raise RunnerDiagnostic(phase, code) from None
     finally:
         if sandbox is not None:
             try:
@@ -142,7 +150,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
                 report["sandbox_terminated"] = True
             except Exception as exc:
                 report["sandbox_terminated"] = False
-                report["termination_error"] = str(exc)[:1000]
+                report["termination_error_code"] = "sandbox_cleanup_failed"
                 report["status"] = "FAILED"
         else:
             report["sandbox_terminated"] = True  # no sandbox was allocated
