@@ -97,5 +97,12 @@ roughness, opacity and emission. See [PBR material contract](service/docs/dev-02
 
 DEV-028 provides initial bounded import of small, self-contained GLB assets via a
 validated MCP operation, with fresh stable IDs and continued versioned edits.
+
+DEV-032 adds reusable project-local named PBR materials with typed
+`create_pbr_material` and `assign_material` operations and read-only
+`workspace_list_materials` catalog for owned revisions. Materials persist
+between revisions without extra inspection jobs or Modal rendering; large
+asset uploads, textures and cross-project libraries remain out of scope.
+See [DEV-032 material reuse](service/docs/dev-032-reusable-materials.md).
 Large-file upload and real-world acceptance remain separate requirements.
 See [DEV-028 GLB import](service/docs/dev-028-bounded-glb-import.md).
