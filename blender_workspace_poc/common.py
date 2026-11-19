@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 import bpy
 from blender_workspace_poc.object_identity import ensure_object_ids,PROPERTY
+from blender_workspace_poc.geometry_report import describe_mesh
 FRAME_RATE=24
 FRAME_END=49
 def ensure_output():
@@ -19,9 +20,10 @@ def export_glb(path):
 def inspect_scene():
     # Report the actual Blender scene. Object names/types are not constrained
     # by the demo model and are never inferred from filename conventions.
+    bpy.context.view_layer.update()
     objects=[]
     for obj in bpy.data.objects:
-        objects.append({
+        record={
             'name':obj.name,
             'objectId':obj.get(PROPERTY),
             'type':obj.type,
@@ -33,7 +35,10 @@ def inspect_scene():
                 'rotationEuler':[float(v) for v in obj.rotation_euler],
                 'scale':[float(v) for v in obj.scale]
             }
-        })
+        }
+        if obj.type=='MESH':
+            record['geometry']=describe_mesh(obj)
+        objects.append(record)
     return {'blender_version':bpy.app.version_string,'fps':bpy.context.scene.render.fps,
         'frame_start':bpy.context.scene.frame_start,
         'frame_end':bpy.context.scene.frame_end,

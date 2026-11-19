@@ -1,0 +1,36 @@
+name: DEV-030 Geometry inspection and validation (offline CI)
+on:
+  pull_request:
+    paths:
+      - "blender_workspace_poc/geometry_report.py"
+      - "blender_workspace_poc/common.py"
+      - "service/src/scene/scene-contract.ts"
+      - "service/src/mcp/project-tools.ts"
+      - "service/__tests__/geometry-inspection.test.mjs"
+      - "tests/geometry_inspection_smoke.py"
+      - ".github/workflows/geometry-inspection-dev030.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  geometry-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python syntax
+        run: python3 -m py_compile blender_workspace_poc/geometry_report.py blender_workspace_poc/common.py tests/geometry_inspection_smoke.py
+      - name: Compile and test typed MCP contracts
+        working-directory: service
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build:server
+          node --test __tests__/geometry-inspection.test.mjs __tests__/scene-contract.test.mjs
+      - name: Build Blender worker
+        run: docker build -f Dockerfile -t blender-dev030:ci .
+      - name: Check closed and open meshes with real headless Blender
+        run: |
+          docker run --rm --entrypoint blender blender-dev030:ci \
+            -b --factory-startup --python /workspace/tests/geometry_inspection_smoke.py \
+            | tee blender-geometry-test.log
+          grep -q 'BW_DEV030_GEOMETRY PASS' blender-geometry-test.log
