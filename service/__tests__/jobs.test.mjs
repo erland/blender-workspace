@@ -82,7 +82,7 @@ test('Corrupted published Python artifacts cannot be recovered after DB failure'
   const x=await fixture(t);
   x.jobs.finalize=async()=>{throw Error('Database finalize failed');};
   const job=await x.jobs.reserve(x.owner,x.project.id,0,'Publish',undefined,spec);
-  await assert.rejects(()=>x.workflow.execute(x.owner,job.id),/Database finalize failed/);
+  await assert.rejects(()=>x.workflow.execute(x.owner,job.id),/BW_JOB_ERROR phase=revision_commit code=revision_commit_failed/);
   assert.equal((await x.jobs.get(x.owner,job.id)).status,'needs_recovery');
   const glb=await x.store.verifiedArtifactPath(x.project.id,1,'scene.glb');
   await writeFile(glb,'tampered GLB');
