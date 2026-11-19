@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 from pathlib import Path
 import time
 
@@ -25,6 +26,31 @@ def blender_image_reference(value=None):
         raise ValueError("MODAL_BLENDER_IMAGE must be a pinned GHCR release version, sha-commit tag or sha256 digest")
     return ref
 
+
+
+class RunnerDiagnostic(Exception):
+    """Structured non-secret failure diagnostic for the trusted Node worker."""
+    def __init__(self, phase, code):
+        super().__init__(code)
+        self.phase, self.code = phase, code
+
+
+def safe_failure_code(phase, error):
+    # These checks classify known SDK failures without echoing any exception
+    # message, traceback, Python source, token or filesystem path.
+    kind = type(error).__name__.lower()
+    if phase == "modal_start":
+        if "auth" in kind or "permission" in kind or "unauthorized" in kind:
+            return "authentication_failed"
+        if "image" in kind or "notfound" in kind:
+            return "image_unavailable"
+        return "sandbox_start_failed"
+    return {
+        "blender_execution": "blender_execution_failed",
+        "artifact_transfer": "artifact_transfer_failed",
+        "artifact_validation": "artifact_invalid",
+        "cleanup": "sandbox_cleanup_failed",
+    }.get(phase, "initialization_failed")
 
 
 def estimate_usd(seconds, cpu=2, memory_mib=8192):
@@ -56,15 +82,16 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
     image_ref = blender_image_reference()
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    image = sdk.Image.from_registry(image_ref, add_python="3.11")
-    app = sdk.App.lookup("blender-workspace-dev002", create_if_missing=True)
     started = time.monotonic()
     sandbox = None
     report = {"schema_version": 1, "revision": revision, "provider": "modal-sandbox",
               "cpu_physical_cores": cpu, "memory_mib": memory_mib,
               "sandbox_timeout_seconds": timeout, "status": "FAILED", "artifacts": [],
               "blender_image": image_ref}
+    phase = "modal_start"
     try:
+        image = sdk.Image.from_registry(image_ref, add_python="3.11")
+        app = sdk.App.lookup("blender-workspace-dev002", create_if_missing=True)
         sandbox = sdk.Sandbox.create(
             "sleep", str(timeout), app=app, image=image, cpu=cpu, memory=memory_mib,
             timeout=timeout, workdir="/workspace", block_network=True)
@@ -73,6 +100,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         if revision >= 2:
             sandbox.filesystem.copy_from_local(str(Path(input_blend).resolve()),
                 "/workspace/out/input.blend")
+        phase = "blender_execution"
         process = sandbox.exec("blender", "-b", "--factory-startup", "--python",
             "/workspace/blender_workspace_poc/apply_python.py", "--",
             "NEW" if revision == 1 else "/workspace/out/input.blend",
@@ -85,6 +113,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         if "BW_SANDBOX_PYTHON PASS" not in report["blender_stdout_tail"]:
             raise RuntimeError("Expected isolated Blender-Python success marker missing")
         executed = time.monotonic()
+        phase = "artifact_transfer"
         names = ARTIFACT_NAMES
         for name in names:
             local = out / name
@@ -94,6 +123,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
             report["artifacts"].append({
                 "name": name, "bytes": local.stat().st_size,
                 "sha256": hashlib.sha256(local.read_bytes()).hexdigest()})
+        phase = "artifact_validation"
         from modal_provider.artifact_validation import validate_python_outputs
         validate_python_outputs(out)
         report["sandbox_start_seconds"] = round(created - started, 3)
@@ -104,7 +134,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
     except Exception as exc:
         report["error_type"] = type(exc).__name__
         report["error"] = str(exc)[:1000]
-        raise
+        raise RunnerDiagnostic(phase, safe_failure_code(phase, exc)) from None
     finally:
         if sandbox is not None:
             try:
@@ -139,11 +169,19 @@ def main():
     if not 0.125 <= args.cpu <= 4 or not 512 <= args.memory_mib <= 16384:
         p.error("resource limit exceeded")
     import modal
-    report = run(modal, args.out, cpu=args.cpu, memory_mib=args.memory_mib,
-                 timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
-                 python_file=args.python_file)
-    if report["status"] != "PASS" or not report["sandbox_terminated"]:
-        raise RuntimeError("Sandbox cleanup or verification failed")
+    try:
+        report = run(modal, args.out, cpu=args.cpu, memory_mib=args.memory_mib,
+                     timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
+                     python_file=args.python_file)
+        if report["status"] != "PASS" or not report["sandbox_terminated"]:
+            raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
+    except RunnerDiagnostic as exc:
+        print(f"BW_DIAGNOSTIC phase={exc.phase} code={exc.code}", file=sys.stderr)
+        raise SystemExit(1) from None
+    except Exception:
+        # No raw SDK exception text or traceback in subprocess output.
+        print("BW_DIAGNOSTIC phase=setup code=initialization_failed", file=sys.stderr)
+        raise SystemExit(1) from None
     print("Modal artifacts saved to", args.out)
 
 
