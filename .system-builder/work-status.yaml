@@ -201,18 +201,17 @@ verification:
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
     status: IN_PROGRESS
-    scope: "Phase E1 verified - forbid legacy job reservations; phase E2 runner cleanup remains"
+    scope: "Phase E1 reservation boundary and E2 Python-only Modal controller; combined CI pending"
     code_ci:
-      status: PASS
-      source_sha: 3131c1252cd9d0390e6b38f8804accc8284f174c
-      result: All 17 pull-request GitHub Actions workflows concluded success for DEV-034E1, including Python job regressions and Blender checks
+      status: PENDING
+      previous_verified_sha: 3131c1252cd9d0390e6b38f8804accc8284f174c
+      reason: Prior 17 workflows passed for E1; E2 Python controller and tests require fresh CI
     cleanup_remaining:
-      - Remove old Modal runner CLI branches
-      - Migrate remaining legacy worker tests and CI to Python first
-      - Remove unused structured schemas and demo worker scripts
+      - Verify Python-only Modal controller unit tests and full required CI
+      - Remove unused structured schemas, demo worker scripts and superseded CI
 next:
-  recommended: DEV-034E2
-  reason: Remove retired Modal Python runner CLI branches and replace superseded worker tests; keep Python-only artifact verification
+  recommended: VERIFY_DEV-034E2
+  reason: Confirm all CI for E1+E2 combined branch; then remove legacy Blender worker scripts and obsolete CI
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
