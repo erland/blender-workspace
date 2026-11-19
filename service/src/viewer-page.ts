@@ -12,6 +12,11 @@ header{display:flex;align-items:center;justify-content:space-between;flex-wrap:w
 h1{font-size:1.15rem;margin:0}.actions{display:flex;gap:8px;flex-wrap:wrap}
 button{border:1px solid #64748b;background:#fff;border-radius:8px;padding:9px 14px;cursor:pointer}
 button:disabled{cursor:default;opacity:.4}
+.viewer-options{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.viewer-options label{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+.viewer-options input{accent-color:#2563eb}
+.viewer-options select{min-width:130px}
+@media(max-width:720px){.viewer-options{gap:8px}}
 main{height:calc(100dvh - 165px);min-height:320px;padding:12px}
 .viewports{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;height:100%}
 .viewports:has(#compare-pane:not([hidden])){grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -26,10 +31,25 @@ footer{padding:5px 20px;font-size:.9rem}
 <header><h1>Blender Workspace · revision ${revision}</h1>
 <nav class="actions" aria-label="Visningskontroller">
 <button id="reset" disabled>Återställ vy</button>
-<button id="snapshot" disabled>Spara bild</button>
+<button id="snapshot" disabled>Exportera PNG</button>
 <a href="/settings">Kontoinställningar</a>
 </nav></header>
-<div class="selection-bar"><label for="revision-picker">Jämför med</label>
+<div class="selection-bar">
+<div class="viewer-options" role="group" aria-label="Kameravy och modellhjälpmedel">
+<label for="view-angle">Kameravy</label>
+<select id="view-angle" disabled>
+<option value="isometric">Isometrisk</option>
+<option value="front">Framifrån</option>
+<option value="back">Bakifrån</option>
+<option value="left">Vänster</option>
+<option value="right">Höger</option>
+<option value="top">Ovanifrån</option>
+</select>
+<label><input type="checkbox" id="show-bounds" disabled> Begränsningsruta</label>
+<label><input type="checkbox" id="show-axes" disabled> Koordinataxlar</label>
+<label><input type="checkbox" id="show-wireframe" disabled> Trådramsvy</label>
+</div>
+<label for="revision-picker">Jämför med</label>
 <select id="revision-picker" disabled><option value="">Ingen jämförelse</option></select>
 <span id="selected" role="status">Inget objekt markerat</span>
 <button id="copy-selection" disabled>Kopiera objektreferens</button>
