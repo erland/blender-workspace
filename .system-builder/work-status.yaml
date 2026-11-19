@@ -201,18 +201,18 @@ verification:
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
     status: IN_PROGRESS
-    scope: "Phase D - remove retired TypeScript orchestration and Modal executor branches"
+    scope: "Phase D verified - Python-only TypeScript execution; phase E runner cleanup remains"
     code_ci:
-      status: PENDING
-      reason: DEV-034C passed on PR #44; DEV-034D TypeScript production cleanup CI pending
+      status: PASS
+      source_sha: 41fbf9a091f92f4972d7ce4a9d7244f93b592d29
+      result: All 17 pull-request GitHub Actions workflows passed including PostgreSQL, owner isolation, dispatch, Blender and Python regression suites
     cleanup_remaining:
-      - Verify Python-only TypeScript executor and orchestrator CI
       - Remove legacy repository queue acceptance and Modal runner CLI branches
       - Migrate remaining legacy worker tests and CI to Python first
       - Remove unused structured schemas and demo worker scripts
 next:
-  recommended: VERIFY_DEV-034
-  reason: Verify DEV-034D CI then remove old repository job formats and Modal runner / worker branches
+  recommended: DEV-034E
+  reason: Remove legacy queue acceptance, Modal runner CLI branches, unused scripts and superseded tests without affecting Python jobs
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
