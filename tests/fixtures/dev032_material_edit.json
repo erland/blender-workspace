@@ -1,0 +1,20 @@
+{
+  "kind": "batch",
+  "operations": [
+    {
+      "kind": "add_primitive",
+      "name": "New Panel",
+      "primitive": "cube",
+      "location": [
+        4,
+        0,
+        0
+      ]
+    },
+    {
+      "kind": "assign_material",
+      "name": "New Panel",
+      "materialName": "Brushed Aluminium"
+    }
+  ]
+}
