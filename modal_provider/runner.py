@@ -30,9 +30,9 @@ def blender_image_reference(value=None):
 
 class RunnerDiagnostic(Exception):
     """Structured non-secret failure diagnostic for the trusted Node worker."""
-    def __init__(self, phase, code):
+    def __init__(self, phase, code, reason=None):
         super().__init__(code)
-        self.phase, self.code = phase, code
+        self.phase, self.code, self.reason = phase, code, reason
 
 
 def safe_failure_code(phase, error):
@@ -140,9 +140,14 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         return report
     except Exception as exc:
         code = safe_failure_code(phase, exc)
+        # A fixed, non-secret detail identifies the exact failed validation check.
+        from modal_provider.artifact_validation import ArtifactValidationError
+        reason = exc.reason if phase == 'artifact_validation' and isinstance(exc, ArtifactValidationError) else None
         report["failure_phase"] = phase
         report["failure_code"] = code
-        raise RunnerDiagnostic(phase, code) from None
+        if reason is not None:
+            report["failure_reason"] = reason
+        raise RunnerDiagnostic(phase, code, reason) from None
     finally:
         if sandbox is not None:
             try:
@@ -184,7 +189,8 @@ def main():
         if report["status"] != "PASS" or not report["sandbox_terminated"]:
             raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
     except RunnerDiagnostic as exc:
-        print(f"BW_DIAGNOSTIC phase={exc.phase} code={exc.code}", file=sys.stderr)
+        detail = f" reason={exc.reason}" if exc.reason else ""
+        print(f"BW_DIAGNOSTIC phase={exc.phase} code={exc.code}{detail}", file=sys.stderr)
         raise SystemExit(1) from None
     except Exception:
         # No raw SDK exception text or traceback in subprocess output.
