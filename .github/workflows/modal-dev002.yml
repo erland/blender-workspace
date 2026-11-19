@@ -38,18 +38,19 @@ jobs:
       - name: Install Modal Python SDK
         run: python -m pip install 'modal==1.4.1'
       - name: Execute real Blender Sandbox
-        run: python -m modal_provider.runner --out out-modal --timeout 900
-      - name: Validate downloaded project and animation
+        run: python -m modal_provider.runner --out out-modal --timeout 900 --python-file tests/sandbox_python_example.py
+      - name: Validate Python-only Sandbox results
         run: |
-          python tests/verify_manifest.py out-modal
-          python tests/verify_glb.py out-modal/monster_v1.glb out-modal/monster_v2.glb
           python - <<'PY'
           import json
           from pathlib import Path
-          result=json.loads(Path("out-modal/modal_run_report.json").read_text())
-          assert result["status"]=="PASS" and result["sandbox_terminated"]
-          assert len(result["artifacts"])==6
-          print("Modal artifacts and lifecycle: PASS")
+          from modal_provider.artifact_validation import validate_python_outputs
+          folder=Path('out-modal')
+          assert validate_python_outputs(folder)['object_count']==2
+          result=json.loads((folder/'modal_run_report.json').read_text())
+          assert result['status']=='PASS' and result['sandbox_terminated']
+          assert {v['name'] for v in result['artifacts']}=={'scene.blend','scene.glb','scene.json'}
+          print('Modal Python-only creation and artifacts: PASS')
           PY
       - name: Upload evidence
         if: always()

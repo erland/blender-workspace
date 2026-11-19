@@ -100,3 +100,16 @@ artifacts, cost estimation, failure and cleanup.
 
 The old Blender demo/typed scripts and historical tests/CI have **not** yet
 been deleted. Removal follows after this combined branch passes CI.
+
+## DEV-034E3A: remove legacy execution from baseline CI
+
+The always-on `.github/workflows/blender-headless.yml` no longer creates
+or recolors the demo monster. It builds Blender, executes `apply_python.py`
+for a new model and a subsequent saved revision, validates both BLEND/GLB/JSON
+artifact sets, and checks object identity stability across revisions.
+The opt-in Modal DEV-002 smoke now supplies `--python-file` and validates
+Python-only artifacts; live execution remains optional and billable.
+
+The old demo scripts and their dedicated historical workflows are still
+present. Removing those files without migrating remaining CI dependencies
+would break checks, so their deletion is a separate E3B step.

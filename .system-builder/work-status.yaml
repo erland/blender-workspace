@@ -201,16 +201,16 @@ verification:
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
     status: IN_PROGRESS
-    scope: "Phase E1+E2 verified - Python-only job queue and Modal controller; retired Blender scripts remain"
+    scope: "Phase E3A verified - baseline Blender and optional Modal smoke now Python-first"
     code_ci:
       status: PASS
-      source_sha: e2ff2f0148abd03dcf2cb9fb759d44c74ec6a29f
-      result: All 19 PR workflows succeeded for E1+E2, including Python-only Modal tests, PostgreSQL, Blender headless and isolated Blender Python revision checks
+      source_sha: 23cf38b5d6d3f2781e5997168a0548276dd80885
+      result: Both PR workflows passed, including real Blender Python creation/revision and non-billable Modal controller tests
     cleanup_remaining:
       - Remove unused structured schemas, demo worker scripts and superseded CI
 next:
-  recommended: DEV-034E3
-  reason: After merging PR #46 remove retired Blender modeling scripts and superseded CI/tests, while preserving Python-first worker and inspection coverage
+  recommended: DEV-034E3B
+  reason: Retire unused demo/typed Blender scripts and superseded CI/test dependencies after verified Python-first baseline
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
