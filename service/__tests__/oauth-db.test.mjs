@@ -20,7 +20,11 @@ test('OAuth users stay isolated and read-only grants cannot create or queue', {s
  const issuer='https://issuer.example.org';
  const cfg=loadConfig({NODE_ENV:'test',OAUTH_ALLOW_LOCAL_TEST:'true',PUBLIC_ORIGIN:publicOrigin,
    MCP_AUTH_MODE:'oauth',OAUTH_ISSUER:issuer,OAUTH_JWKS_URI:'https://issuer.example.org/jwks'});
- const app=createApp(cfg,{projects,jobs},{keys});
+ const app=createApp(cfg,{projects,jobs,
+   modalAccounts:{async status(){return {connected:true};}},
+   artifacts:{async verifiedArtifactPath(){throw new Error('no saved predecessor');},
+     async inspect(){throw new Error('no saved predecessor');}}
+ },{keys});
  await app.listen({host:'127.0.0.1',port:0});
  let createdId;
  t.after(async()=>{
@@ -58,13 +62,17 @@ test('OAuth users stay isolated and read-only grants cannot create or queue', {s
  assert.ok(output(await call(alice,'workspace_list_projects')).projects.some(p=>p.id===createdId));
  assert.ok(!output(await call(bob,'workspace_list_projects')).projects.some(p=>p.id===createdId));
  assert.equal((await call(bob,'workspace_get_project',{projectId:createdId})).isError,true);
- assert.equal((await call(bob,'workspace_queue_demo',{projectId:createdId})).isError,true);
+ const script='import bpy\\nbpy.ops.mesh.primitive_cube_add()';
+ assert.equal((await call(bob,'workspace_queue_python_script',
+   {projectId:createdId,expectedRevision:0,code:script})).isError,true);
  const forbidden=await call(readonly,'workspace_create_project',{name:'Forbidden'});
  assert.equal(forbidden.isError,true);
  assert.match(JSON.stringify(forbidden._meta??{}),/insufficient_scope/);
- assert.equal((await call(readonly,'workspace_queue_demo',{projectId:createdId})).isError,true);
+ assert.equal((await call(readonly,'workspace_queue_python_script',
+   {projectId:createdId,expectedRevision:0,code:script})).isError,true);
  assert.equal(output(await call(readonly,'workspace_get_project',{projectId:createdId})).project.id,createdId);
- const queued=output(await call(alice,'workspace_queue_demo',{projectId:createdId})).job;
+ const queued=output(await call(alice,'workspace_queue_python_script',
+   {projectId:createdId,expectedRevision:0,code:script})).job;
  assert.equal(queued.status,'pending');
  assert.equal((await call(bob,'workspace_get_job',{jobId:queued.id})).isError,true);
 });
