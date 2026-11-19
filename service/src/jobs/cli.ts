@@ -1,4 +1,5 @@
 import pg from 'pg';
+import {databasePoolConfig} from '../db/pool-config.js';
 import { LocalArtifactStore } from '../storage/artifact-store.js';
 import { JobRepository } from './job-repository.js';
 import { JobOrchestrator } from './orchestrator.js';
@@ -7,11 +8,12 @@ import {ModalPythonExecutor} from './modal-executor.js';
 import {ModalAccountManager} from '../modal/modal-accounts.js';
 import {ModalCliTokenVerifier} from '../modal/modal-token-verifier.js';
 
-const url=process.env.DATABASE_URL;
+const connection=databasePoolConfig();
 const root=process.env.ARTIFACT_ROOT;
 const worker=process.env.MODAL_WORKER_ROOT;
-if(!url||!root||!worker)throw new Error('DATABASE_URL, ARTIFACT_ROOT and MODAL_WORKER_ROOT are required');
-const pool=new pg.Pool({connectionString:url,max:5,connectionTimeoutMillis:5000});
+if(!connection||!root||!worker)
+  throw new Error('PostgreSQL connection, ARTIFACT_ROOT and MODAL_WORKER_ROOT are required');
+const pool=new pg.Pool(connection);
 const jobs=new JobRepository(pool);
 const key=process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY;
 const accounts=key?ModalAccountManager.fromBase64(pool,key,new ModalCliTokenVerifier()):undefined;
