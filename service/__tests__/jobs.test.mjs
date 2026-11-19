@@ -103,3 +103,29 @@ test('Python scripts reject injection fields, NUL, oversized and non-UTF8-bound 
   ])assert.throws(()=>parsePythonScript(value));
   assert.deepEqual(parsePythonScript(spec),spec);
 });
+
+test('retired demo and typed jobs fail closed instead of invoking Blender',async()=>{
+  const oldJobs=[
+    {operation_spec:null,edit_spec:null},
+    {operation_spec:{kind:'add_primitive',name:'Old',primitive:'cube'},edit_spec:null},
+    {operation_spec:null,edit_spec:{target:'Body',color:[0,0,1]}}
+  ];
+  for(const payload of oldJobs){
+    const calls=[];
+    const job={id:'old-job',project_id:'old-project',owner_key:'legacy-owner',
+      expected_revision:0,requested_revision:1,status:'running',...payload};
+    const jobs={
+      async markFailed(owner,id){calls.push(['failed',owner,id]);},
+      async markRecoverable(){throw Error('Must not recover retired work');},
+      async finalize(){throw Error('Must not finalize retired work');}
+    };
+    const artifacts={
+      async verifiedArtifactPath(){throw Error('Must not read legacy scene');},
+      async publish(){throw Error('Must not publish legacy scene');}
+    };
+    const executor={async runPythonScript(){throw Error('Must not execute retired work');}};
+    const workflow=new JobOrchestrator(jobs,artifacts,executor);
+    await assert.rejects(()=>workflow.executeClaimed(job));
+    assert.deepEqual(calls,[['failed','legacy-owner','old-job']]);
+  }
+});
