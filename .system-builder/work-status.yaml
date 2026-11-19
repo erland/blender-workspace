@@ -201,18 +201,16 @@ verification:
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
     status: IN_PROGRESS
-    scope: "Phase D verified - Python-only TypeScript execution; phase E runner cleanup remains"
+    scope: "Phase E1+E2 verified - Python-only job queue and Modal controller; retired Blender scripts remain"
     code_ci:
       status: PASS
-      source_sha: 41fbf9a091f92f4972d7ce4a9d7244f93b592d29
-      result: All 17 pull-request GitHub Actions workflows passed including PostgreSQL, owner isolation, dispatch, Blender and Python regression suites
+      source_sha: e2ff2f0148abd03dcf2cb9fb759d44c74ec6a29f
+      result: All 19 PR workflows succeeded for E1+E2, including Python-only Modal tests, PostgreSQL, Blender headless and isolated Blender Python revision checks
     cleanup_remaining:
-      - Remove legacy repository queue acceptance and Modal runner CLI branches
-      - Migrate remaining legacy worker tests and CI to Python first
-      - Remove unused structured schemas and demo worker scripts
+      - Remove unused structured schemas, demo worker scripts and superseded CI
 next:
-  recommended: DEV-034E
-  reason: Remove legacy queue acceptance, Modal runner CLI branches, unused scripts and superseded tests without affecting Python jobs
+  recommended: DEV-034E3
+  reason: After merging PR #46 remove retired Blender modeling scripts and superseded CI/tests, while preserving Python-first worker and inspection coverage
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:

@@ -1,27 +1,26 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
-import {parseSceneOperation,type SceneOperation} from './scene-operation.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
   id:string; project_id:string;owner_key:string; expected_revision:number;
-  requested_revision:number;status:JobStatus;note:string;error_message:string|null;edit_spec:SceneEdit|null;operation_spec:SceneOperation|PythonScriptSpec|null;
+  requested_revision:number;status:JobStatus;note:string;error_message:string|null;edit_spec:unknown|null;operation_spec:PythonScriptSpec|null;
 }
 export class JobConflict extends Error {
   constructor(message:string) {super(message);this.name='JobConflict';}
 }
 export class JobRepository {
   constructor(private readonly pool:Pool) {}
-  async reserve(owner:string, projectId:string, expectedRevision:number, note='',edit?:SceneEdit,operation?:SceneOperation|PythonScriptSpec):Promise<Job> {
+  async reserve(owner:string, projectId:string, expectedRevision:number, note='',_retiredEdit?:never,operation?:PythonScriptSpec):Promise<Job> {
     if (!owner.trim() || owner.length>200 || note.length>5000 || !Number.isSafeInteger(expectedRevision) ||
         expectedRevision<0 || expectedRevision>99999998)
       throw new RangeError('Invalid job input');
-    if(edit!==undefined&&operation!==undefined)throw new RangeError('Conflicting edit specifications');
-    const safeEdit=edit===undefined?null:parseSceneEdit(edit);
-    const safeOperation=operation===undefined?null:operation.kind==='python_script'?
-      parsePythonScript(operation):parseSceneOperation(operation);
+    // The public MCP writer is Python-only. Also reject internal callers
+    // before opening a database transaction: no new demo/typed jobs may queue.
+    if(_retiredEdit!==undefined)throw new RangeError('Structured scene edits are retired');
+    if(operation===undefined)throw new RangeError('Python script is required');
+    const safeOperation=parsePythonScript(operation);
     const client=await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -33,7 +32,7 @@ export class JobRepository {
       const j=await client.query<Job>(`INSERT INTO bw_jobs
         (id,project_id,owner_key,expected_revision,requested_revision,status,note,edit_spec,operation_spec)
         VALUES($1,$2,$3,$4,$5,'pending',$6,$7::jsonb,$8::jsonb) RETURNING *`,
-        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,note,safeEdit===null?null:JSON.stringify(safeEdit),safeOperation===null?null:JSON.stringify(safeOperation)]);
+        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,note,null,JSON.stringify(safeOperation)]);
       await client.query('COMMIT');
       return j.rows[0];
     } catch (e) {

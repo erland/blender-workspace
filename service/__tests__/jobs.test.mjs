@@ -129,3 +129,22 @@ test('retired demo and typed jobs fail closed instead of invoking Blender',async
     assert.deepEqual(calls,[['failed','legacy-owner','old-job']]);
   }
 });
+
+test('retired reservation formats fail before allocating a database connection',async()=>{
+  const accesses=[];
+  const pool={async connect(){accesses.push('connect');throw Error('DB should not be accessed');}};
+  const repo=new JobRepository(pool);
+  const owner='python-owner',project=randomUUID();
+  const invalid=[
+    [undefined,undefined],
+    [undefined,{kind:'add_primitive',name:'Retired',primitive:'cube'}],
+    [{target:'Body',color:[0,0,1]},undefined],
+    [undefined,{kind:'batch',operations:[]}],
+    [undefined,{kind:'python_script',code:' ' }],
+    [undefined,{kind:'python_script',code:'print(1)',path:'/etc/passwd'}]
+  ];
+  for(const [edit,operation] of invalid){
+    await assert.rejects(()=>repo.reserve(owner,project,0,'No legacy',edit,operation));
+  }
+  assert.deepEqual(accesses,[]);
+});
