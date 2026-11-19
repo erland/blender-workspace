@@ -7,6 +7,9 @@ COPY service/src ./src
 RUN npm run build:server && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
+# GHCR publication pins worker -> Blender to the exact same source commit.
+ARG MODAL_BLENDER_IMAGE
+ENV MODAL_BLENDER_IMAGE=${MODAL_BLENDER_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 RUN python3 -m venv /opt/modal && /opt/modal/bin/pip install --no-cache-dir modal==1.4.1
