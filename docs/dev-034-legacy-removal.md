@@ -83,3 +83,20 @@ be removed with the final repository/API cleanup.
 This step does not delete the legacy Python Modal-controller branches or
 Blender demonstration scripts. Those require test/CI migration and are the
 next cleanup step. No claim of live user-billed Modal or OAuth verification.
+
+## DEV-034E2: Python-only Modal controller
+
+The trusted Modal controller now requires `--python-file` and accepts no
+`--operation-file`, `--edit-file`, demo or fixed recolor execution mode.
+Every job runs the fixed `apply_python.py` entrypoint in a network-blocked
+Sandbox, optionally uploading the prior verified BLEND for revision >= 2.
+The controller requires the `BW_SANDBOX_PYTHON PASS` marker and validates the
+BLEND/GLB/JSON artifact structure before returning success. It always attempts
+to terminate the Sandbox and records transfer/compute estimates, not actual bills.
+
+`tests/test_modal_provider.py` was replaced with Python-only lifecycle tests,
+including missing source, UTF-8/size validation, marker spoofing, invalid
+artifacts, cost estimation, failure and cleanup.
+
+The old Blender demo/typed scripts and historical tests/CI have **not** yet
+been deleted. Removal follows after this combined branch passes CI.
