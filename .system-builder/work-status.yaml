@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: code_complete_live_acceptance_deferred
 mode: CHANGE
 selected_step: DEV-034
-in_progress: DEV-034
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
@@ -12,6 +12,7 @@ completed_steps:
   - DEV-005
   - DEV-006
   - DEV-007
+  - DEV-034
 verification:
   dev008:
     status: DEFERRED
@@ -200,17 +201,19 @@ verification:
       status: DEFERRED
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
-    status: IN_PROGRESS
-    scope: "Final DEV-034 cleanup: retired demo, typed schemas, Docker entrypoint and regression tests; CI pending"
+    status: COMPLETE
+    scope: "Python-first consolidation: retired all demo and typed authoring execution, schemas, and legacy CI entrypoints"
+    source_pr: https://github.com/erland/blender-workspace/pull/49
     code_ci:
-      status: PENDING
-      previous_verified_sha: 405b755c311f38d242ceb8df3a3a97ea29bc03d4
-      reason: Final cleanup implementation requires fresh Python-first integration, TypeScript and Docker CI
-    cleanup_remaining:
-      - Verify final full relevant CI after deleting old TS and demo workers
+      status: PASS
+      source_sha: 31922e4c12b073b3dfed6813eceef85a49888d67
+      result: All 18 PR workflows passed; includes PostgreSQL, MCP, Modal controller, real Blender Python creation/revisions, materials, inspection, and Docker smoke
+    live_acceptance:
+      status: DEFERRED
+      reason: Real user OAuth, owner-billed Modal execution and browser/iPad acceptance require configured external services and devices
 next:
-  recommended: VERIFY_DEV-034_FINAL
-  reason: Run and repair CI for final Python-first cleanup; mark DEV-034 complete only on verified implementation SHA
+  recommended: LIVE_ACCEPTANCE_WHEN_READY
+  reason: DEV-034 code cleanup is complete. No further cleanup DEV steps are planned; verify real connected ChatGPT/Google OAuth, owner-funded Modal and iPad/browser workflows separately when available
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
