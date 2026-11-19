@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: verification_pending
+status: code_complete_live_acceptance_deferred
 mode: CHANGE
 selected_step: DEV-036
-in_progress: DEV-036
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
@@ -14,6 +14,7 @@ completed_steps:
   - DEV-007
   - DEV-034
   - DEV-035
+  - DEV-036
 verification:
   dev008:
     status: DEFERRED
@@ -224,17 +225,19 @@ verification:
       status: DEFERRED
       reason: Owner-billed Modal, Google/ChatGPT and browser/iPad live acceptance not executed
   dev036:
-    status: IN_PROGRESS
-    scope: "Publish commit-pinned GHCR MCP, Job Worker and Blender images after offline CI; Modal uses the pinned registry Blender image"
+    status: COMPLETE
+    scope: "Commit-pinned GHCR MCP, Job Worker and Blender image publication after offline CI; Modal controller pulls pinned registry image"
+    source_pr: https://github.com/erland/blender-workspace/pull/51
     code_ci:
-      status: PENDING
-      reason: Source, unit, Docker and real local Blender CI not yet verified
+      status: PASS
+      source_sha: 0952bb681b557872cc45ea50c875e8e4b586e6f7
+      result: All 9 PR workflows passed; GHCR verification job built all three images and ran service syntax preflight, worker image pin, PostgreSQL/MCP and real local Blender smoke. Publish job correctly skipped on PR.
     deployment_acceptance:
       status: DEFERRED
-      reason: GHCR publish requires a verified main push; Blender package visibility, Coolify pull and owner-billed Modal live acceptance remain external
+      reason: First GHCR publish requires merge to main. Blender package must be made public before owner-billed Modal testing. Coolify pull and live end-to-end still unverified.
 next:
-  recommended: VERIFY_DEV-036
-  reason: Repair and pass PR CI, then verify GHCR publication on main and manual package visibility before deploying to Coolify
+  recommended: VERIFY_GHCR_PUBLICATION_ON_MAIN
+  reason: Merge PR #51, inspect the main publish workflow's three packages, set Blender GHCR visibility public, then deploy matching pinned images to Coolify and test an owner-funded Modal job
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
