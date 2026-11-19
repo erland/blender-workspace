@@ -7,6 +7,7 @@ RUN (curl -fL --retry 4 --retry-all-errors --retry-delay 2 "https://mirror.blend
 ENV PATH="/opt/blender:${PATH}" BLENDER_USER_CONFIG=/tmp/blender-config PYTHONPATH=/workspace
 WORKDIR /workspace
 COPY blender_workspace_poc ./blender_workspace_poc
+COPY modal_provider ./modal_provider
 COPY tests ./tests
 COPY scripts ./scripts
 RUN chmod +x scripts/*.sh && useradd -m -u 10001 blender && mkdir -p /workspace/out && chown -R blender:blender /workspace

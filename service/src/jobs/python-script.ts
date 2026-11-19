@@ -1,8 +1,7 @@
 import {z} from 'zod';
 
-/** Python is untrusted, executable content: never add this schema to
- * SceneOperationSchema or allow it to pass through the bounded operation tool.
- * Limit request size before persisting or executing in a per-job Modal Sandbox.
+/** Untrusted Python source is validated before persistence and runs only in
+ * a bounded, per-job isolated Blender Sandbox. No typed authoring API exists.
  */
 export const PythonScriptSchema=z.object({
   kind:z.literal('python_script'),
