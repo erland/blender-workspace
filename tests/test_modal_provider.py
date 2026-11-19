@@ -1,14 +1,21 @@
 """Unit coverage for the Python-only, owner-billed Modal Sandbox controller."""
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import MagicMock, patch
 
-from modal_provider.runner import ARTIFACT_NAMES, estimate_usd, run
+from modal_provider.runner import ARTIFACT_NAMES, estimate_usd, run, blender_image_reference
 
 
 class ModalProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.image = "ghcr.io/erland/blender-workspace-blender:sha-" + "a" * 40
+        self.env = patch.dict(os.environ, {"MODAL_BLENDER_IMAGE": self.image})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
     def sdk(self, exit_code=0, marker="BW_SANDBOX_PYTHON PASS", copy_error=None):
         sdk = MagicMock()
         sandbox = sdk.Sandbox.create.return_value
@@ -44,6 +51,11 @@ class ModalProviderTests(unittest.TestCase):
             self.assertTrue(result["sandbox_terminated"])
             self.assertEqual({a["name"] for a in result["artifacts"]}, set(ARTIFACT_NAMES))
             validate.assert_called_once_with(out.resolve())
+            sdk.Image.from_registry.assert_called_once_with(
+                self.image, add_python="3.11"
+            )
+            sdk.Image.from_dockerfile.assert_not_called()
+            self.assertEqual(result["blender_image"], self.image)
             options = sdk.Sandbox.create.call_args.kwargs
             self.assertTrue(options["block_network"])
             self.assertEqual(options["timeout"], 900)
@@ -161,6 +173,32 @@ class ModalProviderTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "quota"):
                 run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_not_called()
+
+    def test_registry_ref_requires_immutable_sha_tag_or_digest(self):
+        good = "ghcr.io/erland/blender-workspace-blender:sha-" + "f" * 40
+        digest = "ghcr.io/erland/blender-workspace-blender@sha256:" + "a" * 64
+        self.assertEqual(blender_image_reference(good), good)
+        self.assertEqual(blender_image_reference(digest), digest)
+        for bad in ("", "latest", "ghcr.io/erland/blender-workspace-blender:latest",
+                    "ghcr.io/erland/blender-workspace-blender:sha-abc",
+                    "docker.io/erland/blender:sha-" + "a" * 40,
+                    "ghcr.io/a/b:sha-" + "g" * 40,
+                    "ghcr.io/erland/blender-workspace-blender:sha-" + "a"*40 + " --insecure"):
+            with self.subTest(ref=bad), self.assertRaises(ValueError):
+                blender_image_reference(bad)
+
+    def test_missing_or_unpinned_registry_image_never_calls_modal(self):
+        sdk = self.sdk()
+        with TemporaryDirectory() as tmp:
+            script, _ = self.files(tmp)
+            for ref in ("", "ghcr.io/erland/blender-workspace-blender:latest"):
+                with self.subTest(ref=ref), patch.dict(os.environ,
+                    {"MODAL_BLENDER_IMAGE": ref}):
+                    with self.assertRaisesRegex(ValueError, "pinned GHCR"):
+                        run(sdk, Path(tmp) / "out", python_file=str(script))
+            sdk.Image.from_registry.assert_not_called()
+            sdk.Sandbox.create.assert_not_called()
+            sdk.App.lookup.assert_not_called()
 
     def test_cost_estimate_and_artifact_contract(self):
         self.assertEqual(estimate_usd(60, 2, 8192), 0.007932)
