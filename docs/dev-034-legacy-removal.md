@@ -45,3 +45,22 @@ revision coverage. Older typed operation schema tests are intentionally retired
 from these suites: these operations are no longer an MCP product contract.
 Remaining internal implementation and Python legacy runner tests are to be
 removed after CI acceptance of this test migration.
+
+## DEV-034D: production TypeScript execution consolidation
+
+- Removed retired demo, fixed blue recolor, structured edit and typed scene
+  operation **execution branches** from `JobOrchestrator`.
+- Removed the corresponding subprocess invocation methods and legacy
+  credential fallback from `ModalPythonExecutor`; it now always requires
+  connected owner-scoped Modal credentials.
+- Existing Python scripts alone write `scene.blend`, `scene.glb`, `scene.json`.
+  Non-Python historical queued work fails closed before a Blender worker
+  starts. Database columns and prior immutable artifacts have not been
+  deleted.
+- Preserved checksum-verified predecessor loading, immutable publishing,
+  recovery without re-execution and job state transitions.
+- Updated Modal account tests and added an explicit fail-closed regression.
+
+**Still outstanding:** remove accepting legacy forms from the repository
+write API, retire old CLI branches in `modal_provider/runner.py`, remove
+unused Blender scripts/TypeScript schemas and replace historical CI.
