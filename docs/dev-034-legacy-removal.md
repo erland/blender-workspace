@@ -64,3 +64,22 @@ removed after CI acceptance of this test migration.
 **Still outstanding:** remove accepting legacy forms from the repository
 write API, retire old CLI branches in `modal_provider/runner.py`, remove
 unused Blender scripts/TypeScript schemas and replace historical CI.
+
+## DEV-034E1: reservation safety boundary
+
+`JobRepository.reserve` no longer imports or parses the retired structured
+edit / scene-operation command schemas. New reservations **must** include a
+`python_script` specification, validated before a PostgreSQL connection is
+opened. Legacy edit payloads, absent operations and arbitrary operation kinds
+are rejected instead of persisted. The existing `edit_spec` database column
+remains present (new values are always null); old rows continue to fail closed
+in `JobOrchestrator`, which never invokes the retired Blender workers.
+
+The six-argument internal repository signature temporarily retains an
+always-undefined legacy edit slot to avoid an unrelated call-site migration in
+this bounded step. It is **not** a supported compatibility interface and should
+be removed with the final repository/API cleanup.
+
+This step does not delete the legacy Python Modal-controller branches or
+Blender demonstration scripts. Those require test/CI migration and are the
+next cleanup step. No claim of live user-billed Modal or OAuth verification.
