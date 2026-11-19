@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {cameraPlacement,DEFAULT_VIEW,VIEW_DIRECTIONS} from './view-controls.js';
 
 // Read-only same-origin GLB viewer; no user code, access tokens or Modal calls.
 const match=location.pathname.match(/^\/viewer\/([0-9a-f-]{36})\/revisions\/([1-9][0-9]{0,7})$/i);
@@ -12,6 +13,10 @@ const comparison=document.getElementById('comparison');
 const revisionPicker=document.getElementById('revision-picker');
 const comparePane=document.getElementById('compare-pane');
 const copyButton=document.getElementById('copy-selection');
+const viewPicker=document.getElementById('view-angle');
+const boundsToggle=document.getElementById('show-bounds');
+const axesToggle=document.getElementById('show-axes');
+const wireframeToggle=document.getElementById('show-wireframe');
 const getGlbUrl=r=>'/viewer/api/projects/'+projectId+'/revisions/'+r+'/scene.glb';
 const getRevisionsUrl=()=>'/viewer/api/projects/'+projectId+'/revisions';
 const loader=new GLTFLoader();
@@ -34,31 +39,84 @@ function createViewport(canvas,interactive=false){
   const controls=new OrbitControls(camera,canvas);
   controls.enableDamping=true;
   controls.screenSpacePanning=true;
-  const state={renderer,scene,camera,controls,canvas,model:null,bounds:null,selectionHelper:null};
+  const state={renderer,scene,camera,controls,canvas,model:null,bounds:null,
+    selectionHelper:null,boundsHelper:null,axesHelper:null,wireframeMaterials:new Map(),
+    viewAngle:DEFAULT_VIEW,showBounds:false,showAxes:false,showWireframe:false};
   const resize=()=>{
     const rect=canvas.getBoundingClientRect();
     const w=Math.max(1,Math.round(rect.width)),h=Math.max(1,Math.round(rect.height));
     renderer.setSize(w,h,false);
     camera.aspect=w/h;
     camera.updateProjectionMatrix();
+    // Keep a fitted model visible when rotating the device or resizing panes.
+    if(state.bounds)orient(state.viewAngle);
   };
   const observer=new ResizeObserver(resize);
   observer.observe(canvas);resize();
-  function fit(){
+  function orient(view=DEFAULT_VIEW){
+    if(!(view in VIEW_DIRECTIONS))throw new RangeError('Unknown camera preset');
+    state.viewAngle=view;
     if(!state.bounds)return;
-    const center=state.bounds.getCenter(new THREE.Vector3());
-    const radius=Math.max(state.bounds.getSize(new THREE.Vector3()).length()/2,.01);
-    const distance=radius/Math.sin(THREE.MathUtils.degToRad(camera.fov/2))*1.35;
-    camera.near=Math.max(distance/1000,.001);
-    camera.far=distance*1000;
-    camera.position.copy(center).add(new THREE.Vector3(distance*.75,distance*.55,distance));
-    camera.lookAt(center);
-    controls.target.copy(center);
-    controls.minDistance=Math.max(radius*.02,.001);
-    controls.maxDistance=Math.max(radius*100,10);
-    camera.updateProjectionMatrix();controls.update();
+    const framing=cameraPlacement(state.bounds,view,camera.aspect,camera.fov);
+    camera.up.copy(framing.up);
+    camera.position.copy(framing.position);
+    camera.near=framing.near;
+    camera.far=framing.far;
+    camera.lookAt(framing.center);
+    controls.target.copy(framing.center);
+    controls.minDistance=framing.minDistance;
+    controls.maxDistance=framing.maxDistance;
+    camera.updateProjectionMatrix();
+    controls.update();
+  }
+  function fit(){orient(state.viewAngle);}
+  function clearHints(){
+    for(const helper of [state.boundsHelper,state.axesHelper]){
+      if(!helper)continue;
+      scene.remove(helper);
+      helper.geometry.dispose();
+      if(Array.isArray(helper.material))helper.material.forEach(m=>m.dispose());
+      else helper.material.dispose();
+    }
+    state.boundsHelper=null;
+    state.axesHelper=null;
+    for(const [material,wasWireframe] of state.wireframeMaterials){
+      material.wireframe=wasWireframe;
+      material.needsUpdate=true;
+    }
+    state.wireframeMaterials.clear();
+  }
+  function setHints({bounds=state.showBounds,axes=state.showAxes,wireframe=state.showWireframe}={}){
+    state.showBounds=Boolean(bounds);
+    state.showAxes=Boolean(axes);
+    state.showWireframe=Boolean(wireframe);
+    clearHints();
+    if(!state.model||!state.bounds)return;
+    if(state.showBounds){
+      state.boundsHelper=new THREE.Box3Helper(state.bounds.clone(),0xf59e0b);
+      scene.add(state.boundsHelper);
+    }
+    if(state.showAxes){
+      const size=Math.max(0.1,state.bounds.getSize(new THREE.Vector3()).length()/3);
+      state.axesHelper=new THREE.AxesHelper(size);
+      scene.add(state.axesHelper);
+    }
+    if(state.showWireframe){
+      state.model.traverse(obj=>{
+        if(!obj.isMesh)return;
+        const materials=Array.isArray(obj.material)?obj.material:[obj.material];
+        for(const material of materials){
+          if(!material||typeof material.wireframe!=='boolean')continue;
+          if(!state.wireframeMaterials.has(material))
+            state.wireframeMaterials.set(material,material.wireframe);
+          material.wireframe=true;
+          material.needsUpdate=true;
+        }
+      });
+    }
   }
   function clear(){
+    clearHints();
     if(state.selectionHelper){scene.remove(state.selectionHelper);state.selectionHelper.geometry.dispose();state.selectionHelper.material.dispose();state.selectionHelper=null;}
     if(state.model){scene.remove(state.model);state.model=null;}
     state.bounds=null;
@@ -69,7 +127,7 @@ function createViewport(canvas,interactive=false){
     if(!canvas.closest('[hidden]')){controls.update();renderer.render(scene,camera);}
   }
   draw();
-  return Object.assign(state,{fit,clear,dispose:()=>{observer.disconnect();controls.dispose();clear();renderer.dispose();}});
+  return Object.assign(state,{fit,orient,setHints,clear,dispose:()=>{observer.disconnect();controls.dispose();clear();renderer.dispose();}});
 }
 const main=createViewport(document.getElementById('viewport'),true);
 const secondary=createViewport(document.getElementById('comparison-viewport'));
@@ -88,6 +146,7 @@ async function load(rev,viewport){
   viewport.bounds=bounds;
   viewport.scene.add(model);
   viewport.fit();
+  viewport.setHints();
 }
 function selectedIdentity(hit){
   // Blender custom properties are exported as glTF node extras by DEV-022.
@@ -152,12 +211,26 @@ copyButton.addEventListener('click',async()=>{
   catch{status.textContent='Kunde inte kopiera objektreferensen';}
 });
 document.getElementById('reset').addEventListener('click',()=>{main.fit();secondary.fit();});
+viewPicker.addEventListener('change',()=>{
+  const view=viewPicker.value;
+  if(!(view in VIEW_DIRECTIONS))return;
+  main.orient(view);
+  secondary.orient(view);
+});
+function syncHints(){
+  const hints={bounds:boundsToggle.checked,axes:axesToggle.checked,
+    wireframe:wireframeToggle.checked};
+  main.setHints(hints);
+  secondary.setHints(hints);
+}
+for(const toggle of [boundsToggle,axesToggle,wireframeToggle])
+  toggle.addEventListener('change',syncHints);
 document.getElementById('snapshot').addEventListener('click',()=>{
   main.renderer.render(main.scene,main.camera);
   main.canvas.toBlob(blob=>{
     if(!blob){status.textContent='Kunde inte skapa bild';return;}
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='blender-workspace-r'+revision+'.png';a.click();
+    a.href=url;a.download='blender-workspace-r'+revision+'-'+main.viewAngle+'.png';a.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   },'image/png');
 });
@@ -179,6 +252,8 @@ try{
   await load(revision,main);
   document.getElementById('reset').disabled=false;
   document.getElementById('snapshot').disabled=false;
+  viewPicker.disabled=false;
+  for(const toggle of [boundsToggle,axesToggle,wireframeToggle])toggle.disabled=false;
   status.textContent='Revision '+revision+' – klicka på ett objekt, dra för att rotera';
   try{
     const response=await fetch(getRevisionsUrl(),{credentials:'same-origin',cache:'no-store'});
