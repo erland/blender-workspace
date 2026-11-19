@@ -33,7 +33,7 @@ try {
     process.once('SIGTERM',()=>controller.abort());
     process.once('SIGINT',()=>controller.abort());
     await dispatcher.run(controller.signal);
-    } else if(command==='run'){
+  } else if(command==='run'){
     const job=await workflow.execute(owner,argument);
     console.log(JSON.stringify({jobId:job.id,status:job.status}));
   } else if(command==='recover'){
