@@ -268,7 +268,20 @@ verification:
     live_acceptance:
       status: DEFERRED
       reason: Safari 26 against deployed Coolify service not yet retested
+  modal_job_diagnostics:
+    status: COMPLETE
+    scope: "Bounded process output, sanitized phase/code diagnostics in job database and owner-scoped MCP job lookup; no billable jobs in CI"
+    source_pr: https://github.com/erland/blender-workspace/pull/55
+    code_ci:
+      status: PASS
+      source_sha: 9548c00b9b5bc4b8c2200801ba7fff4d0d372573
+      result: All 21 PR GitHub Actions workflows passed, including PostgreSQL, OAuth, job orchestration, Modal simulation, Blender and GHCR verification
+    live_acceptance:
+      status: DEFERRED
+      reason: Existing failed job did not preserve raw diagnostics; a new owner-approved Modal execution is needed to observe phase/code on a real failure
 next:
+  recommended: VERIFY_MODAL_JOB_DIAGNOSTICS_AFTER_RELEASE
+  reason: Merge PR #55, publish GitHub Release, deploy matching MCP/worker images, then inspect next explicitly authorized job with workspace_get_job; do not silently retry billable failed jobs
   recommended: VERIFY_FIRST_RELEASE_GHCR_PUBLISH
   reason: Merge PR #54, publish a stable vMAJOR.MINOR.PATCH GitHub Release, verify three version/latest GHCR images, then configure Coolify BW_IMAGE_TAG and redeploy
 blockers_additional:
