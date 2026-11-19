@@ -62,7 +62,7 @@ test('OAuth users stay isolated and read-only grants cannot create or queue', {s
  assert.ok(output(await call(alice,'workspace_list_projects')).projects.some(p=>p.id===createdId));
  assert.ok(!output(await call(bob,'workspace_list_projects')).projects.some(p=>p.id===createdId));
  assert.equal((await call(bob,'workspace_get_project',{projectId:createdId})).isError,true);
- const script='import bpy\\nbpy.ops.mesh.primitive_cube_add()';
+ const script='import bpy\nbpy.ops.mesh.primitive_cube_add()';
  assert.equal((await call(bob,'workspace_queue_python_script',
    {projectId:createdId,expectedRevision:0,code:script})).isError,true);
  const forbidden=await call(readonly,'workspace_create_project',{name:'Forbidden'});
