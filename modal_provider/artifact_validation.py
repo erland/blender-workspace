@@ -96,9 +96,9 @@ VALIDATION_REASONS = {
     'Sandbox artifact checksum mismatch': 'artifact_checksum_mismatch',
 }
 class ArtifactValidationError(ValueError):
-    def __init__(self, reason):
+    def __init__(self, reason, message):
         self.reason = reason
-        super().__init__('artifact_invalid:' + reason)
+        super().__init__(message)
 
 def validate_python_outputs(folder):
     try:
@@ -114,6 +114,6 @@ def validate_python_outputs(folder):
             }.get(name, 'artifact_unclassified')
         else:
             reason = VALIDATION_REASONS.get(message, 'artifact_unclassified')
-        raise ArtifactValidationError(reason) from None
-    except (OSError, UnicodeError, TypeError, KeyError, IndexError):
-        raise ArtifactValidationError('artifact_unclassified') from None
+        raise ArtifactValidationError(reason, message) from None
+    except (OSError, UnicodeError, TypeError, KeyError, IndexError, AttributeError):
+        raise ArtifactValidationError('artifact_unclassified', 'Invalid artifact structure') from None
