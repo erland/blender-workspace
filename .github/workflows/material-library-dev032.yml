@@ -1,17 +1,14 @@
-name: DEV-032 Reusable PBR material library (offline CI)
+name: DEV-032 Python-first reusable PBR material library
 on:
   pull_request:
     paths:
       - "blender_workspace_poc/material_library.py"
-      - "blender_workspace_poc/apply_operation.py"
+      - "blender_workspace_poc/apply_python.py"
       - "blender_workspace_poc/common.py"
-      - "blender_workspace_poc/scene_operation_validation.py"
-      - "service/src/jobs/scene-operation.ts"
       - "service/src/scene/scene-contract.ts"
       - "service/src/mcp/project-tools.ts"
       - "service/__tests__/material-library.test.mjs"
       - "tests/test_material_library_validation.py"
-      - "tests/fixtures/dev032_*"
       - ".github/workflows/material-library-dev032.yml"
   workflow_dispatch:
 permissions:
@@ -25,41 +22,61 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate Python and typed Node contracts without Modal
+      - name: Validate Python and Node scene/material contracts without Modal
         run: |
-          python3 -m py_compile blender_workspace_poc/material_library.py blender_workspace_poc/apply_operation.py blender_workspace_poc/common.py
+          python3 -m py_compile blender_workspace_poc/material_library.py blender_workspace_poc/apply_python.py blender_workspace_poc/common.py
           python3 -m unittest discover -s tests -p 'test_material_library_validation.py' -v
           cd service
           npm install --no-package-lock --no-audit --no-fund
           npm run build:server
           node --test __tests__/material-library.test.mjs __tests__/scene-contract.test.mjs
-      - name: Build unchanged Blender worker
+      - name: Build Python-first Blender worker
         run: docker build -f Dockerfile -t blender-dev032:ci .
-      - name: Execute revision 1 and revision 2 material reuse in real Blender
+      - name: Create and reuse a named PBR material over two Python revisions
         run: |
           set -eu
           mkdir -p dev032-out/first dev032-out/second
           chmod 777 dev032-out/first dev032-out/second
-          cp tests/fixtures/dev032_material_create.json dev032-out/first/operation.json
+          cat > dev032-out/first/model.py <<'PY'
+          import bpy
+          from blender_workspace_poc.material_library import create_library_material, assign_library_material
+          create_library_material({
+              'materialName':'Brushed Aluminium','baseColor':[0.6,0.6,0.65],
+              'metallic':0.9,'roughness':0.3,'opacity':1.0,
+              'emissionColor':[0,0,0],'emissionStrength':0.0})
+          for name,x in [('Desk',0),('Leg',2)]:
+              bpy.ops.mesh.primitive_cube_add(location=(x,0,0))
+              bpy.context.object.name=name
+              assign_library_material(bpy.context.object,'Brushed Aluminium')
+          PY
           docker run --rm -v "$PWD/dev032-out/first:/workspace/out" --entrypoint blender blender-dev032:ci \
-            -b --factory-startup --python /workspace/blender_workspace_poc/apply_operation.py \
-            -- NEW /workspace/out/operation.json 1
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- NEW /workspace/out/model.py 1
           cp dev032-out/first/scene.blend dev032-out/second/input.blend
-          cp tests/fixtures/dev032_material_edit.json dev032-out/second/operation.json
+          cat > dev032-out/second/model.py <<'PY'
+          import bpy
+          from blender_workspace_poc.material_library import assign_library_material
+          bpy.ops.mesh.primitive_cube_add(location=(4,0,0))
+          bpy.context.object.name='New Panel'
+          assign_library_material(bpy.context.object,'Brushed Aluminium')
+          PY
           docker run --rm -v "$PWD/dev032-out/second:/workspace/out" --entrypoint blender blender-dev032:ci \
-            -b --factory-startup --python /workspace/blender_workspace_poc/apply_operation.py \
-            -- /workspace/out/input.blend /workspace/out/operation.json 2
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- /workspace/out/input.blend /workspace/out/model.py 2
           python3 - <<'PY'
           import json,struct
           from pathlib import Path
+          from modal_provider.artifact_validation import validate_python_outputs
           def gltf(path):
               data=path.read_bytes()
               assert data[:4]==b'glTF'
               length,marker=struct.unpack_from('<I4s',data,12)
               assert marker==b'JSON'
               return json.loads(data[20:20+length].decode('utf8'))
+          ids=[]
           for rev,names in [('first',{'Desk','Leg'}),('second',{'Desk','Leg','New Panel'})]:
               folder=Path('dev032-out')/rev
+              assert validate_python_outputs(folder)['object_count']==len(names)
               report=json.loads((folder/'scene.json').read_text())
               assets=report['scene']['materialLibrary']
               assert len(assets)==1,assets
@@ -68,12 +85,14 @@ jobs:
               assert set(mat['usedBy'])==names
               assert abs(mat['metallic']-0.9)<1e-5
               assert abs(mat['roughness']-0.3)<1e-5
-              assert all(next(a['name'] for a in assets) in obj['materials']
-                         for obj in report['scene']['objects'])
+              assert all(mat['name'] in obj['materials'] for obj in report['scene']['objects'])
+              ids.append({obj['name']:obj['objectId'] for obj in report['scene']['objects']})
               scene=gltf(folder/'scene.glb')
               assert any(m.get('name')=='Brushed Aluminium' for m in scene['materials'])
               assert len(scene['nodes'])>=len(names)
               assert (folder/'scene.blend').stat().st_size>100
-              print('DEV032',rev,'materials',len(scene['materials']),'nodes',len(scene['nodes']))
-          print('BW_DEV032_MATERIAL_LIBRARY PASS')
+          assert ids[0]['Desk']==ids[1]['Desk']
+          assert ids[0]['Leg']==ids[1]['Leg']
+          assert ids[1]['New Panel'] not in set(ids[0].values())
+          print('BW_DEV032_PYTHON_MATERIAL_LIBRARY PASS')
           PY
