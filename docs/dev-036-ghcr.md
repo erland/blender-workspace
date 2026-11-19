@@ -42,6 +42,15 @@ their image contents.
 
 ## Coolify
 
+**Recommended**: use the checked-in
+[`deploy/coolify.compose.yaml`](../deploy/coolify.compose.yaml) and
+[`docs/dev-037-coolify-compose.md`](dev-037-coolify-compose.md). They
+connect to an externally managed PostgreSQL instance with separate
+`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` entries in
+Coolify. PostgreSQL is **not** a Compose service. A one-shot migration
+gate initializes application tables before MCP/worker startup.
+
+
 Create two container-based services, not three:
 
 1. **MCP service**: image `ghcr.io/erland/blender-workspace-mcp:sha-<sha>`.
