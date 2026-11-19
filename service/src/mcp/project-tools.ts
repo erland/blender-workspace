@@ -4,8 +4,6 @@ import type { ProjectRepository } from '../db/projects.js';
 import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
-import {SceneEditSchema} from '../jobs/scene-edit.js';
-import {SceneOperationSchema,isValidInitialSceneOperation} from '../jobs/scene-operation.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import {inspectSavedScene,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
@@ -127,7 +125,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
   // Read only previously saved, checksum-verified JSON. These calls never
   // start Blender, inspect untrusted .blend bytes, or incur Modal charges.
   server.registerTool('workspace_list_materials',{
-    description:'List reusable named PBR materials (numeric colors, metallic, roughness, opacity, emission) and mesh users stored in one owned, checksum-verified Blender revision. Read only, no Modal job. Older revisions return available=false. Create and assign project-local materials using create_pbr_material and assign_material in workspace_queue_scene_operation.',
+    description:'List reusable named PBR materials (numeric colors, metallic, roughness, opacity, emission) and mesh users stored in one owned, checksum-verified Blender revision. Read only, no Modal job. Older revisions return available=false. Modifying material data is performed through Blender-Python.',
     inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999)},
     annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
   },async({projectId,revision})=>{
@@ -191,38 +189,8 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       }catch{return failure(new JobConflict('Saved GLB revision not found'));}
     });
   }
-  server.registerTool('workspace_queue_scene_operation',{
-    description:'Queue one or a batch (1–20) of bounded Blender operations for any model: create primitives, transform/recolor/duplicate/rename/delete, or parent/unparent scene objects. For existing targets specify exactly one of name or stable objectId; for duplicate sources specify source or sourceId. set_parent requires parentId (UUID or null to unparent), rejects cycles and preserves world position. Existing meshes also support set_pbr_material with bounded RGB baseColor/emissionColor, metallic, roughness, opacity and emissionStrength (all factors 0–1). Existing meshes support extrude_face (polygon faceIndex and nonzero local offset), mirror_mesh (x/y/z axis), array_mesh (2–8 copies with nonzero local constant offset), bevel_mesh (width 0.001–2, 1–3 segments), subdivide_mesh (1–2 levels) and boolean_mesh (union/difference/intersection with operandId) as applied, bounded geometry edits. Named PBR materials can be created with create_pbr_material and assigned to mesh objects via assign_material in the same scene or a later revision. This reuses materials without textures, arbitrary nodes, paths or URLs. A new scene must begin with add_primitive, add_mesh, or import_glb. import_glb accepts only a self-contained GLB v2 embedded as base64 (up to 120 KB decoded), not paths or remote URLs. add_mesh accepts bounded vertices and face vertex indices. Operations are ordered and saved as one immutable revision. No user Python.',
-    inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
-      operation:SceneOperationSchema,note:note.optional()},...schemes(WRITE_SCOPE)
-  },async({projectId,expectedRevision,operation,note:jobNote})=>{
-    const deniedWrite=denied(WRITE_SCOPE);if(deniedWrite)return deniedWrite;
-    try{
-      if(modalAccounts&&!(await modalAccounts.status(ownerKey)).connected)
-        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
-      const project=await projects.get(ownerKey,projectId);
-      if(!project)return failure(new JobConflict('Project not found'));
-      if(project.current_revision!==expectedRevision)
-        return failure(new JobConflict('Stale project revision'));
-      if(expectedRevision===0){
-        if(!isValidInitialSceneOperation(operation))
-          return failure(new JobConflict('Initial scene must add a primitive, custom mesh or bounded GLB'));
-      }else{
-        const history=await projects.revisions(ownerKey,projectId);
-        if(!history.some(v=>v.revision===expectedRevision&&v.artifact_prefix))
-          return failure(new JobConflict('Saved source revision not found'));
-        if(!artifacts)return failure(new JobConflict('Generic artifacts are not configured'));
-        const manifest=await artifacts.inspect(projectId,expectedRevision);
-        if(!manifest.artifacts.some(v=>v.name==='scene.blend'))
-          return failure(new JobConflict('Generic scene source is required'));
-      }
-      const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
-        jobNote??'Structured Blender operation',undefined,operation);
-      return result({job:safeJob(job),operation,message:'Queued generic Blender scene operation'});
-    }catch{return failure(new JobConflict('Scene operation could not be queued'));}
-  });
   server.registerTool('workspace_queue_python_script',{
-    description:'Queue Blender Python in a short-lived, network-blocked Modal Sandbox. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owned project revision and saved BLEND checks apply as for structured operations. This tool executes arbitrary Python with resource limits, not as a safe in-process API.',
+    description:'Queue Blender Python in a short-lived, network-blocked Modal Sandbox. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       code:PythonScriptSchema.shape.code,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,code,note:jobNote})=>{
@@ -245,59 +213,8 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
         jobNote??'Sandboxed Blender Python',undefined,spec);
       return result({job:safeJob(job),execution:'modal-sandbox',
-        message:'Queued Blender Python for isolated execution; no direct server-side Python'});
+        message:'Queued Blender Python for isolated execution; one immutable scene revision'});
     }catch{return failure(new JobConflict('Python job could not be queued'));}
-  });
-  server.registerTool('workspace_queue_demo', {
-    description: 'Queue the first cube-monster demonstration revision for automatic execution by the separate dispatcher. Requires a connected Modal account.',
-    inputSchema: {projectId:uuid,note:note.optional()},...schemes(WRITE_SCOPE)
-  }, async ({projectId,note:jobNote}) => {
-    const block=denied(WRITE_SCOPE);if(block)return block;
-    try {
-      if(modalAccounts && !(await modalAccounts.status(ownerKey)).connected)
-        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
-      const job=await jobs.reserve(ownerKey,projectId,0,jobNote??'Create cube monster');
-      return result({job:safeJob(job),message:'Queued for automatic worker dispatch'});
-    } catch(e) {return failure(e);}
-  });
-  server.registerTool('workspace_queue_recolor_blue', {
-    description:'Create revision 2 from your saved revision 1 Blender scene by recoloring the cube-monster body blue. Only this predefined, safe edit is supported.',
-    inputSchema:{projectId:uuid,note:note.optional()},...schemes(WRITE_SCOPE)
-  },async({projectId,note:jobNote})=>{
-    const block=denied(WRITE_SCOPE);if(block)return block;
-    try{
-      if(modalAccounts && !(await modalAccounts.status(ownerKey)).connected)
-        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
-      const project=await projects.get(ownerKey,projectId);
-      if(!project)return failure(new JobConflict('Project not found'));
-      if(project.current_revision!==1)return failure(new JobConflict('Revision 1 is required'));
-      const versions=await projects.revisions(ownerKey,projectId);
-      if(!versions.some(v=>v.revision===1 && v.artifact_prefix))
-        return failure(new JobConflict('Verified source revision is required'));
-      const job=await jobs.reserve(ownerKey,projectId,1,jobNote??'Recolor monster blue');
-      return result({job:safeJob(job),message:'Queued Blender revision 2 for automatic dispatch'});
-    }catch(e){return failure(e);}
-  });
-  server.registerTool('workspace_queue_scene_edit',{
-    description:'Queue a safe structured edit to the Body of an existing Blender scene. Supply absolute RGB color (0–1), location (-10..10) and/or scale (0.1..4); only the Body target is supported. Does not run arbitrary scripts.',
-    inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(1).max(99999998),
-      edit:SceneEditSchema,note:note.optional()},...schemes(WRITE_SCOPE)
-  },async({projectId,expectedRevision,edit,note:jobNote})=>{
-    const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
-    try{
-      if(modalAccounts && !(await modalAccounts.status(ownerKey)).connected)
-        return failure(new JobConflict('Connect your Modal account before queueing jobs'));
-      const project=await projects.get(ownerKey,projectId);
-      if(!project)return failure(new JobConflict('Project not found'));
-      if(project.current_revision!==expectedRevision)
-        return failure(new JobConflict('Stale project revision'));
-      const versions=await projects.revisions(ownerKey,projectId);
-      if(!versions.some(v=>v.revision===expectedRevision&&v.artifact_prefix))
-        return failure(new JobConflict('Saved predecessor revision is required'));
-      const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
-        jobNote??'Structured Body scene edit',edit);
-      return result({job:safeJob(job),edit,message:'Queued structured scene edit'});
-    }catch(error){return failure(error);}
   });
   if(modalAccounts){
     server.registerTool('workspace_modal_status',{

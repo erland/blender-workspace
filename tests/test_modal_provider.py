@@ -166,6 +166,9 @@ class ModalProviderTests(unittest.TestCase):
 
     def test_python_exec_uses_separate_sandbox_and_rejects_fake_outputs(self):
         sdk=self.sdk()
+        # A matching execution marker lets the test reach output verification;
+        # the mocked artifacts are deliberately invalid and must be rejected.
+        sdk.Sandbox.create.return_value.exec.return_value.stdout.read.return_value = "BW_SANDBOX_PYTHON PASS"
         with TemporaryDirectory() as tmp:
             script=Path(tmp)/'model.py'
             script.write_text('import bpy\nbpy.ops.mesh.primitive_cube_add()')
@@ -179,6 +182,24 @@ class ModalProviderTests(unittest.TestCase):
             args=sdk.Sandbox.create.return_value.exec.call_args.args
             self.assertIn('apply_python.py',' '.join(args))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+
+    def test_python_requires_its_own_success_marker_for_creation_and_edit(self):
+        for revision in (1,2):
+            sdk=self.sdk()
+            sdk.Sandbox.create.return_value.exec.return_value.stdout.read.return_value = "BW_SMOKE PASS"
+            with TemporaryDirectory() as tmp:
+                script=Path(tmp)/'model.py'
+                script.write_text('import bpy\\nbpy.ops.mesh.primitive_cube_add()')
+                input_file=Path(tmp)/'input.blend'
+                input_file.write_bytes(b'BLENDER-saved-scene')
+                with self.assertRaisesRegex(RuntimeError,'isolated Blender-Python success marker'):
+                    run(sdk,Path(tmp)/'out',revision=revision,
+                        python_file=str(script),
+                        input_blend=str(input_file) if revision>1 else None)
+                sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+                report=json.loads((Path(tmp)/'out'/'modal_run_report.json').read_text())
+                self.assertEqual(report['status'],'FAILED')
+                self.assertEqual(report['artifacts'],[])
 
     def test_revision_rejects_missing_source_without_starting_modal(self):
         sdk = self.sdk()
