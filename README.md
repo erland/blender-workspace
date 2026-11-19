@@ -91,8 +91,11 @@ Coolify; no password-bearing `DATABASE_URL` is needed. A one-shot
 migration job must finish before the MCP service and worker start.
 
 
-DEV-036 uses three SHA-pinned GHCR images: the MCP service and an independent
+GHCR images are published on stable GitHub Releases with matching version and
+`latest` tags: the MCP service and an independent
 Coolify Job Worker, plus a Blender image pulled by owner-funded Modal Sandboxes.
+Set `BW_IMAGE_TAG=v1.2.3` or `BW_IMAGE_TAG=latest` in Coolify.
+The Job Worker uses a fixed matching Blender release version.
 See [GHCR and Coolify deployment](docs/dev-036-ghcr.md). PRs verify but never
 publish; successful `main` publication requires GitHub Packages permissions.
 The Blender GHCR package must be publicly readable before real Modal jobs.

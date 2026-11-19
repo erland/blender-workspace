@@ -1,6 +1,7 @@
 # Coolify Docker Compose resource: existing PostgreSQL server is external.
 # Set all interpolated variables in Coolify (secrets masked), never in git.
-# All images use one verified main-commit SHA tag from GHCR.
+# All services use the same published GitHub Release tag (v1.2.3 or latest).
+# For reproducible deployments choose a version; latest updates on redeploy/pull.
 x-db-env: &db-env
   PGHOST: ${PGHOST:?Set PostgreSQL host in Coolify}
   PGPORT: ${PGPORT:?Set PostgreSQL port in Coolify}
@@ -11,14 +12,14 @@ x-db-env: &db-env
 services:
   # One-shot migration gate; if SQL fails the API and worker do not start.
   migrate:
-    image: ghcr.io/erland/blender-workspace-mcp:sha-${BW_IMAGE_SHA:?Set published Git commit SHA}
+    image: ghcr.io/erland/blender-workspace-mcp:${BW_IMAGE_TAG:-latest}
     restart: "no"
     command: ["node", "dist/db/migrate-cli.js"]
     environment:
       <<: *db-env
 
   mcp:
-    image: ghcr.io/erland/blender-workspace-mcp:sha-${BW_IMAGE_SHA:?Set published Git commit SHA}
+    image: ghcr.io/erland/blender-workspace-mcp:${BW_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       migrate:
@@ -43,7 +44,7 @@ services:
       - artifacts:/data/blender-workspace
 
   job-worker:
-    image: ghcr.io/erland/blender-workspace-job-worker:sha-${BW_IMAGE_SHA:?Set published Git commit SHA}
+    image: ghcr.io/erland/blender-workspace-job-worker:${BW_IMAGE_TAG:-latest}
     restart: unless-stopped
     command: ["dispatch"]
     depends_on:
