@@ -21,6 +21,11 @@ operation or a batch of 1–20 ordered operations. Supported operations:
 The first operation in a new scene must add a primitive. A batch produces
 one immutable revision (`scene.blend`, `scene.glb`, `scene.json`).
 Existing scenes can be inspected through `workspace_inspect_scene`.
+DEV-030 adds read-only `workspace_inspect_geometry` and `workspace_validate_model`
+for saved scene reports with typed mesh counts, world bounds and diagnostic
+mesh-quality findings. These tools never run Modal, and older reports without
+metrics explicitly report unavailable data rather than guessed measurements.
+See [DEV-030 geometry inspection](service/docs/dev-030-geometry-inspection.md).
 A Google-authenticated user can view saved GLB revisions in the browser;
 `workspace_get_viewer_link` returns an owner-checked link from MCP, and
 `workspace_get_job` includes the link for completed GLB jobs.
