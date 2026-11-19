@@ -16,6 +16,22 @@ verified previous `scene.blend`, with script auto-execution disabled.
 Each successful job creates a new immutable `scene.blend`, `scene.glb`
 and `scene.json`.
 
+### Preflight before paid Blender execution (DEV-035)
+
+The MCP service deployed through Coolify includes a minimal CPython interpreter,
+**not Blender**. Before saving a new Python job, it validates its UTF-8/size
+limits and compiles its source with `compile(..., "exec")` inside a bounded,
+non-executing `python3 -I` subprocess. Syntax and indentation mistakes return
+a line/column diagnostic to the MCP caller, with **no queued job and no Modal
+Sandbox charge**. The repository performs the same check before its database
+transaction to prevent bypass by internal callers. If Python is unavailable
+or times out, queueing fails closed.
+
+This syntax-only check does **not** execute or import `bpy`, prove a Blender
+API call exists, guarantee objects exist, or replace isolated execution and
+artifact checks in Modal. It uses the service's installed CPython version,
+which may differ from Blender's embedded version.
+
 The previous typed geometry/material/scene-edit and monster-demo MCP write
 tools have been **removed from the public interface**. This project has
 not been used through MCP, so there is no backward-compatible MCP authoring
