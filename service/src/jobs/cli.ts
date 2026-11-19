@@ -1,6 +1,5 @@
 import pg from 'pg';
 import { LocalArtifactStore } from '../storage/artifact-store.js';
-import { ProjectRepository } from '../db/projects.js';
 import { JobRepository } from './job-repository.js';
 import { JobOrchestrator } from './orchestrator.js';
 import {JobDispatcher} from './dispatcher.js';
@@ -13,22 +12,20 @@ const root=process.env.ARTIFACT_ROOT;
 const worker=process.env.MODAL_WORKER_ROOT;
 if(!url||!root||!worker)throw new Error('DATABASE_URL, ARTIFACT_ROOT and MODAL_WORKER_ROOT are required');
 const pool=new pg.Pool({connectionString:url,max:5,connectionTimeoutMillis:5000});
-const projects=new ProjectRepository(pool);
 const jobs=new JobRepository(pool);
 const key=process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY;
 const accounts=key?ModalAccountManager.fromBase64(pool,key,new ModalCliTokenVerifier()):undefined;
-const legacy=process.env.MODAL_EXECUTION_MODE==='legacy';
-if(!accounts&&!legacy)throw new Error('Personal Modal credentials required; legacy mode must be explicit');
+if(!accounts)throw new Error('Personal Modal credentials required');
 const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),
-  new ModalPythonExecutor(worker,18*60_000,accounts,legacy));
+  new ModalPythonExecutor(worker,18*60_000,accounts));
 const [command,owner,argument]=process.argv.slice(2);
 if(command!=='dispatch' &&
   (!owner || (!argument&&!['modal-status','modal-test','modal-disconnect','modal-connect'].includes(command))))
-  throw new Error('Usage: dispatch | create/run/recover OWNER ARG | modal-connect/status/test/disconnect OWNER');
+  throw new Error('Usage: dispatch | run/recover OWNER JOB_ID | modal-connect/status/test/disconnect OWNER');
 
 try {
   if(command==='dispatch'){
-    if(!accounts || legacy)throw new Error('Dispatcher requires personal Modal accounts; legacy mode forbidden');
+    if(!accounts)throw new Error('Dispatcher requires personal Modal accounts');
     const pollMs=Number(process.env.MODAL_DISPATCH_POLL_MS??'2000');
     const graceMinutes=Number(process.env.MODAL_STALE_JOB_MINUTES??'30');
     const dispatcher=new JobDispatcher(jobs,workflow,{pollMs,graceMinutes});
@@ -36,11 +33,7 @@ try {
     process.once('SIGTERM',()=>controller.abort());
     process.once('SIGINT',()=>controller.abort());
     await dispatcher.run(controller.signal);
-  } else if(command==='create'){
-    const project=await projects.create(owner,argument);
-    const job=await workflow.createDemo(owner,project.id);
-    console.log(JSON.stringify({projectId:project.id,jobId:job.id,status:job.status}));
-  } else if(command==='run'){
+    } else if(command==='run'){
     const job=await workflow.execute(owner,argument);
     console.log(JSON.stringify({jobId:job.id,status:job.status}));
   } else if(command==='recover'){
