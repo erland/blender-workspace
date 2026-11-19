@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-028
-in_progress: DEV-028
+selected_step: DEV-033
+in_progress: null
 completed_steps:
   - DEV-001
   - DEV-002
@@ -172,17 +172,37 @@ verification:
       status: DEFERRED
       reason: Live Google/ChatGPT, browser appearance and per-user Modal execution not yet verified
   dev028:
-    status: PENDING
+    status: DEFERRED
     code_ci:
-      status: PENDING
-      reason: Bounded embedded GLB import and real Blender re-import must pass all CI
+      status: NOT_RECONCILED
+      reason: Historical PR #33 merged; source-specific CI evidence not reconciled in this state repair
     live_acceptance:
       status: DEFERRED
       reason: Live Google/ChatGPT/Modal and browser tests still outstanding
+  dev029_to_dev032:
+    status: DEFERRED
+    source: PRs #36 through #39 merged to main
+    code_ci:
+      status: NOT_RECONCILED
+      reason: Earlier PR-specific CI not individually reconciled during this state-only repair
+    live_acceptance:
+      status: DEFERRED
+      reason: Real Google/ChatGPT, personal Modal and iPad/browser acceptance not yet executed
+  dev033:
+    status: DEFERRED
+    source_pr: https://github.com/erland/blender-workspace/pull/40
+    merged_at: "2026-11-19T05:40:24Z"
+    code_ci:
+      status: PASS
+      source_sha: 30d531d87cf22a4ec35384e72b8b007744e37f24
+      result: 20 pull-request GitHub Actions workflow runs concluded success, including Python-first MCP and Modal marker validation
+    live_acceptance:
+      status: DEFERRED
+      reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
 next:
-  recommended: VERIFY_DEV-028
-  reason: Verify bounded GLB import in real Blender, then perform phase B gap and acceptance review before expanding functionality
+  recommended: DEV-034
+  reason: Remove obsolete internal typed/demo authoring paths and obsolete tests only after dependency audit; keep Python-only MCP authoring, inspection and artifact revision contracts
 blockers_additional:
-  - Production-grade owner-scoped staged upload for GLB assets larger than 120 kB is not implemented
+  - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
   - Real Google/ChatGPT and personal Modal end-to-end execution deferred
