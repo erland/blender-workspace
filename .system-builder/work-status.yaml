@@ -201,18 +201,19 @@ verification:
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
   dev034:
     status: IN_PROGRESS
-    scope: "Phase D verified - Python-only TypeScript execution; phase E runner cleanup remains"
+    scope: "Phase E1 - forbid legacy job reservations; phase E2 runner cleanup remains"
     code_ci:
-      status: PASS
-      source_sha: 41fbf9a091f92f4972d7ce4a9d7244f93b592d29
-      result: All 17 pull-request GitHub Actions workflows passed including PostgreSQL, owner isolation, dispatch, Blender and Python regression suites
+      status: PENDING
+      prior_pass_source_sha: 41fbf9a091f92f4972d7ce4a9d7244f93b592d29
+      reason: DEV-034D passed 17 workflows; new DEV-034E1 Python-only reservation tests require CI
     cleanup_remaining:
-      - Remove legacy repository queue acceptance and Modal runner CLI branches
+      - Verify Python-only queue reservation rejection in CI
+      - Remove old Modal runner CLI branches
       - Migrate remaining legacy worker tests and CI to Python first
       - Remove unused structured schemas and demo worker scripts
 next:
-  recommended: DEV-034E
-  reason: Remove legacy queue acceptance, Modal runner CLI branches, unused scripts and superseded tests without affecting Python jobs
+  recommended: VERIFY_DEV-034E1
+  reason: Verify rejection of legacy job reservations then remove old Modal runner CLI branches, unused scripts and tests in subsequent bounded steps
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
