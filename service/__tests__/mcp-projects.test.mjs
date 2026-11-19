@@ -7,6 +7,7 @@ import {loadConfig} from '../dist/config.js';
 import {applyMigrations} from '../dist/db/migrations.js';
 import {ProjectRepository} from '../dist/db/projects.js';
 import {JobRepository} from '../dist/jobs/job-repository.js';
+import {JobExecutionError} from '../dist/jobs/job-diagnostics.js';
 import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import os from 'node:os';
@@ -118,6 +119,21 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
     arguments:{projectId:id,expectedRevision:0,code}})).isError,true);
   assert.equal(output(await call('tools/call',{name:'workspace_get_job',arguments:{jobId:queued.job.id}})).job.status,'pending');
   assert.equal((await otherCall('tools/call',{name:'workspace_get_job',arguments:{jobId:queued.job.id}})).isError,true);
+  // Failure diagnostics are allowlisted, owner-only and never disclose provider text.
+  await new JobRepository(pool).markFailed(owner,queued.job.id,
+    new JobExecutionError('modal_start','image_unavailable'));
+  const failed=output(await call('tools/call',{name:'workspace_get_job',
+    arguments:{jobId:queued.job.id}}));
+  assert.equal(failed.job.status,'failed');
+  assert.deepEqual(failed.failure,{phase:'modal_start',code:'image_unavailable'});
+  assert.equal((await otherCall('tools/call',{name:'workspace_get_job',
+    arguments:{jobId:queued.job.id}})).isError,true);
+  await pool.query('UPDATE bw_jobs SET error_message=$1 WHERE id=$2',
+    ['Legacy unsafe error with SECRET_TOKEN',queued.job.id]);
+  const legacy=output(await call('tools/call',{name:'workspace_get_job',
+    arguments:{jobId:queued.job.id}}));
+  assert.equal(legacy.failure,undefined);
+  assert.doesNotMatch(JSON.stringify(legacy),/SECRET_TOKEN/);
   assert.deepEqual(output(await call('tools/call',{name:'workspace_list_revisions',arguments:{projectId:id}})).revisions,[]);
   assert.equal((await call('tools/call',{name:'workspace_get_project',arguments:{projectId:'../../x'}})).isError,true);
   const denied=await call('tools/list',{},false);

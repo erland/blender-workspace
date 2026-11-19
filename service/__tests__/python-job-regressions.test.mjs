@@ -76,7 +76,7 @@ test('Python publish/DB-finalize split is recoverable without rerunning the work
       return finalize(...args);
     };
     const initial=await x.jobs.reserve(x.owner,x.project.id,0,'Python initial',undefined,code);
-    await assert.rejects(()=>x.orchestrator.execute(x.owner,initial.id),/DB transient/);
+    await assert.rejects(()=>x.orchestrator.execute(x.owner,initial.id),/BW_JOB_ERROR phase=revision_commit code=revision_commit_failed/);
     assert.equal(x.calls.length,1);
     assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
     assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,0);

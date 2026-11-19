@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {preflightPython} from './python-preflight.js';
+import {safeStoredJobError} from './job-diagnostics.js';
 
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
@@ -88,12 +89,12 @@ export class JobRepository {
     await this.pool.query(`UPDATE bw_jobs SET status='failed',error_message=$3,
       updated_at=now(),finished_at=now()
       WHERE id=$1 AND owner_key=$2 AND status IN ('running','pending')`,
-      [id,owner,String(error).slice(0,1000)]);
+      [id,owner,safeStoredJobError(error)]);
   }
   async markRecoverable(owner:string,id:string,error:unknown):Promise<void> {
     await this.pool.query(`UPDATE bw_jobs SET status='needs_recovery',error_message=$3,
       updated_at=now() WHERE id=$1 AND owner_key=$2
-      AND status IN ('running','needs_recovery')`,[id,owner,String(error).slice(0,1000)]);
+      AND status IN ('running','needs_recovery')`,[id,owner,safeStoredJobError(error)]);
   }
   async finalize(owner:string,jobId:string,artifactPrefix:string):Promise<Job> {
     const c=await this.pool.connect();

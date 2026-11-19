@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import MagicMock, patch
 
-from modal_provider.runner import ARTIFACT_NAMES, estimate_usd, run, blender_image_reference
+from modal_provider.runner import ARTIFACT_NAMES, estimate_usd, run, blender_image_reference, RunnerDiagnostic
 
 
 class ModalProviderTests(unittest.TestCase):
@@ -131,7 +131,7 @@ class ModalProviderTests(unittest.TestCase):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp:
             script, _ = self.files(tmp)
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(RunnerDiagnostic, "artifact_invalid"):
                 run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
 
@@ -141,7 +141,7 @@ class ModalProviderTests(unittest.TestCase):
             with TemporaryDirectory() as tmp:
                 script, prior = self.files(tmp)
                 out = Path(tmp) / "out"
-                with self.assertRaisesRegex(RuntimeError, "isolated Blender-Python success marker"):
+                with self.assertRaisesRegex(RunnerDiagnostic, "blender_execution_failed"):
                     run(sdk, out, revision=revision, python_file=str(script),
                         input_blend=str(prior) if revision == 2 else None)
                 sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
@@ -153,7 +153,7 @@ class ModalProviderTests(unittest.TestCase):
         sdk = self.sdk(exit_code=1)
         with TemporaryDirectory() as tmp:
             script, _ = self.files(tmp)
-            with self.assertRaisesRegex(RuntimeError, "exit code 1"):
+            with self.assertRaisesRegex(RunnerDiagnostic, "blender_execution_failed"):
                 run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
 
@@ -161,7 +161,7 @@ class ModalProviderTests(unittest.TestCase):
         sdk = self.sdk(copy_error=OSError("transport failure"))
         with TemporaryDirectory() as tmp:
             script, _ = self.files(tmp)
-            with self.assertRaises(OSError):
+            with self.assertRaisesRegex(RunnerDiagnostic, "artifact_transfer_failed"):
                 run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
 
@@ -170,7 +170,7 @@ class ModalProviderTests(unittest.TestCase):
         sdk.Sandbox.create.side_effect = RuntimeError("quota")
         with TemporaryDirectory() as tmp:
             script, _ = self.files(tmp)
-            with self.assertRaisesRegex(RuntimeError, "quota"):
+            with self.assertRaisesRegex(RunnerDiagnostic, "sandbox_start_failed"):
                 run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_not_called()
 

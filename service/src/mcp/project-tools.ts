@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ProjectRepository } from '../db/projects.js';
 import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
+import {safeOwnerJobError} from '../jobs/job-diagnostics.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
@@ -263,7 +264,9 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       if(j.status==='completed'&&await ownedViewerRevision(j.project_id,j.requested_revision))
         return result({job,viewerUrl:viewerLink(j.project_id,j.requested_revision),
           requiresGoogleLogin:true});
-      return result({job});
+      const diagnostic=(j.status==='failed'||j.status==='needs_recovery')
+        ?safeOwnerJobError(j.error_message):null;
+      return result({job,...(diagnostic?{failure:diagnostic}:{})});
     } catch(e){return failure(e);}
   });
 }

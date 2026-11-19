@@ -4,6 +4,7 @@ import os from 'node:os';
 import type { Job, JobRepository } from './job-repository.js';
 import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-store.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
+import {JobExecutionError} from './job-diagnostics.js';
 
 export interface BlenderExecutor {
   runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,inputBlend?:string):Promise<void>;
@@ -34,13 +35,21 @@ export class JobOrchestrator {
       const artifacts:IncomingArtifact[]=SCENE_ARTIFACTS.map(name=>({
         name,sourcePath:path.join(temp,name)
       }));
-      await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
-        expectedPreviousRevision:job.expected_revision,artifacts});
+      try{
+        await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
+          expectedPreviousRevision:job.expected_revision,artifacts});
+      }catch{
+        throw new JobExecutionError('artifact_storage','artifact_storage_failed');
+      }
       published=true;
       // Never replay a potentially billed job after publication. The journal
       // and checksum-verified artifacts permit an explicit metadata recovery.
-      return await this.jobs.finalize(owner,jobId,
-        `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`);
+      try{
+        return await this.jobs.finalize(owner,jobId,
+          `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`);
+      }catch{
+        throw new JobExecutionError('revision_commit','revision_commit_failed');
+      }
     }catch(error) {
       if(published)await this.jobs.markRecoverable(owner,jobId,error);
       else await this.jobs.markFailed(owner,jobId,error);

@@ -5,6 +5,7 @@ import os from 'node:os';
 import type {BlenderExecutor} from './orchestrator.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import type {ModalCredentials,ModalAccountManager} from '../modal/modal-accounts.js';
+import {JobExecutionError,parseRunnerDiagnostic} from './job-diagnostics.js';
 
 /** Inject only the connected owner's Modal credentials, never global credentials. */
 export function modalJobEnv(credentials:ModalCredentials,base:NodeJS.ProcessEnv=process.env):NodeJS.ProcessEnv {
@@ -43,15 +44,23 @@ export class ModalPythonExecutor implements BlenderExecutor {
           '--revision',String(revision),'--python-file',filename];
         if(inputBlend)args.push('--input-blend',inputBlend);
         const proc=spawn('python3',args,{cwd:this.repoRoot,stdio:['ignore','pipe','pipe'],env});
-        let ended=false;
-        const timer=setTimeout(()=>proc.kill('SIGKILL'),this.timeoutMs);
-        proc.stdout.on('data',()=>{});
-        proc.stderr.on('data',()=>{});
-        proc.once('error',error=>{if(ended)return;ended=true;clearTimeout(timer);reject(error);});
+        let ended=false,timedOut=false;
+        let stdout='',stderr='';
+        // Keep only the last 8 KiB of each stream. Never log or persist raw output:
+        // scripts, Modal SDK exceptions and paths may contain sensitive content.
+        const append=(old:string,chunk:Buffer)=> (old+chunk.toString('utf8')).slice(-8192);
+        const timer=setTimeout(()=>{timedOut=true;proc.kill('SIGKILL');},this.timeoutMs);
+        proc.stdout.on('data',(chunk:Buffer)=>{stdout=append(stdout,chunk);});
+        proc.stderr.on('data',(chunk:Buffer)=>{stderr=append(stderr,chunk);});
+        proc.once('error',()=>{if(ended)return;ended=true;clearTimeout(timer);
+          reject(new JobExecutionError('setup','worker_spawn_failed'));});
         proc.once('close',code=>{
           if(ended)return;ended=true;clearTimeout(timer);
-          if(code===0)resolve();
-          else reject(new Error(`Modal worker exited ${code}`));
+          if(timedOut)return reject(new JobExecutionError('setup','worker_timeout'));
+          if(code===0)return resolve();
+          // Only the validated runner marker is used, never free-form output.
+          reject(parseRunnerDiagnostic(stderr)||parseRunnerDiagnostic(stdout)||
+            new JobExecutionError('setup','worker_exit_nonzero'));
         });
       });
     }finally{await rm(folder,{recursive:true,force:true});}
