@@ -31,10 +31,13 @@ async function fixture(t) {
     } finally {await pool.end();await rm(root,{recursive:true,force:true});}
   });
   const owners=[];
-  const executor={async createDemo(dir,owner){
+  const executor={async runPythonScript(dir,owner,revision,spec,inputBlend){
     owners.push(owner);
+    assert.equal(spec.kind,'python_script');
+    assert.equal(inputBlend,undefined);
+    assert.equal(revision,1);
     await new Promise(resolve=>setTimeout(resolve,15));
-    for(const name of ['monster_v1.blend','monster_v1.glb','monster_v1.json'])
+    for(const name of ['scene.blend','scene.glb','scene.json'])
       await writeFile(path.join(dir,name),'fake-'+name);
   }};
   const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),executor);
@@ -44,8 +47,8 @@ async function fixture(t) {
 test('dispatcher atomically claims jobs across replicas and keeps tenant ownership',
   {skip:!process.env.TEST_DATABASE_URL},async t=>{
   const x=await fixture(t);
-  const first=await x.jobs.reserve(x.ownerA,x.pA.id,0);
-  const second=await x.jobs.reserve(x.ownerB,x.pB.id,0);
+  const first=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Python scene',undefined,{kind:'python_script',code:'import bpy\nprint(1)'});
+  const second=await x.jobs.reserve(x.ownerB,x.pB.id,0,'Python scene',undefined,{kind:'python_script',code:'import bpy\nprint(1)'});
   assert.deepEqual(await x.dispatcher.dispatchOnce(),{state:'idle'},
     'no personal Modal token => never run with shared service credentials');
   assert.equal((await x.jobs.get(x.ownerA,first.id)).status,'pending');
@@ -68,7 +71,7 @@ test('failed worker is marked failed and is not automatically retried',
   {skip:!process.env.TEST_DATABASE_URL},async t=>{
   const x=await fixture(t);
   await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
-  const first=await x.jobs.reserve(x.ownerA,x.pA.id,0);
+  const first=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Python scene',undefined,{kind:'python_script',code:'import bpy\nprint(1)'});
   const failing=new JobDispatcher(x.jobs,{async executeClaimed(job){
     await x.jobs.markFailed(job.owner_key,job.id,'Test worker failure');
     throw new Error('Modal secret that must not leak');
@@ -83,7 +86,7 @@ test('stale running jobs are quarantined for explicit recovery, never re-execute
   {skip:!process.env.TEST_DATABASE_URL},async t=>{
   const x=await fixture(t);
   await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
-  const j=await x.jobs.reserve(x.ownerA,x.pA.id,0);
+  const j=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Python scene',undefined,{kind:'python_script',code:'import bpy\nprint(1)'});
   const claimed=await x.jobs.claimNext();
   assert.equal(claimed.id,j.id);
   await x.pool.query(`UPDATE bw_jobs SET updated_at=now()-interval '50 minutes' WHERE id=$1`,[j.id]);
@@ -93,7 +96,7 @@ test('stale running jobs are quarantined for explicit recovery, never re-execute
   assert.equal(x.owners.length,0,'unknown Modal billing state must not be restarted');
   await assert.rejects(()=>x.workflow.recover(x.ownerA,j.id),/not found|ENOENT|missing/i);
   assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'needs_recovery');
-  await assert.rejects(()=>x.jobs.reserve(x.ownerA,x.pA.id,0),/Another job is active/);
+  await assert.rejects(()=>x.jobs.reserve(x.ownerA,x.pA.id,0,'Python scene',undefined,{kind:'python_script',code:'import bpy\nprint(1)'}),/Another job is active/);
   await assert.rejects(()=>x.jobs.quarantineStaleRunning(1),RangeError);
 });
 
