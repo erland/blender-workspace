@@ -2,8 +2,8 @@ schema_version: 1
 project: blender-workspace
 status: verification_pending
 mode: CHANGE
-selected_step: DEV-033
-in_progress: null
+selected_step: DEV-034
+in_progress: DEV-034
 completed_steps:
   - DEV-001
   - DEV-002
@@ -199,9 +199,19 @@ verification:
     live_acceptance:
       status: DEFERRED
       reason: Real ChatGPT/Google OAuth, owner-billed Modal and browser/iPad acceptance not yet executed
+  dev034:
+    status: IN_PROGRESS
+    scope: "Phase A - inventory and Python-first boundary regression guard"
+    code_ci:
+      status: PENDING
+      reason: Verify new boundary workflow and existing PR CI on implementation commit
+    cleanup_remaining:
+      - Migrate legacy tests and CI to Python first
+      - Remove old job dispatch and Modal runner branches
+      - Remove unused structured operations and demo workers
 next:
-  recommended: DEV-034
-  reason: Remove obsolete internal typed/demo authoring paths and obsolete tests only after dependency audit; keep Python-only MCP authoring, inspection and artifact revision contracts
+  recommended: VERIFY_DEV-034
+  reason: Verify CI for phase A; then migrate essential revision, recovery and sandbox tests before removing retired code
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
