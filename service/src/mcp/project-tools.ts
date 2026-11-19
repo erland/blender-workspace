@@ -8,7 +8,7 @@ import {SceneEditSchema} from '../jobs/scene-edit.js';
 import {SceneOperationSchema,isValidInitialSceneOperation} from '../jobs/scene-operation.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
-import {inspectSavedScene} from '../scene/scene-contract.js';
+import {inspectSavedScene,geometrySnapshot,geometryValidation} from '../scene/scene-contract.js';
 
 export interface ProjectServices {
   ownerKey: string;
@@ -123,6 +123,42 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       const scene=await inspectSavedScene(artifacts,projectId,revision);
       return result({projectId,revision,scene});
     }catch{return failure(new JobConflict('Scene metadata could not be verified'));}
+  });
+  // Read only previously saved, checksum-verified JSON. These calls never
+  // start Blender, inspect untrusted .blend bytes, or incur Modal charges.
+  server.registerTool('workspace_inspect_geometry',{
+    description:'Inspect exact saved base-mesh vertex, edge and face counts, world-space bounds, UV layers, modifiers and diagnostic counts. No Blender job, no Model execution. Historic revisions without geometry metrics return available=false, never guessed values. Optional objectId filters to one stable object identity.',
+    inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999),
+      objectId:uuid.optional()},
+    annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+  },async({projectId,revision,objectId})=>{
+    const block=denied(READ_SCOPE);if(block)return block;
+    try{
+      const p=await projects.get(ownerKey,projectId);
+      if(!p||!artifacts)return failure(new JobConflict('Project geometry unavailable'));
+      const revisions=await projects.revisions(ownerKey,projectId);
+      if(!revisions.some(v=>v.revision===revision&&v.artifact_prefix))
+        return failure(new JobConflict('Saved project revision not found'));
+      const scene=await inspectSavedScene(artifacts,projectId,revision);
+      return result({projectId,revision,...geometrySnapshot(scene,objectId)});
+    }catch{return failure(new JobConflict('Saved geometry could not be inspected'));}
+  });
+  server.registerTool('workspace_validate_model',{
+    description:'Read non-mutating, diagnostic topology checks on an owned saved Blender revision: open boundaries, non-manifold edges, loose edges, isolated vertices and zero-area faces. Checks base meshes only, NOT manifold orientation, printable validity, evaluated modifiers or export readiness. Historic reports return incomplete. No Modal job is created.',
+    inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999),
+      objectId:uuid.optional()},
+    annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+  },async({projectId,revision,objectId})=>{
+    const block=denied(READ_SCOPE);if(block)return block;
+    try{
+      const p=await projects.get(ownerKey,projectId);
+      if(!p||!artifacts)return failure(new JobConflict('Model validation unavailable'));
+      const revisions=await projects.revisions(ownerKey,projectId);
+      if(!revisions.some(v=>v.revision===revision&&v.artifact_prefix))
+        return failure(new JobConflict('Saved project revision not found'));
+      const scene=await inspectSavedScene(artifacts,projectId,revision);
+      return result({projectId,revision,...geometryValidation(scene,objectId)});
+    }catch{return failure(new JobConflict('Model validation could not be completed'));}
   });
   if(viewerOrigin){
     server.registerTool('workspace_get_viewer_link',{
