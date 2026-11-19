@@ -81,6 +81,13 @@ viewer operations use Three.js/WebGL and **do not start Modal rendering**.
 
 ## Deployment and verification
 
+DEV-036 uses three SHA-pinned GHCR images: the MCP service and an independent
+Coolify Job Worker, plus a Blender image pulled by owner-funded Modal Sandboxes.
+See [GHCR and Coolify deployment](docs/dev-036-ghcr.md). PRs verify but never
+publish; successful `main` publication requires GitHub Packages permissions.
+The Blender GHCR package must be publicly readable before real Modal jobs.
+
+
 See `service/docs/` and `.github/workflows/`. GitHub Actions compiles
 Node services, validates contracts, and uses real headless Blender for
 scene create/edit and artifact verification. The Python-first workflows test the MCP authoring boundary, Blender
