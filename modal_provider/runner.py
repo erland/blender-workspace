@@ -107,7 +107,10 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         report["blender_stderr_tail"] = process.stderr.read()[-4000:]
         if code != 0:
             raise RuntimeError(f"Blender smoke failed: exit code {code}")
-        if revision == 1 and operation_file is None and "BW_SMOKE PASS" not in report["blender_stdout_tail"]:
+        if python_file is not None:
+            if "BW_SANDBOX_PYTHON PASS" not in report["blender_stdout_tail"]:
+                raise RuntimeError("Expected isolated Blender-Python success marker missing")
+        elif revision == 1 and operation_file is None and "BW_SMOKE PASS" not in report["blender_stdout_tail"]:
             raise RuntimeError("Expected Blender smoke success marker missing")
         executed = time.monotonic()
         names = (('scene.blend','scene.glb','scene.json') if (operation_file is not None or python_file is not None) else
