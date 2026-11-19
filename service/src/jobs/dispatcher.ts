@@ -1,3 +1,4 @@
+import {JobExecutionError} from './job-diagnostics.js';
 import {setTimeout as sleep} from 'node:timers/promises';
 import type {JobRepository} from './job-repository.js';
 import type {JobOrchestrator} from './orchestrator.js';
@@ -27,8 +28,12 @@ export class JobDispatcher {
     try{
       await this.workflow.executeClaimed(job);
       return {state:'completed',jobId:job.id};
-    }catch{
-      // Orchestrator persists failures / recovery state. Never log credential-bearing exceptions.
+    }catch(error){
+      // Log only allowlisted diagnostics, never provider exception strings or credentials.
+      const diagnostic=error instanceof JobExecutionError
+        ? {phase:error.phase,code:error.code,...(error.reason?{reason:error.reason}:{})}
+        : {phase:'setup',code:'initialization_failed'};
+      console.error(JSON.stringify({event:'blender_job_failed',jobId:job.id,...diagnostic}));
       return {state:'failed',jobId:job.id};
     }
   }

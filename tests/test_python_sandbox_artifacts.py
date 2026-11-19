@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from uuid import uuid4
 
-from modal_provider.artifact_validation import validate_python_outputs
+from modal_provider.artifact_validation import validate_python_outputs, ArtifactValidationError
 
 def fake_glb():
     scene={'asset':{'version':'2.0'},'nodes':[{'mesh':0}],
@@ -71,3 +71,20 @@ class OutputValidationTests(unittest.TestCase):
 
 if __name__=='__main__':
     unittest.main()
+
+class SafeReasonTests(unittest.TestCase):
+    def test_missing_glb_reason_is_fixed_and_non_secret(self):
+        with TemporaryDirectory() as tmp:
+            fixture(tmp)
+            (Path(tmp)/'scene.glb').unlink()
+            with self.assertRaises(ArtifactValidationError) as captured:
+                validate_python_outputs(tmp)
+            self.assertEqual(captured.exception.reason,'glb_file_invalid')
+
+    def test_invalid_glb_structure_reports_specific_reason(self):
+        with TemporaryDirectory() as tmp:
+            fixture(tmp)
+            (Path(tmp)/'scene.glb').write_bytes(b'bad')
+            with self.assertRaises(ArtifactValidationError) as captured:
+                validate_python_outputs(tmp)
+            self.assertEqual(captured.exception.reason,'glb_header_invalid')

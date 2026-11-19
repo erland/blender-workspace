@@ -4,7 +4,7 @@
 
 `workspace_get_job({jobId})` remains an OAuth-protected, owner-scoped
 read-only tool. For a job in `failed` or `needs_recovery`, it now
-includes `failure: {phase,code}` when the database contains a
+includes `failure: {phase,code}` (or `failure: {phase,code,reason}` for recognized artifact checks) when the database contains a
 recognized safe diagnostic. Example:
 
 ```json
@@ -58,3 +58,24 @@ First inspect the phase/code, public GHCR Blender package visibility
 and matching release tag. A new explicit single-job acceptance test
 can then be performed if needed, with the user's agreement to
 possible Modal charges.
+
+## More precise artifact diagnostics
+
+Failed artifact checks now return a fixed `reason`, for example:
+```json
+{"failure":{"phase":"artifact_validation","code":"artifact_invalid","reason":"glb_meshes_missing"}}
+```
+The worker also writes one sanitized JSON log line with `event=blender_job_failed`,
+`jobId`, `phase`, `code` and, when available, `reason`. These
+fields contain no Python source, raw provider output, filesystem paths or credentials.
+
+Reasons distinguish missing or irregular BLEND/GLB/report files,
+invalid binary headers, malformed GLB structure, missing meshes or nodes,
+report provenance/identity errors and checksum errors. Unclassified
+validation failures use `artifact_unclassified` rather than raw exceptions.
+Existing historical jobs do not gain details retroactively.
+
+An `artifact_invalid` result should be investigated by reading
+`workspace_get_job` after deploying *both* the updated MCP image and
+matching job-worker image. No schema migration or automatic Modal retry
+is required.

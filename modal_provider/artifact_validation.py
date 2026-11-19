@@ -19,7 +19,7 @@ def _file(folder,name,max_bytes):
         raise ValueError('Missing, oversized or irregular sandbox artifact: '+name)
     return file.read_bytes()
 
-def validate_python_outputs(folder):
+def _validate_python_outputs(folder):
     blend=_file(folder,'scene.blend',MAX_MODEL_BYTES)
     glb=_file(folder,'scene.glb',MAX_MODEL_BYTES)
     raw_report=_file(folder,'scene.json',MAX_REPORT_BYTES)
@@ -74,3 +74,46 @@ def validate_python_outputs(folder):
             raise ValueError('Sandbox artifact checksum mismatch')
     return {'object_count':len(scene['objects']),'node_count':len(document['nodes']),
             'mesh_count':len(document['meshes'])}
+
+# Only these literal validation outcomes can cross the Modal/controller boundary.
+# Never export exception text, model names, paths or arbitrary JSON values.
+VALIDATION_REASONS = {
+    'Sandbox returned invalid BLEND header': 'blend_header_invalid',
+    'Sandbox returned invalid GLB header': 'glb_header_invalid',
+    'Sandbox returned invalid GLB v2 length': 'glb_length_invalid',
+    'Sandbox returned invalid GLB JSON chunk': 'glb_json_chunk_invalid',
+    'Sandbox returned invalid glTF JSON': 'gltf_document_invalid',
+    'Exported GLB has no scene nodes': 'glb_nodes_missing',
+    'Exported GLB has no visible meshes': 'glb_meshes_missing',
+    'GLB cannot reference external assets': 'glb_external_assets',
+    'Sandbox report has invalid provenance': 'report_provenance_invalid',
+    'Sandbox report has invalid objects': 'report_objects_invalid',
+    'Invalid scene object name': 'object_name_invalid',
+    'Invalid scene object identifier': 'object_id_invalid',
+    'Duplicate scene object identity': 'object_id_duplicate',
+    'Sandbox report must list both model files': 'report_artifact_list_invalid',
+    'Unexpected sandbox artifact list': 'report_artifact_list_invalid',
+    'Sandbox artifact checksum mismatch': 'artifact_checksum_mismatch',
+}
+class ArtifactValidationError(ValueError):
+    def __init__(self, reason, message):
+        self.reason = reason
+        super().__init__(message)
+
+def validate_python_outputs(folder):
+    try:
+        return _validate_python_outputs(folder)
+    except ValueError as exc:
+        message = str(exc)
+        if message.startswith('Missing, oversized or irregular sandbox artifact: '):
+            name = message.removeprefix('Missing, oversized or irregular sandbox artifact: ')
+            reason = {
+                'scene.blend': 'blend_file_invalid',
+                'scene.glb': 'glb_file_invalid',
+                'scene.json': 'report_file_invalid',
+            }.get(name, 'artifact_unclassified')
+        else:
+            reason = VALIDATION_REASONS.get(message, 'artifact_unclassified')
+        raise ArtifactValidationError(reason, message) from None
+    except (OSError, UnicodeError, TypeError, KeyError, IndexError, AttributeError):
+        raise ArtifactValidationError('artifact_unclassified', 'Invalid artifact structure') from None

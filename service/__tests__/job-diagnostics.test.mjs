@@ -64,3 +64,17 @@ test('unexpected process failure reveals no output to caller or persistence',asy
     error=>error instanceof JobExecutionError&&error.code==='worker_exit_nonzero'&&
       !String(error).includes(SECRET));
 });
+
+test('specific artifact reason survives owner-safe persistence without leaking arbitrary text',()=>{
+  const marker='BW_DIAGNOSTIC phase=artifact_validation code=artifact_invalid reason=glb_meshes_missing';
+  const diagnostic=parseRunnerDiagnostic(marker);
+  assert.equal(diagnostic?.reason,'glb_meshes_missing');
+  assert.deepEqual(safeOwnerJobError(safeStoredJobError(diagnostic)),{
+    phase:'artifact_validation',code:'artifact_invalid',reason:'glb_meshes_missing'
+  });
+  assert.deepEqual(safeOwnerJobError('BW_JOB_ERROR phase=artifact_validation code=artifact_invalid'),{
+    phase:'artifact_validation',code:'artifact_invalid'
+  });
+  assert.equal(safeOwnerJobError('BW_JOB_ERROR phase=artifact_validation code=artifact_invalid reason=credential_leak'),null);
+  assert.equal(parseRunnerDiagnostic('BW_DIAGNOSTIC phase=artifact_validation code=artifact_invalid reason=credential_leak')?.reason,undefined);
+});
