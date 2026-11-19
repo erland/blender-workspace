@@ -1,0 +1,34 @@
+name: DEV-035 Python syntax preflight (no Modal)
+on:
+  pull_request:
+    paths:
+      - 'service/src/jobs/python-preflight.ts'
+      - 'service/src/jobs/job-repository.ts'
+      - 'service/src/mcp/project-tools.ts'
+      - 'service/src/jobs/python-script.ts'
+      - 'service/__tests__/python-preflight.test.mjs'
+      - 'service/__tests__/python-first-mcp.test.mjs'
+      - 'service/Dockerfile'
+      - '.github/workflows/python-preflight-dev035.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile and check syntax diagnostics without Blender or Modal
+        working-directory: service
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build:server
+          node --test __tests__/python-preflight.test.mjs __tests__/python-first-mcp.test.mjs
+      - name: Verify Coolify service image includes Python preflight
+        run: |
+          docker build -f service/Dockerfile -t bw-service-preflight:ci service
+          docker run --rm --entrypoint python3 bw-service-preflight:ci -I -c "compile('import bpy\\nprint(1)', '<test>', 'exec')"

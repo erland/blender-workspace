@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
+import {preflightPython} from './python-preflight.js';
 
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
@@ -21,6 +22,8 @@ export class JobRepository {
     if(_retiredEdit!==undefined)throw new RangeError('Structured scene edits are retired');
     if(operation===undefined)throw new RangeError('Python script is required');
     const safeOperation=parsePythonScript(operation);
+    // Last gate before reservation: no syntax-invalid script can be dispatched.
+    await preflightPython(safeOperation.code);
     const client=await this.pool.connect();
     try {
       await client.query('BEGIN');

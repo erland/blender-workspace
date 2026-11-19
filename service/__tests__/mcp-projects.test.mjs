@@ -105,7 +105,7 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
     '{"schema_version":1,"scene":{"objects":[]}}');
   assert.equal((await call('tools/call',{name:'workspace_inspect_scene',
     arguments:{projectId:newScene.id,revision:1}})).isError,true);
-  const code='import bpy\\nbpy.ops.mesh.primitive_cube_add()';
+  const code='import bpy\nbpy.ops.mesh.primitive_cube_add()';
   assert.equal((await otherCall('tools/call',{name:'workspace_queue_python_script',
     arguments:{projectId:id,expectedRevision:0,code}})).isError,true);
   assert.equal((await call('tools/call',{name:'workspace_queue_python_script',
