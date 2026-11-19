@@ -79,3 +79,14 @@ test('DEV-033 no connected Modal account means no executable Python job',async()
   assert.equal(response.isError,true);
   assert.equal(context.queued,null);
 });
+
+test('DEV-035 MCP syntax errors return line details and do not queue jobs',async()=>{
+  const context=setup();
+  const handler=context.tools.get('workspace_queue_python_script').handler;
+  const response=await handler({projectId:context.projectId,expectedRevision:0,
+    code:'import bpy\nfor i in range(3)\n    pass'});
+  assert.equal(response.isError,true);
+  assert.match(response.content[0].text,/Python syntax error at line 2/);
+  assert.equal(context.queued,null);
+  assert.equal(context.checked,0);
+});
