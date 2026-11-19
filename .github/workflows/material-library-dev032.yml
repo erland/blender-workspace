@@ -1,0 +1,79 @@
+name: DEV-032 Reusable PBR material library (offline CI)
+on:
+  pull_request:
+    paths:
+      - "blender_workspace_poc/material_library.py"
+      - "blender_workspace_poc/apply_operation.py"
+      - "blender_workspace_poc/common.py"
+      - "blender_workspace_poc/scene_operation_validation.py"
+      - "service/src/jobs/scene-operation.ts"
+      - "service/src/scene/scene-contract.ts"
+      - "service/src/mcp/project-tools.ts"
+      - "service/__tests__/material-library.test.mjs"
+      - "tests/test_material_library_validation.py"
+      - "tests/fixtures/dev032_*"
+      - ".github/workflows/material-library-dev032.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  materials:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Python and typed Node contracts without Modal
+        run: |
+          python3 -m py_compile blender_workspace_poc/material_library.py blender_workspace_poc/apply_operation.py blender_workspace_poc/common.py
+          python3 -m unittest discover -s tests -p 'test_material_library_validation.py' -v
+          cd service
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build:server
+          node --test __tests__/material-library.test.mjs __tests__/scene-contract.test.mjs
+      - name: Build unchanged Blender worker
+        run: docker build -f Dockerfile -t blender-dev032:ci .
+      - name: Execute revision 1 and revision 2 material reuse in real Blender
+        run: |
+          set -eu
+          mkdir -p dev032-out/first dev032-out/second
+          chmod 777 dev032-out/first dev032-out/second
+          cp tests/fixtures/dev032_material_create.json dev032-out/first/operation.json
+          docker run --rm -v "$PWD/dev032-out/first:/workspace/out" --entrypoint blender blender-dev032:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_operation.py \
+            -- NEW /workspace/out/operation.json 1
+          cp dev032-out/first/scene.blend dev032-out/second/input.blend
+          cp tests/fixtures/dev032_material_edit.json dev032-out/second/operation.json
+          docker run --rm -v "$PWD/dev032-out/second:/workspace/out" --entrypoint blender blender-dev032:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_operation.py \
+            -- /workspace/out/input.blend /workspace/out/operation.json 2
+          python3 - <<'PY'
+          import json,struct
+          from pathlib import Path
+          def gltf(path):
+              data=path.read_bytes()
+              assert data[:4]==b'glTF'
+              length,marker=struct.unpack_from('<I4s',data,12)
+              assert marker==b'JSON'
+              return json.loads(data[20:20+length].decode('utf8'))
+          for rev,names in [('first',{'Desk','Leg'}),('second',{'Desk','Leg','New Panel'})]:
+              folder=Path('dev032-out')/rev
+              report=json.loads((folder/'scene.json').read_text())
+              assets=report['scene']['materialLibrary']
+              assert len(assets)==1,assets
+              mat=assets[0]
+              assert mat['name']=='Brushed Aluminium'
+              assert set(mat['usedBy'])==names
+              assert abs(mat['metallic']-0.9)<1e-5
+              assert abs(mat['roughness']-0.3)<1e-5
+              assert all(next(a['name'] for a in assets) in obj['materials']
+                         for obj in report['scene']['objects'])
+              scene=gltf(folder/'scene.glb')
+              assert any(m.get('name')=='Brushed Aluminium' for m in scene['materials'])
+              assert len(scene['nodes'])>=len(names)
+              assert (folder/'scene.blend').stat().st_size>100
+              print('DEV032',rev,'materials',len(scene['materials']),'nodes',len(scene['nodes']))
+          print('BW_DEV032_MATERIAL_LIBRARY PASS')
+          PY
