@@ -174,7 +174,7 @@ verification:
   dev028:
     status: DEFERRED
     code_ci:
-      status: NOT_RECONCILED
+      status: PENDING
       reason: Historical PR #33 merged; source-specific CI evidence not reconciled in this state repair
     live_acceptance:
       status: DEFERRED
@@ -183,7 +183,7 @@ verification:
     status: DEFERRED
     source: PRs #36 through #39 merged to main
     code_ci:
-      status: NOT_RECONCILED
+      status: PENDING
       reason: Earlier PR-specific CI not individually reconciled during this state-only repair
     live_acceptance:
       status: DEFERRED
