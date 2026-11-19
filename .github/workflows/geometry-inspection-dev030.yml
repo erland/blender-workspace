@@ -23,7 +23,7 @@ jobs:
       - name: Compile and test typed MCP contracts
         working-directory: service
         run: |
-          npm ci
+          npm install --no-package-lock --no-audit --no-fund
           npm run build:server
           node --test __tests__/geometry-inspection.test.mjs __tests__/scene-contract.test.mjs
       - name: Build Blender worker
