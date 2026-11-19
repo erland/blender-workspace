@@ -31,6 +31,10 @@ A Google-authenticated user can view saved GLB revisions in the browser;
 `workspace_get_job` includes the link for completed GLB jobs.
 The read-only browser viewer can select named GLB mesh nodes and compare
 saved revisions side by side without running Blender or Modal.
+DEV-031 adds six camera presets (including isometric/top), bounding-box and
+coordinate-axis helpers, wireframe inspection and browser-local PNG export.
+These functions do not start Modal jobs or incur server rendering costs.
+See [DEV-031 browser inspection](service/docs/dev-031-browser-glb-inspection.md).
 See [DEV-021 selection and comparison](service/docs/dev-021-object-picking-comparison.md).
 From DEV-022, generic Blender scene objects carry persistent UUIDs in the BLEND,
 scene report and GLB node extras; new duplicates get independent IDs, and old
