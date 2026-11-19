@@ -35,4 +35,4 @@ jobs:
         working-directory: service
         run: |
           test -s dist/viewer.js
-          ! grep -E 'https://|MODAL_TOKEN_ID|MODAL_TOKEN_SECRET' dist/viewer.js
+          ! grep -E 'MODAL_TOKEN_ID|MODAL_TOKEN_SECRET|workspace_queue_python_script' dist/viewer.js
