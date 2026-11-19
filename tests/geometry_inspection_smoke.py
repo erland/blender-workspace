@@ -2,9 +2,11 @@
 import json
 import os
 import tempfile
+import sys
 from pathlib import Path
 import bpy
 
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.common import inspect_scene, write_manifest
 from blender_workspace_poc.object_identity import ensure_object_ids
 
