@@ -12,17 +12,17 @@ ARTIFACT_NAMES = ("scene.blend", "scene.glb", "scene.json")
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
 
-# Only immutable, commit-addressed GHCR references are accepted. No "latest".
+# Accept pinned release versions, legacy commit tags, or digests; never mutable latest for paid Modal jobs.
 GHCR_BLENDER_REF = re.compile(
     r"^ghcr\.io/[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.-]*"
-    r"(?::sha-[0-9a-f]{40}|@sha256:[0-9a-f]{64})$"
+    r"(?::(?:sha-[0-9a-f]{40}|v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))|@sha256:[0-9a-f]{64})$"
 )
 
 
 def blender_image_reference(value=None):
     ref = value if value is not None else os.environ.get("MODAL_BLENDER_IMAGE", "")
     if not GHCR_BLENDER_REF.fullmatch(ref):
-        raise ValueError("MODAL_BLENDER_IMAGE must be a pinned GHCR sha-commit tag or sha256 digest")
+        raise ValueError("MODAL_BLENDER_IMAGE must be a pinned GHCR release version, sha-commit tag or sha256 digest")
     return ref
 
 
