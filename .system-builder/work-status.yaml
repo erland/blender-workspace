@@ -1,9 +1,9 @@
 schema_version: 1
 project: blender-workspace
-status: code_complete_live_acceptance_deferred
+status: verification_pending
 mode: CHANGE
-selected_step: DEV-036
-in_progress: null
+selected_step: DEV-037
+in_progress: DEV-037
 completed_steps:
   - DEV-001
   - DEV-002
@@ -235,9 +235,17 @@ verification:
     deployment_acceptance:
       status: DEFERRED
       reason: First GHCR publish requires merge to main. Blender package must be made public before owner-billed Modal testing. Coolify pull and live end-to-end still unverified.
+  dev037:
+    status: IN_PROGRESS
+    scope: "Coolify Compose with external PostgreSQL, discrete PG* credentials and migrations before service startup"
+    code_ci:
+      status: PENDING
+    live_deployment:
+      status: DEFERRED
+      reason: External PostgreSQL instance and Coolify deployment not available to CI
 next:
-  recommended: VERIFY_GHCR_PUBLICATION_ON_MAIN
-  reason: Merge PR #51, inspect the main publish workflow's three packages, set Blender GHCR visibility public, then deploy matching pinned images to Coolify and test an owner-funded Modal job
+  recommended: VERIFY_DEV-037
+  reason: Validate Compose config, separate PG password and automatic migrations in CI before completion; real Coolify deployment remains a manual acceptance gate
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:
