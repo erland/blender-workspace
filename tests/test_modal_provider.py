@@ -174,12 +174,17 @@ class ModalProviderTests(unittest.TestCase):
                 run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_not_called()
 
-    def test_registry_ref_requires_immutable_sha_tag_or_digest(self):
+    def test_registry_ref_requires_release_sha_or_digest(self):
         good = "ghcr.io/erland/blender-workspace-blender:sha-" + "f" * 40
         digest = "ghcr.io/erland/blender-workspace-blender@sha256:" + "a" * 64
+        release = "ghcr.io/erland/blender-workspace-blender:v1.2.3"
+        self.assertEqual(blender_image_reference(release), release)
         self.assertEqual(blender_image_reference(good), good)
         self.assertEqual(blender_image_reference(digest), digest)
         for bad in ("", "latest", "ghcr.io/erland/blender-workspace-blender:latest",
+                    "ghcr.io/erland/blender-workspace-blender:v1.2.3-rc.1",
+                    "ghcr.io/erland/blender-workspace-blender:v1.2",
+                    "ghcr.io/erland/blender-workspace-blender:v01.2.3",
                     "ghcr.io/erland/blender-workspace-blender:sha-abc",
                     "docker.io/erland/blender:sha-" + "a" * 40,
                     "ghcr.io/a/b:sha-" + "g" * 40,
