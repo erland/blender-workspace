@@ -1,8 +1,8 @@
 schema_version: 1
 project: blender-workspace
 status: code_complete_live_acceptance_deferred
-mode: CHANGE
-selected_step: DEV-037
+mode: IMPROVE
+selected_step: RELEASE_GHCR
 in_progress: null
 completed_steps:
   - DEV-001
@@ -247,6 +247,17 @@ verification:
     live_deployment:
       status: DEFERRED
       reason: Shared external PostgreSQL access, actual Coolify configuration and live OAuth/Modal not verified
+  release_ghcr:
+    status: COMPLETE
+    scope: "GHCR image publication only on stable GitHub Release; version and latest tags; BW_IMAGE_TAG Coolify; worker pins matching Blender release"
+    source_pr: https://github.com/erland/blender-workspace/pull/54
+    code_ci:
+      status: PASS
+      source_sha: 42f80362021131d988ec8d469daded2ee6c7d9a7
+      result: All 7 PR workflows passed, including offline container/Blender verification, unit tests and Coolify Compose configuration
+    live_release:
+      status: DEFERRED
+      reason: Release-triggered publication, GHCR visibility and Coolify pull require a real published GitHub Release
   safari_settings_origin_fix:
     status: COMPLETE
     source_pr: https://github.com/erland/blender-workspace/pull/53
@@ -258,8 +269,8 @@ verification:
       status: DEFERRED
       reason: Safari 26 against deployed Coolify service not yet retested
 next:
-  recommended: DEPLOY_AND_VALIDATE_COOLIFY_WHEN_READY
-  reason: Merge PR #52, enter separate PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE variables as Coolify secrets, confirm migrations, then test connected MCP and worker with owner-funded Modal
+  recommended: VERIFY_FIRST_RELEASE_GHCR_PUBLISH
+  reason: Merge PR #54, publish a stable vMAJOR.MINOR.PATCH GitHub Release, verify three version/latest GHCR images, then configure Coolify BW_IMAGE_TAG and redeploy
 blockers_additional:
   - Production-grade owner-scoped staged upload for large model assets is not implemented
 blockers:

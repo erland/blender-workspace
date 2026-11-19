@@ -1,6 +1,11 @@
 name: Modal DEV-002
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Published Blender GHCR release tag (e.g. v1.2.3); this run incurs Modal charges'
+        required: true
+        type: string
   pull_request:
     paths:
       - 'modal_provider/**'
@@ -27,7 +32,7 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-      MODAL_BLENDER_IMAGE: ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}
+      MODAL_BLENDER_IMAGE: ghcr.io/erland/blender-workspace-blender:${{ inputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
       - name: Require credentials

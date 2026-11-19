@@ -34,7 +34,7 @@ the YAML, commit a `.env`, or put the password in a database URL.
 
 | Variable | Example or instruction | Secret? |
 | --- | --- | --- |
-| `BW_IMAGE_SHA` | 40-character commit SHA from the successful **main** GHCR publish | No |
+| `BW_IMAGE_TAG` | Published release version such as `v1.2.3` or `latest` (default) | No |
 | `PGHOST` | Internal hostname/IP of the existing PostgreSQL instance | No |
 | `PGPORT` | `5432` unless configured otherwise | No |
 | `PGUSER` | Dedicated PostgreSQL role for Blender Workspace | No |
@@ -91,11 +91,11 @@ inside that database. SQL is transactionally applied and checksummed.
 
 ## Deployment procedure
 
-1. Merge DEV-036, verify the `main` GHCR job pushed all three images
-   with the same `sha-<commit>` suffix. Make the Blender package
+1. Publish a stable GitHub Release (for example `v1.2.3`), verify the release GHCR workflow pushed all three images
+   with the same release version tag. Make the Blender package
    publicly readable in GHCR for independent Modal users; configure
    Coolify registry pull credentials for MCP/Worker if those packages
-   are private. Confirm the image tag is published before deployment.
+   are private. Confirm the image tag is published before deployment. The worker image pins the Blender image to its matching release version even when `BW_IMAGE_TAG=latest`.
 2. Create/verify the separate PostgreSQL database and user, allow network
    access from your Coolify host, and test authentication/TLS as needed.
 3. Create a Coolify Docker Compose application from
@@ -116,7 +116,7 @@ inside that database. SQL is transactionally applied and checksummed.
 
 ## Updating
 
-Change only `BW_IMAGE_SHA` to a newly verified, published **main** commit
+Change only `BW_IMAGE_TAG` to a newly published GitHub Release version (or keep `latest` and ensure Coolify pulls the updated image)
 and redeploy. The one-shot migrate job applies pending migrations
 before either long-running service starts. Backup the existing database
 and `artifacts` volume beforehand. Preserve the encryption/signing

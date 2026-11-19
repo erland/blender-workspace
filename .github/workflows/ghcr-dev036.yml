@@ -1,4 +1,4 @@
-name: DEV-036 Verify and publish GHCR images
+name: Verify and publish release GHCR images
 
 on:
   pull_request:
@@ -11,8 +11,8 @@ on:
       - 'scripts/**'
       - 'tests/**'
       - '.github/workflows/ghcr-dev036.yml'
-  push:
-    branches: [main]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -59,7 +59,7 @@ jobs:
         run: |
           docker build -f service/Dockerfile -t bw-mcp:dev036 service
           docker build -f job-worker/Dockerfile \
-            --build-arg MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }} \
+            --build-arg MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:v0.0.0 \
             -t bw-worker:dev036 .
           docker build -f Dockerfile -t bw-blender:dev036 .
       - name: Assert service preflight, pinned job worker, and real Blender smoke
@@ -67,12 +67,12 @@ jobs:
           docker run --rm --entrypoint python3 bw-mcp:dev036 \
             -I -c "compile('import bpy', '<ci>', 'exec')"
           docker run --rm --entrypoint python3 bw-worker:dev036 \
-            -c "import os; assert os.environ['MODAL_BLENDER_IMAGE']=='ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}'"
+            -c "import os; assert os.environ['MODAL_BLENDER_IMAGE']=='ghcr.io/erland/blender-workspace-blender:v0.0.0'"
           docker run --rm bw-blender:dev036
 
   publish:
-    # PRs and feature-branch dispatches can never push packages or start Modal.
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # Only a published, stable GitHub Release can push images.
+    if: github.event_name == 'release' && !github.event.release.prerelease
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 50
@@ -81,50 +81,73 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate stable release tag and source branch
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -eu
+          if ! [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag must be a stable vMAJOR.MINOR.PATCH tag"
+            exit 1
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo "::error::Release commit must belong to main history"
+            exit 1
+          }
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish pinned Blender image first
+      - name: Publish Blender image with stable version and latest
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}
+          tags: |
+            ghcr.io/erland/blender-workspace-blender:${{ steps.release.outputs.tag }}
+            ghcr.io/erland/blender-workspace-blender:latest
           cache-from: type=gha,scope=blender
           cache-to: type=gha,scope=blender,mode=max
-      - name: Publish pinned Job Worker image
+      - name: Publish Job Worker with matching fixed Blender version
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./job-worker/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/erland/blender-workspace-job-worker:sha-${{ github.sha }}
+          tags: |
+            ghcr.io/erland/blender-workspace-job-worker:${{ steps.release.outputs.tag }}
+            ghcr.io/erland/blender-workspace-job-worker:latest
           build-args: |
-            MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}
+            MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:${{ steps.release.outputs.tag }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,scope=worker,mode=max
-      - name: Publish pinned MCP service image
+      - name: Publish MCP service with stable version and latest
         uses: docker/build-push-action@v6
         with:
           context: ./service
           file: ./service/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/erland/blender-workspace-mcp:sha-${{ github.sha }}
+          tags: |
+            ghcr.io/erland/blender-workspace-mcp:${{ steps.release.outputs.tag }}
+            ghcr.io/erland/blender-workspace-mcp:latest
           cache-from: type=gha,scope=mcp
           cache-to: type=gha,scope=mcp,mode=max
-      - name: Document matching image references
+      - name: Summarize release images
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
-          echo "### DEV-036 immutable GHCR set" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo 'Use **one commit SHA for the three images**:' >> "$GITHUB_STEP_SUMMARY"
-          echo ' - `ghcr.io/erland/blender-workspace-mcp:sha-${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
-          echo ' - `ghcr.io/erland/blender-workspace-job-worker:sha-${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
-          echo ' - `ghcr.io/erland/blender-workspace-blender:sha-${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
-          echo 'The Blender GHCR package must be public for owner-billed Modal accounts to pull it.' >> "$GITHUB_STEP_SUMMARY"
+          echo "### Published GHCR release $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "Set BW_IMAGE_TAG=$TAG or BW_IMAGE_TAG=latest in Coolify." >> "$GITHUB_STEP_SUMMARY"
+          echo "All three packages have matching version/latest tags; worker pins Blender to $TAG." >> "$GITHUB_STEP_SUMMARY"
+          echo "Make the Blender GHCR package publicly readable before Modal execution." >> "$GITHUB_STEP_SUMMARY"
