@@ -63,21 +63,23 @@ test('Modal identity is injected only for the requested owner; global tokens are
   assert.throws(()=>new ModalPythonExecutor('relative-root'));
 });
 
-test('Modal executor denies missing connected account before starting subprocess',async()=>{
-  const executor=new ModalPythonExecutor('/tmp',100,undefined,false);
-  await assert.rejects(()=>executor.createDemo('/tmp/unneeded','someone'),/service unavailable/);
+test('Modal Python executor denies missing connected account before starting subprocess',async()=>{
+  const spec={kind:'python_script',code:'import bpy\nprint(1)'};
+  const executor=new ModalPythonExecutor('/tmp',100);
+  await assert.rejects(()=>executor.runPythonScript('/tmp/unneeded','someone',1,spec),/service unavailable/);
   const disconnected=new ModalPythonExecutor('/tmp',100,{
     async requireConnected(){throw new Error('Modal account not connected');}
   });
-  await assert.rejects(()=>disconnected.createDemo('/tmp/unneeded','someone'),/not connected/);
+  await assert.rejects(()=>disconnected.runPythonScript('/tmp/unneeded','someone',1,spec),/not connected/);
 });
 
-test('orchestrator passes claimed job owner to executor, never caller override',async()=>{
+test('orchestrator passes claimed Python job owner to executor, never caller override',async()=>{
+  const spec={kind:'python_script',code:'import bpy\nprint(1)'};
   const fakeJobs={async claim(){return {id:'job',project_id:'project',owner_key:'owner-from-job',
-    expected_revision:0,requested_revision:1,status:'running'};},
+    expected_revision:0,requested_revision:1,status:'running',edit_spec:null,operation_spec:spec};},
     async finalize(){return {status:'completed'};}};
   let calledOwner;
-  const executor={async createDemo(_dir,owner){calledOwner=owner;}};
+  const executor={async runPythonScript(_dir,owner){calledOwner=owner;}};
   const artifacts={async publish(){}};
   const orch=new JobOrchestrator(fakeJobs,artifacts,executor);
   await orch.execute('owner-from-job','job');
