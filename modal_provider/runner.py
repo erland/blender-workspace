@@ -2,6 +2,8 @@
 import argparse
 import hashlib
 import json
+import os
+import re
 from pathlib import Path
 import time
 
@@ -9,6 +11,20 @@ ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_NAMES = ("scene.blend", "scene.glb", "scene.json")
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
+
+# Only immutable, commit-addressed GHCR references are accepted. No "latest".
+GHCR_BLENDER_REF = re.compile(
+    r"^ghcr\.io/[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.-]*"
+    r"(?::sha-[0-9a-f]{40}|@sha256:[0-9a-f]{64})$"
+)
+
+
+def blender_image_reference(value=None):
+    ref = value if value is not None else os.environ.get("MODAL_BLENDER_IMAGE", "")
+    if not GHCR_BLENDER_REF.fullmatch(ref):
+        raise ValueError("MODAL_BLENDER_IMAGE must be a pinned GHCR sha-commit tag or sha256 digest")
+    return ref
+
 
 
 def estimate_usd(seconds, cpu=2, memory_mib=8192):
@@ -36,15 +52,18 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         raw.decode('utf8')
     except UnicodeDecodeError as exc:
         raise ValueError('Python source must be UTF-8') from exc
+    # Validate the pinned image before any chargeable Modal API call.
+    image_ref = blender_image_reference()
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    image = sdk.Image.from_dockerfile(str(ROOT / "Dockerfile"), context_dir=str(ROOT))
+    image = sdk.Image.from_registry(image_ref, add_python="3.11")
     app = sdk.App.lookup("blender-workspace-dev002", create_if_missing=True)
     started = time.monotonic()
     sandbox = None
     report = {"schema_version": 1, "revision": revision, "provider": "modal-sandbox",
               "cpu_physical_cores": cpu, "memory_mib": memory_mib,
-              "sandbox_timeout_seconds": timeout, "status": "FAILED", "artifacts": []}
+              "sandbox_timeout_seconds": timeout, "status": "FAILED", "artifacts": [],
+              "blender_image": image_ref}
     try:
         sandbox = sdk.Sandbox.create(
             "sleep", str(timeout), app=app, image=image, cpu=cpu, memory=memory_mib,
