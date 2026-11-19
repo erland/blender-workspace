@@ -1,0 +1,61 @@
+# Coolify Docker Compose resource: existing PostgreSQL server is external.
+# Set all interpolated variables in Coolify (secrets masked), never in git.
+# All images use one verified main-commit SHA tag from GHCR.
+x-db-env: &db-env
+  PGHOST: ${PGHOST:?Set PostgreSQL host in Coolify}
+  PGPORT: ${PGPORT:?Set PostgreSQL port in Coolify}
+  PGUSER: ${PGUSER:?Set PostgreSQL user in Coolify}
+  PGPASSWORD: ${PGPASSWORD:?Set PostgreSQL password as a secret in Coolify}
+  PGDATABASE: ${PGDATABASE:?Set PostgreSQL database in Coolify}
+
+services:
+  # One-shot migration gate; if SQL fails the API and worker do not start.
+  migrate:
+    image: ghcr.io/erland/blender-workspace-mcp:sha-${BW_IMAGE_SHA:?Set published Git commit SHA}
+    restart: "no"
+    command: ["node", "dist/db/migrate-cli.js"]
+    environment:
+      <<: *db-env
+
+  mcp:
+    image: ghcr.io/erland/blender-workspace-mcp:sha-${BW_IMAGE_SHA:?Set published Git commit SHA}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "3000"
+    environment:
+      <<: *db-env
+      MCP_AUTH_MODE: google
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set HTTPS public service origin}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set Google client ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set Google OAuth secret}
+      GOOGLE_ALLOWED_REDIRECT_ORIGINS: ${GOOGLE_ALLOWED_REDIRECT_ORIGINS:?Set trusted ChatGPT redirect origin}
+      GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:?Set pilot allowlist}
+      OAUTH_SIGNING_KEY: ${OAUTH_SIGNING_KEY:?Set Ed25519 private signing key}
+      OAUTH_SESSION_SECRET: ${OAUTH_SESSION_SECRET:?Set random OAuth session secret}
+      MODAL_CREDENTIAL_ENCRYPTION_KEY: ${MODAL_CREDENTIAL_ENCRYPTION_KEY:?Set encrypted Modal credential key}
+      ARTIFACT_ROOT: /data/blender-workspace
+      PORT: "3000"
+      HOST: "0.0.0.0"
+    volumes:
+      - artifacts:/data/blender-workspace
+
+  job-worker:
+    image: ghcr.io/erland/blender-workspace-job-worker:sha-${BW_IMAGE_SHA:?Set published Git commit SHA}
+    restart: unless-stopped
+    command: ["dispatch"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *db-env
+      MODAL_WORKER_ROOT: /app
+      MODAL_CREDENTIAL_ENCRYPTION_KEY: ${MODAL_CREDENTIAL_ENCRYPTION_KEY:?Set encrypted Modal credential key}
+      ARTIFACT_ROOT: /data/blender-workspace
+    volumes:
+      - artifacts:/data/blender-workspace
+
+volumes:
+  artifacts:
