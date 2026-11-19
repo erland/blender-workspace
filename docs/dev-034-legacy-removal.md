@@ -130,3 +130,15 @@ job/revision and Modal tests remain. The old monster demo and retired
 TypeScript schemas are deliberately **not** removed in this change; they
 will be handled in a separately verified step. Verification of this PR is
 pending.
+
+## DEV-034E3B CI repair and verification
+
+The remaining DEV-032 material-library workflow still depended on the removed
+`apply_operation.py` and typed material validation. It now executes Blender
+`apply_python.py` for both creation and revision, creates and reuses one named
+PBR material, and checks exported GLB materials, saved library metadata,
+three model objects, and stable object IDs. The retired typed-only material
+validation test was also deleted. All four triggered PR workflows passed
+on implementation SHA `405b755c311f38d242ceb8df3a3a97ea29bc03d4`.
+
+The remaining monster demo/legacy TypeScript schemas are deferred to E3C.
