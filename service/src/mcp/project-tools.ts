@@ -8,7 +8,7 @@ import {SceneEditSchema} from '../jobs/scene-edit.js';
 import {SceneOperationSchema,isValidInitialSceneOperation} from '../jobs/scene-operation.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
-import {inspectSavedScene,geometrySnapshot,geometryValidation} from '../scene/scene-contract.js';
+import {inspectSavedScene,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
 
 export interface ProjectServices {
   ownerKey: string;
@@ -126,6 +126,22 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
   });
   // Read only previously saved, checksum-verified JSON. These calls never
   // start Blender, inspect untrusted .blend bytes, or incur Modal charges.
+  server.registerTool('workspace_list_materials',{
+    description:'List reusable named PBR materials (numeric colors, metallic, roughness, opacity, emission) and mesh users stored in one owned, checksum-verified Blender revision. Read only, no Modal job. Older revisions return available=false. Create and assign project-local materials using create_pbr_material and assign_material in workspace_queue_scene_operation.',
+    inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999)},
+    annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+  },async({projectId,revision})=>{
+    const block=denied(READ_SCOPE);if(block)return block;
+    try{
+      const project=await projects.get(ownerKey,projectId);
+      if(!project||!artifacts)return failure(new JobConflict('Material catalog unavailable'));
+      const revisions=await projects.revisions(ownerKey,projectId);
+      if(!revisions.some(v=>v.revision===revision&&v.artifact_prefix))
+        return failure(new JobConflict('Saved revision not found'));
+      const scene=await inspectSavedScene(artifacts,projectId,revision);
+      return result({projectId,revision,...materialCatalog(scene)});
+    }catch{return failure(new JobConflict('Saved material catalog could not be inspected'));}
+  });
   server.registerTool('workspace_inspect_geometry',{
     description:'Inspect exact saved base-mesh vertex, edge and face counts, world-space bounds, UV layers, modifiers and diagnostic counts. No Blender job, no Model execution. Historic revisions without geometry metrics return available=false, never guessed values. Optional objectId filters to one stable object identity.',
     inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999),
@@ -176,7 +192,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     });
   }
   server.registerTool('workspace_queue_scene_operation',{
-    description:'Queue one or a batch (1–20) of bounded Blender operations for any model: create primitives, transform/recolor/duplicate/rename/delete, or parent/unparent scene objects. For existing targets specify exactly one of name or stable objectId; for duplicate sources specify source or sourceId. set_parent requires parentId (UUID or null to unparent), rejects cycles and preserves world position. Existing meshes also support set_pbr_material with bounded RGB baseColor/emissionColor, metallic, roughness, opacity and emissionStrength (all factors 0–1). Existing meshes support extrude_face (polygon faceIndex and nonzero local offset), mirror_mesh (x/y/z axis), array_mesh (2–8 copies with nonzero local constant offset), bevel_mesh (width 0.001–2, 1–3 segments), subdivide_mesh (1–2 levels) and boolean_mesh (union/difference/intersection with operandId) as applied, bounded geometry edits. A new scene must begin with add_primitive, add_mesh, or import_glb. import_glb accepts only a self-contained GLB v2 embedded as base64 (up to 120 KB decoded), not paths or remote URLs. add_mesh accepts bounded vertices and face vertex indices. Operations are ordered and saved as one immutable revision. No user Python.',
+    description:'Queue one or a batch (1–20) of bounded Blender operations for any model: create primitives, transform/recolor/duplicate/rename/delete, or parent/unparent scene objects. For existing targets specify exactly one of name or stable objectId; for duplicate sources specify source or sourceId. set_parent requires parentId (UUID or null to unparent), rejects cycles and preserves world position. Existing meshes also support set_pbr_material with bounded RGB baseColor/emissionColor, metallic, roughness, opacity and emissionStrength (all factors 0–1). Existing meshes support extrude_face (polygon faceIndex and nonzero local offset), mirror_mesh (x/y/z axis), array_mesh (2–8 copies with nonzero local constant offset), bevel_mesh (width 0.001–2, 1–3 segments), subdivide_mesh (1–2 levels) and boolean_mesh (union/difference/intersection with operandId) as applied, bounded geometry edits. Named PBR materials can be created with create_pbr_material and assigned to mesh objects via assign_material in the same scene or a later revision. This reuses materials without textures, arbitrary nodes, paths or URLs. A new scene must begin with add_primitive, add_mesh, or import_glb. import_glb accepts only a self-contained GLB v2 embedded as base64 (up to 120 KB decoded), not paths or remote URLs. add_mesh accepts bounded vertices and face vertex indices. Operations are ordered and saved as one immutable revision. No user Python.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       operation:SceneOperationSchema,note:note.optional()},...schemes(WRITE_SCOPE)
   },async({projectId,expectedRevision,operation,note:jobNote})=>{

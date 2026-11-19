@@ -15,6 +15,7 @@ from blender_workspace_poc.scene_operation_validation import validate_operation
 from blender_workspace_poc.object_identity import assign_new_object_id,ensure_object_ids,PROPERTY
 from blender_workspace_poc.glb_import_validation import decode_embedded_glb
 from blender_workspace_poc.common import ensure_output,save_scene,export_glb,write_manifest
+from blender_workspace_poc.material_library import create_library_material,assign_library_material
 
 def find_by_id(object_id):
     matches=[obj for obj in bpy.data.objects if obj.get(PROPERTY)==object_id]
@@ -150,6 +151,12 @@ def import_bounded_glb(operation):
 def apply_operation(operation):
     kind=operation['kind'];name=operation.get('name')
     existing=bpy.data.objects.get(name) if name is not None else None
+    if kind=='create_pbr_material':
+        create_library_material(operation)
+        return
+    if kind=='assign_material':
+        assign_library_material(resolve_target(operation),operation['materialName'])
+        return
     if kind=='import_glb':
         import_bounded_glb(operation)
         return

@@ -48,6 +48,13 @@ export const SingleSceneOperationSchema=z.discriminatedUnion('kind',[
    rotation:xyz.optional()}).strict().refine(oneTarget,'Specify exactly one object selector').refine(v=>v.location!==undefined||v.scale!==undefined||v.rotation!==undefined,
      'At least one transform is required'),
  z.object({kind:z.literal('set_color'),...target,color:rgb}).strict().refine(oneTarget,'Specify exactly one object selector'),
+ z.object({kind:z.literal('create_pbr_material'),materialName:name,
+   baseColor:rgb,metallic:z.number().finite().min(0).max(1),
+   roughness:z.number().finite().min(0).max(1),
+   opacity:z.number().finite().min(0).max(1),
+   emissionColor:rgb,emissionStrength:z.number().finite().min(0).max(1)}).strict(),
+ z.object({kind:z.literal('assign_material'),...target,materialName:name}).strict()
+   .refine(oneTarget,'Specify exactly one mesh selector'),
  z.object({kind:z.literal('set_pbr_material'),...target,
    baseColor:rgb,
    metallic:z.number().finite().min(0).max(1),

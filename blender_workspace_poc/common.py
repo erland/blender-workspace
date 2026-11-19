@@ -5,6 +5,7 @@ from pathlib import Path
 import bpy
 from blender_workspace_poc.object_identity import ensure_object_ids,PROPERTY
 from blender_workspace_poc.geometry_report import describe_mesh
+from blender_workspace_poc.material_library import describe_material_library
 FRAME_RATE=24
 FRAME_END=49
 def ensure_output():
@@ -43,6 +44,7 @@ def inspect_scene():
         'frame_start':bpy.context.scene.frame_start,
         'frame_end':bpy.context.scene.frame_end,
         'objects':sorted(objects,key=lambda x:x['name']),
+        'materialLibrary':describe_material_library(),
         'actions':sorted(a.name for a in bpy.data.actions),
         'armature_animation':any(o.type=='ARMATURE' and o.animation_data and o.animation_data.action
                                  for o in bpy.data.objects),
