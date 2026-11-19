@@ -142,3 +142,17 @@ validation test was also deleted. All four triggered PR workflows passed
 on implementation SHA `405b755c311f38d242ceb8df3a3a97ea29bc03d4`.
 
 The remaining monster demo/legacy TypeScript schemas are deferred to E3C.
+
+## DEV-034 final cleanup
+
+The remaining demo monster generators and typed TypeScript schemas were deleted.
+The Docker default smoke now exercises `apply_python.py` for creation and
+revision, verifies actual saved BLEND/GLB/JSON artifacts and object UUID
+continuity. The Docker image also includes the trusted artifact validator.
+Historical monster-only manifest and GLB checks were removed; production
+structural validation and the Python-first integration tests remain.
+Node regression tests now validate only supported Python jobs and saved
+material catalogs rather than the retired typed command API.
+
+Final CI verification is required before closing DEV-034. This does not
+replace deferred live OAuth, user-billed Modal or iPad/browser acceptance.
