@@ -17,14 +17,23 @@ def estimate_usd(seconds, cpu=2, memory_mib=8192):
 
 
 def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
-        revision=1, input_blend=None, edit_file=None, operation_file=None):
+        revision=1, input_blend=None, edit_file=None, operation_file=None, python_file=None):
     """Injected SDK makes error and cleanup paths unit-testable without billing."""
-    if not 1 <= revision <= 99999999 or (revision > 2 and not (edit_file or operation_file)):
+    if not 1 <= revision <= 99999999 or (revision > 2 and not (edit_file or operation_file or python_file)):
         raise ValueError('Invalid or unsupported revision')
     if revision >= 2 and (not input_blend or not Path(input_blend).is_file()):
         raise ValueError("A saved .blend file is required for revision 2")
     if revision == 1 and (input_blend is not None or edit_file is not None):
         raise ValueError("Creation must not receive previous scene data")
+    if python_file is not None:
+        if operation_file is not None or edit_file is not None:
+            raise ValueError('Python source cannot mix with structured operations')
+        python_source=Path(python_file).resolve()
+        if not python_source.is_file():
+            raise ValueError('Python source file missing')
+        raw=python_source.read_bytes()
+        if not 1<=len(raw)<=16384 or b'\x00' in raw or not raw.strip():
+            raise ValueError('Invalid Python source length or content')
     if operation_file is not None:
         from blender_workspace_poc.scene_operation_validation import validate_operation
         if edit_file is not None:raise ValueError('Cannot mix operation types')
@@ -32,7 +41,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         if not op_path.is_file():raise ValueError('Operation file missing')
         operation=validate_operation(json.loads(op_path.read_text('utf8')))
         first=(operation['operations'][0] if operation['kind']=='batch' else operation)
-        if revision==1 and first['kind']!='add_primitive':
+        if revision==1 and first['kind'] not in ('add_primitive','add_mesh','import_glb'):
             raise ValueError('Initial scene requires primitive')
     if edit_file is not None:
         from blender_workspace_poc.scene_edit_validation import validate_edit
@@ -56,7 +65,17 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
             "sleep", str(timeout), app=app, image=image, cpu=cpu, memory=memory_mib,
             timeout=timeout, workdir="/workspace", block_network=True)
         created = time.monotonic()
-        if operation_file is not None:
+        if python_file is not None:
+            sandbox.filesystem.copy_from_local(str(Path(python_file).resolve()),
+                "/workspace/out/model.py")
+            if revision>=2:
+                sandbox.filesystem.copy_from_local(str(Path(input_blend).resolve()),
+                    "/workspace/out/input.blend")
+            process=sandbox.exec("blender","-b","--factory-startup","--python",
+                "/workspace/blender_workspace_poc/apply_python.py","--",
+                "NEW" if revision==1 else "/workspace/out/input.blend",
+                "/workspace/out/model.py",str(revision))
+        elif operation_file is not None:
             sandbox.filesystem.copy_from_local(str(Path(operation_file).resolve()),
                 "/workspace/out/operation.json")
             if revision>=2:
@@ -91,7 +110,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         if revision == 1 and operation_file is None and "BW_SMOKE PASS" not in report["blender_stdout_tail"]:
             raise RuntimeError("Expected Blender smoke success marker missing")
         executed = time.monotonic()
-        names = (('scene.blend','scene.glb','scene.json') if operation_file is not None else
+        names = (('scene.blend','scene.glb','scene.json') if (operation_file is not None or python_file is not None) else
                  ARTIFACT_NAMES if revision == 1 else
                  tuple(f'monster_v{revision}.{ext}' for ext in ('blend','glb','json')))
         for name in names:
@@ -102,6 +121,9 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
             report["artifacts"].append({
                 "name": name, "bytes": local.stat().st_size,
                 "sha256": hashlib.sha256(local.read_bytes()).hexdigest()})
+        if python_file is not None:
+            from modal_provider.artifact_validation import validate_python_outputs
+            validate_python_outputs(out)
         report["sandbox_start_seconds"] = round(created - started, 3)
         report["blender_execution_seconds"] = round(executed - created, 3)
         report["artifact_transfer_seconds"] = round(time.monotonic() - executed, 3)
@@ -137,6 +159,7 @@ def main():
     p.add_argument("--input-blend")
     p.add_argument("--edit-file")
     p.add_argument("--operation-file")
+    p.add_argument("--python-file")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--cpu", type=float, default=2)
     p.add_argument("--memory-mib", type=int, default=8192)
@@ -148,7 +171,8 @@ def main():
     import modal
     report = run(modal, args.out, cpu=args.cpu, memory_mib=args.memory_mib,
                  timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
-                 edit_file=args.edit_file,operation_file=args.operation_file)
+                 edit_file=args.edit_file,operation_file=args.operation_file,
+                 python_file=args.python_file)
     if report["status"] != "PASS" or not report["sandbox_terminated"]:
         raise RuntimeError("Sandbox cleanup or verification failed")
     print("Modal artifacts saved to", args.out)

@@ -37,8 +37,13 @@ See [DEV-020 viewer links](service/docs/dev-020-mcp-viewer-links.md).
 The earlier cube-monster example remains a regression/demo case, **not**
 a restriction on what scenes the service can represent.
 
-This is bounded procedural scene authoring, not arbitrary AI-to-mesh
-generation or unrestricted Python script execution. See
+The structured scene operation tool remains bounded and never accepts executable
+Python. DEV-029 introduces a separate, owner-scoped `workspace_queue_python_script`
+that executes AI-authored Blender Python only inside a short-lived, network-blocked
+Modal Sandbox. It uses the same immutable revision pipeline, with structural and
+checksum checks of returned BLEND/GLB/JSON artifacts. This is an initial, limited
+integration and **not yet live-accepted or production security-certified**.
+See [DEV-029 sandboxed Python contract](service/docs/dev-029-sandboxed-python.md). See
 [DEV-015 batch contract](service/docs/dev-015-batched-operations.md)
 [DEV-016 duplication contract](service/docs/dev-016-duplicate-objects.md),
 and [DEV-017 rename contract](service/docs/dev-017-rename-objects.md).

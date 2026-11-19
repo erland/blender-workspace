@@ -5,6 +5,7 @@ import type { Job, JobRepository } from './job-repository.js';
 import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-store.js';
 import {parseSceneEdit,type SceneEdit} from './scene-edit.js';
 import {parseSceneOperation,type SceneOperation} from './scene-operation.js';
+import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 
 export interface BlenderExecutor {
   /** Produce trusted outputs for the current demo. DEV-006 only creates revision 1. */
@@ -12,6 +13,7 @@ export interface BlenderExecutor {
   reviseDemo?(outDir:string,owner:string,inputBlend:string):Promise<void>;
   editScene?(outDir:string,owner:string,inputBlend:string,revision:number,edit:SceneEdit):Promise<void>;
   runSceneOperation?(outDir:string,owner:string,revision:number,operation:SceneOperation,inputBlend?:string):Promise<void>;
+  runPythonScript?(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,inputBlend?:string):Promise<void>;
 }
 const artifactFiles=(revision:number)=>['blend','glb','json'].map(ext=>`monster_v${revision}.${ext}`);
 export class JobOrchestrator {
@@ -37,7 +39,13 @@ export class JobOrchestrator {
     const temp=await mkdtemp(path.join(os.tmpdir(),'bw-job-'));
     let published=false;
     try {
-      if(job.operation_spec){
+      if(job.operation_spec?.kind==='python_script'){
+        if(!this.executor.runPythonScript)throw new Error('Sandbox Python executor is not configured');
+        const source=job.expected_revision===0?undefined:await this.files.verifiedArtifactPath(
+          job.project_id,job.expected_revision,'scene.blend');
+        await this.executor.runPythonScript(temp,owner,job.requested_revision,
+          parsePythonScript(job.operation_spec),source);
+      }else if(job.operation_spec){
         if(!this.executor.runSceneOperation)throw new Error('Generic operation executor is not configured');
         const operation=parseSceneOperation(job.operation_spec);
         const source=job.expected_revision===0?undefined:await this.files.verifiedArtifactPath(

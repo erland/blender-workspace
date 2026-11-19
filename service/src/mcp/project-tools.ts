@@ -6,6 +6,7 @@ import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {SceneEditSchema} from '../jobs/scene-edit.js';
 import {SceneOperationSchema,isValidInitialSceneOperation} from '../jobs/scene-operation.js';
+import {PythonScriptSchema} from '../jobs/python-script.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import {inspectSavedScene} from '../scene/scene-contract.js';
 
@@ -167,6 +168,33 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
         jobNote??'Structured Blender operation',undefined,operation);
       return result({job:safeJob(job),operation,message:'Queued generic Blender scene operation'});
     }catch{return failure(new JobConflict('Scene operation could not be queued'));}
+  });
+  server.registerTool('workspace_queue_python_script',{
+    description:'Queue Blender Python in a short-lived, network-blocked Modal Sandbox. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owned project revision and saved BLEND checks apply as for structured operations. This tool executes arbitrary Python with resource limits, not as a safe in-process API.',
+    inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
+      code:PythonScriptSchema.shape.code,note:note.optional()},...schemes(WRITE_SCOPE)
+  },async({projectId,expectedRevision,code,note:jobNote})=>{
+    const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
+    try{
+      if(!modalAccounts||!(await modalAccounts.status(ownerKey)).connected)
+        return failure(new JobConflict('Connect your Modal account before queueing Python'));
+      if(!artifacts)return failure(new JobConflict('Scene artifacts are not configured'));
+      const project=await projects.get(ownerKey,projectId);
+      if(!project)return failure(new JobConflict('Project not found'));
+      if(project.current_revision!==expectedRevision)
+        return failure(new JobConflict('Stale project revision'));
+      if(expectedRevision>0){
+        const history=await projects.revisions(ownerKey,projectId);
+        if(!history.some(v=>v.revision===expectedRevision&&v.artifact_prefix))
+          return failure(new JobConflict('Saved source revision not found'));
+        await artifacts.verifiedArtifactPath(projectId,expectedRevision,'scene.blend');
+      }
+      const spec=PythonScriptSchema.parse({kind:'python_script',code});
+      const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
+        jobNote??'Sandboxed Blender Python',undefined,spec);
+      return result({job:safeJob(job),execution:'modal-sandbox',
+        message:'Queued Blender Python for isolated execution; no direct server-side Python'});
+    }catch{return failure(new JobConflict('Python job could not be queued'));}
   });
   server.registerTool('workspace_queue_demo', {
     description: 'Queue the first cube-monster demonstration revision for automatic execution by the separate dispatcher. Requires a connected Modal account.',
