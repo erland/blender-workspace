@@ -15,7 +15,7 @@ import path from 'node:path';
 const token='m'.repeat(48);
 async function start(t,owner,pool,artifacts) {
   const config=loadConfig({MCP_ACCESS_TOKEN:token,PUBLIC_ORIGIN:'http://127.0.0.1:3000',MCP_OWNER_KEY:owner});
-  const app=createApp(config,{ownerKey:owner,projects:new ProjectRepository(pool),jobs:new JobRepository(pool),...(artifacts?{artifacts}:{})});
+  const app=createApp(config,{ownerKey:owner,projects:new ProjectRepository(pool),jobs:new JobRepository(pool),...(artifacts?{artifacts,modalAccounts:{async status(){return {connected:true};}}}:{})});
   await app.listen({port:0,host:'127.0.0.1'});t.after(()=>app.close());
   let id=1;
   return async (method,params={},authorized=true) => {
@@ -50,10 +50,9 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   const toolList=await call('tools/list');
   const names=toolList.tools.map(x=>x.name);
   for (const name of ['workspace_create_project','workspace_list_projects','workspace_get_project',
-    'workspace_rename_project','workspace_list_revisions','workspace_queue_demo',
-    'workspace_queue_recolor_blue','workspace_queue_scene_edit',
-    'workspace_queue_scene_operation',
-    'workspace_inspect_scene','workspace_get_job'])
+    'workspace_rename_project','workspace_list_revisions','workspace_queue_python_script',
+    'workspace_inspect_scene','workspace_inspect_geometry','workspace_validate_model',
+    'workspace_list_materials','workspace_get_job'])
     assert.ok(names.includes(name),name);
   const created=output(await call('tools/call',{name:'workspace_create_project',arguments:{name:'Cube monster'}}));
   const id=created.project.id;
@@ -73,14 +72,11 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   assert.equal(output(await call('tools/call',{name:'workspace_list_projects',arguments:{}})).projects.some(p=>p.id===id),true);
   assert.equal(output(await otherCall('tools/call',{name:'workspace_list_projects',arguments:{}})).projects.some(p=>p.id===id),false);
   assert.equal((await otherCall('tools/call',{name:'workspace_get_project',arguments:{projectId:id}})).isError,true);
-  assert.equal((await otherCall('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}})).isError,true);
+  assert.equal((await otherCall('tools/call',{name:'workspace_queue_python_script',arguments:{projectId:id,expectedRevision:0,code:'print(1)'}})).isError,true);
   const renamed=output(await call('tools/call',{name:'workspace_rename_project',arguments:{projectId:id,name:'New name'}}));
   assert.equal(renamed.project.name,'New name');
-  assert.equal((await call('tools/call',{name:'workspace_queue_recolor_blue',
-    arguments:{projectId:id}})).isError,true);
-  assert.equal((await call('tools/call',{name:'workspace_queue_scene_edit',arguments:{
-    projectId:id,expectedRevision:1,edit:{target:'Body',color:[0.1,0.2,0.3]}
-  }})).isError,true);
+  assert.equal((await call('tools/call',{name:'workspace_queue_python_script',
+    arguments:{projectId:id,expectedRevision:1,code:'print(1)'}})).isError,true);
   assert.equal((await call('tools/call',{name:'workspace_inspect_scene',
     arguments:{projectId:id,revision:1}})).isError,true);
   // Scene metadata can be entirely unrelated to the cube-monster fixture.
@@ -109,24 +105,17 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
     '{"schema_version":1,"scene":{"objects":[]}}');
   assert.equal((await call('tools/call',{name:'workspace_inspect_scene',
     arguments:{projectId:newScene.id,revision:1}})).isError,true);
-  const batch={kind:'batch',operations:[
-    {kind:'add_primitive',name:'Desk top',primitive:'cube',scale:[2,1,0.1]},
-    {kind:'add_primitive',name:'Leg 1',primitive:'cylinder',location:[-0.8,0,-1]}]};
-  assert.equal((await otherCall('tools/call',{name:'workspace_queue_scene_operation',
-    arguments:{projectId:id,expectedRevision:0,operation:batch}})).isError,true);
-  assert.equal((await call('tools/call',{name:'workspace_queue_scene_operation',
-    arguments:{projectId:id,expectedRevision:0,
-      operation:{kind:'batch',operations:[{kind:'set_color',name:'X',color:[1,0,0]}]}}})).isError,true);
-  const operation={kind:'add_primitive',name:'Building Block',primitive:'cube'};
-  assert.equal((await otherCall('tools/call',{name:'workspace_queue_scene_operation',
-    arguments:{projectId:id,expectedRevision:0,operation}})).isError,true);
-  assert.equal((await call('tools/call',{name:'workspace_queue_scene_operation',
-    arguments:{projectId:id,expectedRevision:0,
-      operation:{kind:'set_color',name:'X',color:[1,0,0]}}})).isError,true);
-  const queued=output(await call('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}}));
+  const code='import bpy\\nbpy.ops.mesh.primitive_cube_add()';
+  assert.equal((await otherCall('tools/call',{name:'workspace_queue_python_script',
+    arguments:{projectId:id,expectedRevision:0,code}})).isError,true);
+  assert.equal((await call('tools/call',{name:'workspace_queue_python_script',
+    arguments:{projectId:id,expectedRevision:1,code}})).isError,true);
+  const queued=output(await call('tools/call',{name:'workspace_queue_python_script',
+    arguments:{projectId:id,expectedRevision:0,code}}));
   assert.equal(queued.job.status,'pending');
-  assert.match(queued.message,/automatic worker dispatch/);
-  assert.equal((await call('tools/call',{name:'workspace_queue_demo',arguments:{projectId:id}})).isError,true);
+  assert.match(queued.message,/isolated execution/);
+  assert.equal((await call('tools/call',{name:'workspace_queue_python_script',
+    arguments:{projectId:id,expectedRevision:0,code}})).isError,true);
   assert.equal(output(await call('tools/call',{name:'workspace_get_job',arguments:{jobId:queued.job.id}})).job.status,'pending');
   assert.equal((await otherCall('tools/call',{name:'workspace_get_job',arguments:{jobId:queued.job.id}})).isError,true);
   assert.deepEqual(output(await call('tools/call',{name:'workspace_list_revisions',arguments:{projectId:id}})).revisions,[]);
