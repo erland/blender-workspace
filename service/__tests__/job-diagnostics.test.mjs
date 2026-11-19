@@ -29,9 +29,9 @@ test('bounded subprocess diagnostics ignore secret-bearing stderr/stdout',async 
   await mkdir(path.join(root,'modal_provider'));
   const py=[
     'import sys',
-    "sys.stderr.write('secret '+ "+JSON.stringify(SECRET)+" +'\n')",
-    "sys.stdout.write('token '+ "+JSON.stringify(SECRET)+" +'\n')",
-    "sys.stderr.write('BW_DIAGNOSTIC phase=blender_execution code=blender_execution_failed\n')",
+    "sys.stderr.write('secret '+ "+JSON.stringify(SECRET)+" +'\\n')",
+    "sys.stdout.write('token '+ "+JSON.stringify(SECRET)+" +'\\n')",
+    "sys.stderr.write('BW_DIAGNOSTIC phase=blender_execution code=blender_execution_failed\\n')",
     'sys.exit(1)'
   ].join('\n');
   await writeFile(path.join(root,'modal_provider','runner.py'),py);
