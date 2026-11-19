@@ -113,3 +113,32 @@ Python-only artifacts; live execution remains optional and billable.
 The old demo scripts and their dedicated historical workflows are still
 present. Removing those files without migrating remaining CI dependencies
 would break checks, so their deletion is a separate E3B step.
+
+## DEV-034E3B: retired typed Blender workers
+
+Removed the obsolete Python Blender `apply_operation.py`, `edit_scene.py`,
+`scene_operation_validation.py`, `scene_edit_validation.py` and
+`glb_import_validation.py`, their typed operation unit tests and four
+legacy Blender verifiers. Also retired dedicated CI for DEV-012 structured
+edits, DEV-014 generic operations and DEV-015 batched operations. These
+workflows existed exclusively to run now-unsupported typed authoring paths.
+
+The Python-first worker `apply_python.py`, shared scene/geometry/material
+helpers, owner authorization, immutable revisions, the baseline Blender
+Python-first smoke, and isolated Python Sandbox CI are retained. Generic
+job/revision and Modal tests remain. The old monster demo and retired
+TypeScript schemas are deliberately **not** removed in this change; they
+will be handled in a separately verified step. Verification of this PR is
+pending.
+
+## DEV-034E3B CI repair and verification
+
+The remaining DEV-032 material-library workflow still depended on the removed
+`apply_operation.py` and typed material validation. It now executes Blender
+`apply_python.py` for both creation and revision, creates and reuses one named
+PBR material, and checks exported GLB materials, saved library metadata,
+three model objects, and stable object IDs. The retired typed-only material
+validation test was also deleted. All four triggered PR workflows passed
+on implementation SHA `405b755c311f38d242ceb8df3a3a97ea29bc03d4`.
+
+The remaining monster demo/legacy TypeScript schemas are deferred to E3C.
