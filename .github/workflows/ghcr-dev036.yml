@@ -11,8 +11,6 @@ on:
       - 'scripts/**'
       - 'tests/**'
       - '.github/workflows/ghcr-dev036.yml'
-  push:
-    branches: [main]
   release:
     types: [published]
   workflow_dispatch:
