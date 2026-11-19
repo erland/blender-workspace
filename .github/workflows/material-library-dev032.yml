@@ -8,7 +8,6 @@ on:
       - "service/src/scene/scene-contract.ts"
       - "service/src/mcp/project-tools.ts"
       - "service/__tests__/material-library.test.mjs"
-      - "tests/test_material_library_validation.py"
       - ".github/workflows/material-library-dev032.yml"
   workflow_dispatch:
 permissions:
@@ -25,7 +24,7 @@ jobs:
       - name: Validate Python and Node scene/material contracts without Modal
         run: |
           python3 -m py_compile blender_workspace_poc/material_library.py blender_workspace_poc/apply_python.py blender_workspace_poc/common.py
-          python3 -m unittest discover -s tests -p 'test_material_library_validation.py' -v
+          python3 -m unittest discover -s tests -p 'test_python_sandbox_artifacts.py' -v
           cd service
           npm install --no-package-lock --no-audit --no-fund
           npm run build:server
