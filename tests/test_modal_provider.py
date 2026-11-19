@@ -1,239 +1,170 @@
-"""Unit-test Modal lifecycle without network access or billing."""
+"""Unit coverage for the Python-only, owner-billed Modal Sandbox controller."""
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
 from modal_provider.runner import ARTIFACT_NAMES, estimate_usd, run
 
 
 class ModalProviderTests(unittest.TestCase):
-    def sdk(self, code=0, copy_error=None):
+    def sdk(self, exit_code=0, marker="BW_SANDBOX_PYTHON PASS", copy_error=None):
         sdk = MagicMock()
-        sb = sdk.Sandbox.create.return_value
-        proc = sb.exec.return_value
-        proc.wait.return_value = code
-        proc.stdout.read.return_value = "BW_SMOKE PASS"
+        sandbox = sdk.Sandbox.create.return_value
+        proc = sandbox.exec.return_value
+        proc.wait.return_value = exit_code
+        proc.stdout.read.return_value = marker
         proc.stderr.read.return_value = ""
+
         def copy(remote, local):
             if copy_error:
                 raise copy_error
             Path(local).write_bytes(("artifact:" + Path(remote).name).encode())
-        sb.filesystem.copy_to_local.side_effect = copy
+
+        sandbox.filesystem.copy_to_local.side_effect = copy
         return sdk
 
-    def test_success_and_termination(self):
+    def files(self, tmp):
+        script = Path(tmp) / "model.py"
+        script.write_text("import bpy\nbpy.ops.mesh.primitive_cube_add()", encoding="utf8")
+        prior = Path(tmp) / "prior.blend"
+        prior.write_bytes(b"BLENDER previous")
+        return script, prior
+
+    def test_success_is_isolated_and_terminates_sandbox(self):
         sdk = self.sdk()
-        with TemporaryDirectory() as tmp:
-            result = run(sdk, tmp)
+        with TemporaryDirectory() as tmp, patch(
+            "modal_provider.artifact_validation.validate_python_outputs"
+        ) as validate:
+            script, _ = self.files(tmp)
+            out = Path(tmp) / "out"
+            result = run(sdk, out, python_file=str(script))
             self.assertEqual(result["status"], "PASS")
             self.assertTrue(result["sandbox_terminated"])
-            self.assertEqual(len(result["artifacts"]), 6)
-            kwargs = sdk.Sandbox.create.call_args.kwargs
-            self.assertTrue(kwargs["block_network"])
-            self.assertEqual(kwargs["timeout"], 900)
+            self.assertEqual({a["name"] for a in result["artifacts"]}, set(ARTIFACT_NAMES))
+            validate.assert_called_once_with(out.resolve())
+            options = sdk.Sandbox.create.call_args.kwargs
+            self.assertTrue(options["block_network"])
+            self.assertEqual(options["timeout"], 900)
+            self.assertNotIn("secrets", options)
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-            self.assertEqual(json.loads((Path(tmp) / "modal_run_report.json").read_text())["status"], "PASS")
+            self.assertEqual(json.loads((out / "modal_run_report.json").read_text())["status"], "PASS")
 
-    def test_revision_2_uploads_prior_blend_and_only_downloads_new_artifacts(self):
+    def test_create_invokes_only_python_blender_script(self):
+        sdk = self.sdk()
+        with TemporaryDirectory() as tmp, patch(
+            "modal_provider.artifact_validation.validate_python_outputs"
+        ):
+            script, _ = self.files(tmp)
+            run(sdk, Path(tmp) / "out", python_file=str(script))
+            fs = sdk.Sandbox.create.return_value.filesystem
+            fs.copy_from_local.assert_called_once_with(
+                str(script.resolve()), "/workspace/out/model.py"
+            )
+            args = sdk.Sandbox.create.return_value.exec.call_args.args
+            self.assertIn("apply_python.py", " ".join(args))
+            self.assertIn("NEW", args)
+            self.assertNotIn("run_smoke.sh", " ".join(args))
+
+    def test_revision_uploads_verified_predecessor_before_python_execution(self):
+        sdk = self.sdk()
+        with TemporaryDirectory() as tmp, patch(
+            "modal_provider.artifact_validation.validate_python_outputs"
+        ):
+            script, prior = self.files(tmp)
+            report = run(sdk, Path(tmp) / "out", revision=2,
+                         input_blend=str(prior), python_file=str(script))
+            self.assertEqual(report["revision"], 2)
+            calls = sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0].args, (str(script.resolve()), "/workspace/out/model.py"))
+            self.assertEqual(calls[1].args, (str(prior.resolve()), "/workspace/out/input.blend"))
+            args = sdk.Sandbox.create.return_value.exec.call_args.args
+            self.assertIn("/workspace/out/input.blend", args)
+            self.assertEqual(len(report["artifacts"]), 3)
+
+    def test_missing_or_invalid_script_is_rejected_before_billing(self):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp:
-            original = Path(tmp) / "source.blend"
-            original.write_bytes(b"previous saved Blender scene")
-            out = Path(tmp) / "output"
-            result = run(sdk, out, revision=2, input_blend=str(original))
-            self.assertEqual(result["status"], "PASS")
-            self.assertEqual(result["revision"], 2)
-            self.assertEqual(len(result["artifacts"]), 3)
-            self.assertEqual({a["name"] for a in result["artifacts"]},
-                {"monster_v2.blend", "monster_v2.glb", "monster_v2.json"})
-            sdk.Sandbox.create.return_value.filesystem.copy_from_local.assert_called_once_with(
-                str(original.resolve()), "/workspace/out/monster_v1.blend")
-            args = sdk.Sandbox.create.return_value.exec.call_args.args
-            self.assertIn("revise_monster.py", " ".join(args))
-            self.assertNotIn("run_smoke.sh", " ".join(args))
-            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-
-    def test_structured_revision_uploads_data_file_and_previous_scene(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            source=Path(tmp)/'v2.blend'
-            source.write_bytes(b'prior scene')
-            edit=Path(tmp)/'change.json'
-            edit.write_text(json.dumps({'target':'Body','color':[0.5,0.2,0.8],
-                'scale':[1,1,2]}))
-            report=run(sdk,Path(tmp)/'output',revision=3,
-                input_blend=str(source),edit_file=str(edit))
-            self.assertEqual(report['revision'],3)
-            self.assertEqual(len(report['artifacts']),3)
-            names={a['name'] for a in report['artifacts']}
-            self.assertEqual(names,{'monster_v3.blend','monster_v3.glb','monster_v3.json'})
-            calls=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list
-            self.assertEqual(len(calls),2)
-            self.assertEqual(calls[0].args,(str(source.resolve()),'/workspace/out/monster_v2.blend'))
-            self.assertEqual(calls[1].args,(str(edit.resolve()),'/workspace/out/scene_edit.json'))
-            args=sdk.Sandbox.create.return_value.exec.call_args.args
-            self.assertIn('edit_scene.py',' '.join(args))
-            self.assertNotIn('run_smoke.sh',' '.join(args))
-            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-
-    def test_structured_invalid_edit_never_allocates_modal(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            scene=Path(tmp)/'scene.blend'
-            scene.write_bytes(b'scene')
-            change=Path(tmp)/'change.json'
-            change.write_text(json.dumps({'target':'Body','shell':'rm -rf /'}))
-            with self.assertRaises(ValueError):
-                run(sdk,Path(tmp)/'out',revision=3,input_blend=str(scene),edit_file=str(change))
-            sdk.Sandbox.create.assert_not_called()
-
-    def test_generic_creation_uses_fixed_blender_script_and_generic_artifacts(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            operation=Path(tmp)/'operation.json'
-            operation.write_text(json.dumps({'kind':'add_primitive','name':'Villa Wall',
-                'primitive':'cube','scale':[3,0.2,2]}))
-            report=run(sdk,Path(tmp)/'out',revision=1,operation_file=str(operation))
-            self.assertEqual(report['status'],'PASS')
-            self.assertEqual({a['name'] for a in report['artifacts']},
-                {'scene.blend','scene.glb','scene.json'})
-            upload=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args
-            self.assertEqual(upload.args,(str(operation.resolve()),'/workspace/out/operation.json'))
-            args=sdk.Sandbox.create.return_value.exec.call_args.args
-            self.assertIn('apply_operation.py',' '.join(args))
-            self.assertNotIn('run_smoke.sh',' '.join(args))
-            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-
-    def test_generic_edit_uploads_predecessor_and_operation(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            source=Path(tmp)/'house.blend';source.write_bytes(b'house')
-            spec=Path(tmp)/'operation.json'
-            spec.write_text(json.dumps({'kind':'set_transform','name':'Villa Wall',
-                'location':[3,0,0]}))
-            report=run(sdk,Path(tmp)/'out',revision=2,input_blend=str(source),
-                operation_file=str(spec))
-            self.assertEqual(report['status'],'PASS')
-            calls=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list
-            self.assertEqual(calls[0].args,(str(spec.resolve()),'/workspace/out/operation.json'))
-            self.assertEqual(calls[1].args,(str(source.resolve()),'/workspace/out/input.blend'))
-            self.assertEqual(len(report['artifacts']),3)
-
-    def test_generic_batch_creation_is_validated_and_uses_single_sandbox(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            spec=Path(tmp)/'batch.json'
-            spec.write_text(json.dumps({'kind':'batch','operations':[
-                {'kind':'add_primitive','name':'Tabletop','primitive':'cube'},
-                {'kind':'add_primitive','name':'Leg 1','primitive':'cylinder'},
-                {'kind':'set_transform','name':'Leg 1','scale':[0.2,0.2,2]}]}))
-            result=run(sdk,Path(tmp)/'out',revision=1,operation_file=str(spec))
-            self.assertEqual(result['status'],'PASS')
-            sdk.Sandbox.create.assert_called_once()
-            sdk.Sandbox.create.return_value.exec.assert_called_once()
-            self.assertEqual(len(result['artifacts']),3)
-            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-    def test_batch_rejects_invalid_first_creation_before_modal(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            spec=Path(tmp)/'batch.json'
-            spec.write_text(json.dumps({'kind':'batch','operations':[
-                {'kind':'set_color','name':'Cube','color':[1,0,0]},
-                {'kind':'add_primitive','name':'Cube','primitive':'cube'}]}))
-            with self.assertRaisesRegex(ValueError,'Initial scene'):
-                run(sdk,Path(tmp)/'out',revision=1,operation_file=str(spec))
-            sdk.Sandbox.create.assert_not_called()
-    def test_generic_invalid_script_rejected_before_modal(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            op=Path(tmp)/'bad.json'
-            op.write_text(json.dumps({'kind':'add_primitive','name':'X','primitive':'cube',
-                'python':'print(1)'}))
-            with self.assertRaises(ValueError):
-                run(sdk,Path(tmp)/'out',revision=1,operation_file=str(op))
-            sdk.Sandbox.create.assert_not_called()
-
-    def test_python_source_validation_before_allocating_modal(self):
-        sdk=self.sdk()
-        with TemporaryDirectory() as tmp:
-            script=Path(tmp)/'code.py'
-            for source in ('', ' ', 'x'*16385, 'print(1)\x00'):
+            script, _ = self.files(tmp)
+            for source in ("", "  ", "x" * 16385, "print(1)\x00"):
                 script.write_text(source)
                 with self.assertRaises(ValueError):
-                    run(sdk,Path(tmp)/'out',revision=1,python_file=str(script))
+                    run(sdk, Path(tmp) / "out", python_file=str(script))
+            script.write_bytes(b"\xff\xfe")
+            with self.assertRaisesRegex(ValueError, "UTF-8"):
+                run(sdk, Path(tmp) / "out", python_file=str(script))
+            with self.assertRaises(ValueError):
+                run(sdk, Path(tmp) / "out")
             sdk.Sandbox.create.assert_not_called()
 
-    def test_python_exec_uses_separate_sandbox_and_rejects_fake_outputs(self):
-        sdk=self.sdk()
-        # A matching execution marker lets the test reach output verification;
-        # the mocked artifacts are deliberately invalid and must be rejected.
-        sdk.Sandbox.create.return_value.exec.return_value.stdout.read.return_value = "BW_SANDBOX_PYTHON PASS"
-        with TemporaryDirectory() as tmp:
-            script=Path(tmp)/'model.py'
-            script.write_text('import bpy\nbpy.ops.mesh.primitive_cube_add()')
-            with self.assertRaises(ValueError):
-                run(sdk,Path(tmp)/'out',revision=1,python_file=str(script))
-            kwargs=sdk.Sandbox.create.call_args.kwargs
-            self.assertTrue(kwargs['block_network'])
-            self.assertNotIn('secrets',kwargs)
-            calls=sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list
-            self.assertEqual(calls[0].args,(str(script.resolve()),'/workspace/out/model.py'))
-            args=sdk.Sandbox.create.return_value.exec.call_args.args
-            self.assertIn('apply_python.py',' '.join(args))
-            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-
-    def test_python_requires_its_own_success_marker_for_creation_and_edit(self):
-        for revision in (1,2):
-            sdk=self.sdk()
-            sdk.Sandbox.create.return_value.exec.return_value.stdout.read.return_value = "BW_SMOKE PASS"
-            with TemporaryDirectory() as tmp:
-                script=Path(tmp)/'model.py'
-                script.write_text('import bpy\\nbpy.ops.mesh.primitive_cube_add()')
-                input_file=Path(tmp)/'input.blend'
-                input_file.write_bytes(b'BLENDER-saved-scene')
-                with self.assertRaisesRegex(RuntimeError,'isolated Blender-Python success marker'):
-                    run(sdk,Path(tmp)/'out',revision=revision,
-                        python_file=str(script),
-                        input_blend=str(input_file) if revision>1 else None)
-                sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-                report=json.loads((Path(tmp)/'out'/'modal_run_report.json').read_text())
-                self.assertEqual(report['status'],'FAILED')
-                self.assertEqual(report['artifacts'],[])
-
-    def test_revision_rejects_missing_source_without_starting_modal(self):
+    def test_invalid_revision_source_never_allocates_sandbox(self):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp:
+            script, prior = self.files(tmp)
             with self.assertRaisesRegex(ValueError, "saved .blend"):
-                run(sdk, tmp, revision=2, input_blend=str(Path(tmp) / "absent.blend"))
+                run(sdk, Path(tmp) / "out", revision=2, python_file=str(script))
+            with self.assertRaisesRegex(ValueError, "saved .blend"):
+                run(sdk, Path(tmp) / "out", revision=2,
+                    input_blend=str(Path(tmp) / "missing.blend"), python_file=str(script))
+            with self.assertRaisesRegex(ValueError, "predecessor"):
+                run(sdk, Path(tmp) / "out", revision=1,
+                    input_blend=str(prior), python_file=str(script))
+            with self.assertRaisesRegex(ValueError, "revision"):
+                run(sdk, Path(tmp) / "out", revision=0, python_file=str(script))
             sdk.Sandbox.create.assert_not_called()
 
-    def test_execution_failure_always_terminates(self):
-        sdk = self.sdk(code=1)
+    def test_fake_sandbox_artifacts_are_rejected_even_with_success_marker(self):
+        sdk = self.sdk()
         with TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(RuntimeError, "exit code 1"):
-                run(sdk, tmp)
+            script, _ = self.files(tmp)
+            with self.assertRaises(ValueError):
+                run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
-            self.assertEqual(json.loads((Path(tmp) / "modal_run_report.json").read_text())["status"], "FAILED")
+
+    def test_unrelated_success_marker_is_rejected_for_creation_and_edit(self):
+        for revision in (1, 2):
+            sdk = self.sdk(marker="BW_SMOKE PASS")
+            with TemporaryDirectory() as tmp:
+                script, prior = self.files(tmp)
+                out = Path(tmp) / "out"
+                with self.assertRaisesRegex(RuntimeError, "isolated Blender-Python success marker"):
+                    run(sdk, out, revision=revision, python_file=str(script),
+                        input_blend=str(prior) if revision == 2 else None)
+                sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
+                report = json.loads((out / "modal_run_report.json").read_text())
+                self.assertEqual(report["status"], "FAILED")
+                self.assertEqual(report["artifacts"], [])
+
+    def test_blender_failure_always_terminates(self):
+        sdk = self.sdk(exit_code=1)
+        with TemporaryDirectory() as tmp:
+            script, _ = self.files(tmp)
+            with self.assertRaisesRegex(RuntimeError, "exit code 1"):
+                run(sdk, Path(tmp) / "out", python_file=str(script))
+            sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
 
     def test_copy_failure_always_terminates(self):
         sdk = self.sdk(copy_error=OSError("transport failure"))
         with TemporaryDirectory() as tmp:
+            script, _ = self.files(tmp)
             with self.assertRaises(OSError):
-                run(sdk, tmp)
+                run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
 
-    def test_creation_failure(self):
+    def test_allocation_failure_reports_no_sandbox_to_terminate(self):
         sdk = self.sdk()
         sdk.Sandbox.create.side_effect = RuntimeError("quota")
         with TemporaryDirectory() as tmp:
+            script, _ = self.files(tmp)
             with self.assertRaisesRegex(RuntimeError, "quota"):
-                run(sdk, tmp)
-            self.assertFalse(sdk.Sandbox.create.return_value.terminate.called)
+                run(sdk, Path(tmp) / "out", python_file=str(script))
+            sdk.Sandbox.create.return_value.terminate.assert_not_called()
 
-    def test_price_estimate(self):
+    def test_cost_estimate_and_artifact_contract(self):
         self.assertEqual(estimate_usd(60, 2, 8192), 0.007932)
-        self.assertEqual(len(ARTIFACT_NAMES), 6)
+        self.assertEqual(ARTIFACT_NAMES, ("scene.blend", "scene.glb", "scene.json"))
 
 
 if __name__ == "__main__":
