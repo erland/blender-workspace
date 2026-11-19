@@ -5,7 +5,7 @@ authenticated MCP service. Project/job/revision metadata lives in PostgreSQL;
 artifacts are stored with SHA-256 integrity metadata. User-owned Modal
 credentials power short-lived, network-blocked Blender Sandboxes.
 
-## Authoring: Python-first (DEV-033)
+## Authoring: Python-first
 
 **The only public MCP modeling-write tool is
 `workspace_queue_python_script`.** Supply an owned project ID, the expected
@@ -19,8 +19,8 @@ and `scene.json`.
 The previous typed geometry/material/scene-edit and monster-demo MCP write
 tools have been **removed from the public interface**. This project has
 not been used through MCP, so there is no backward-compatible MCP authoring
-contract to retain. Some earlier implementation and tests remain as
-historical/internal regression code, not supported public entry points.
+contract to retain. The retired typed scene authoring and monster demonstration workers have
+been removed from the production code and test entrypoints.
 
 ### Typed control and inspection
 
@@ -67,8 +67,8 @@ viewer operations use Three.js/WebGL and **do not start Modal rendering**.
 
 See `service/docs/` and `.github/workflows/`. GitHub Actions compiles
 Node services, validates contracts, and uses real headless Blender for
-scene create/edit and artifact verification. The DEV-033 workflow tests
-the Python-only MCP surface and worker result markers.
+scene create/edit and artifact verification. The Python-first workflows test the MCP authoring boundary, Blender
+creation/revisions, material reuse, artifact integrity and worker result markers.
 
 Live Google/ChatGPT OAuth, user-billed Modal and browser/iPad acceptance
 remain **deferred**. Do not call the service production-verified before
