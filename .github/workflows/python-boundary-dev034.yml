@@ -1,0 +1,18 @@
+name: DEV-034 Python-first authoring boundary
+on:
+  pull_request:
+    paths:
+      - 'service/src/mcp/project-tools.ts'
+      - 'service/src/jobs/python-script.ts'
+      - 'scripts/check_python_first_boundary.py'
+      - '.github/workflows/python-boundary-dev034.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  boundary:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure retired MCP writers cannot reappear
+        run: python3 scripts/check_python_first_boundary.py
