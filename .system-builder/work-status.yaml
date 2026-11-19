@@ -247,6 +247,16 @@ verification:
     live_deployment:
       status: DEFERRED
       reason: Shared external PostgreSQL access, actual Coolify configuration and live OAuth/Modal not verified
+  safari_settings_origin_fix:
+    status: COMPLETE
+    source_pr: https://github.com/erland/blender-workspace/pull/53
+    code_ci:
+      status: PASS
+      source_sha: 87dda4d5c4b4674c6b04438e9e2b23f6c03f3a01
+      result: All 14 PR GitHub Actions workflows passed, including browser-settings form security tests, OAuth, database, Blender and GHCR regressions
+    live_acceptance:
+      status: DEFERRED
+      reason: Safari 26 against deployed Coolify service not yet retested
 next:
   recommended: DEPLOY_AND_VALIDATE_COOLIFY_WHEN_READY
   reason: Merge PR #52, enter separate PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE variables as Coolify secrets, confirm migrations, then test connected MCP and worker with owner-funded Modal
