@@ -79,3 +79,15 @@ An `artifact_invalid` result should be investigated by reading
 `workspace_get_job` after deploying *both* the updated MCP image and
 matching job-worker image. No schema migration or automatic Modal retry
 is required.
+
+## Queue capability versus worker health
+
+`workspace_status.blender_jobs_available` now reports whether the authenticated MCP
+service is configured with both the job-queue dependencies (Modal account
+manager and artifact store). It does **not** attest that the independent
+Coolify job-worker is online, that a particular owner's Modal token works,
+or that a Sandbox can start. `blender_jobs_availability_scope: "queue_only"`
+and `worker_health: "not_checked"` make this explicit. Check owner-specific
+`workspace_modal_status`, then the individual `workspace_get_job` for
+execution progress and errors. A queued or running job need not have a
+committed revision or published artifacts yet.
