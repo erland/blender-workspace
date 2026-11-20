@@ -10,10 +10,9 @@ export interface RenderJob {
 }
 export function validateRenderOptions(value:RenderOptions):RenderOptions {
  if(!value||!['BLENDER_EEVEE_NEXT','CYCLES'].includes(value.engine) ||
-   !Number.isInteger(value.width)||value.width<128||value.width>1024 ||
-   !Number.isInteger(value.height)||value.height<128||value.height>1024 ||
-   !Number.isInteger(value.samples)||value.samples<1||value.samples>64 ||
-   (value.engine==='CYCLES' && value.samples>32))
+   !Number.isInteger(value.width)||![256,512,1024].includes(value.width) ||
+   !Number.isInteger(value.height)||![256,512,1024].includes(value.height) ||
+   !Number.isInteger(value.samples)||![8,16,32].includes(value.samples))
    throw new RangeError('Invalid bounded render options');
  return value;
 }
