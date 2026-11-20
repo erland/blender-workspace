@@ -53,6 +53,51 @@ export class ProjectRepository {
          )`,[id,owner]);
     return !!r.rowCount;
   }
+  /** Durable tombstone. Locks the project row to serialize with job reservation.
+   * Active/recoverable work must complete or be handled explicitly first.
+   */
+  async beginPermanentDelete(owner:string,id:string):Promise<'ready'|'busy'|'missing'> {
+    required(owner,200,'owner');
+    const c=await this.pool.connect();
+    try {
+      await c.query('BEGIN');
+      const p=await c.query<Project>(
+        'SELECT * FROM bw_projects WHERE id=$1 AND owner_key=$2 FOR UPDATE',[id,owner]);
+      if(!p.rowCount){await c.query('ROLLBACK');return 'missing';}
+      const active=await c.query(
+        "SELECT id FROM bw_jobs WHERE project_id=$1 AND status IN ('pending','running','needs_recovery') LIMIT 1",[id]);
+      if(active.rowCount){await c.query('ROLLBACK');return 'busy';}
+      await c.query('UPDATE bw_projects SET deleted_at=COALESCE(deleted_at,now()),deletion_requested_at=COALESCE(deletion_requested_at,now()),updated_at=now() WHERE id=$1',[id]);
+      await c.query('COMMIT');
+      return 'ready';
+    }catch(error){await c.query('ROLLBACK');throw error;}finally{c.release();}
+  }
+  /** Finalize only after the storage directory has been removed. Idempotent. */
+  async finishPermanentDelete(owner:string,id:string):Promise<boolean> {
+    required(owner,200,'owner');
+    const c=await this.pool.connect();
+    try{
+      await c.query('BEGIN');
+      const p=await c.query(
+        'SELECT id FROM bw_projects WHERE id=$1 AND owner_key=$2 AND deletion_requested_at IS NOT NULL FOR UPDATE',[id,owner]);
+      if(!p.rowCount){await c.query('ROLLBACK');return false;}
+      const active=await c.query(
+        "SELECT id FROM bw_jobs WHERE project_id=$1 AND status IN ('pending','running','needs_recovery') LIMIT 1",[id]);
+      if(active.rowCount)throw new Error('Active job prevents project cleanup');
+      await c.query('DELETE FROM bw_jobs WHERE project_id=$1',[id]);
+      await c.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[id]);
+      await c.query('DELETE FROM bw_projects WHERE id=$1 AND owner_key=$2',[id,owner]);
+      await c.query('COMMIT');
+      return true;
+    }catch(error){await c.query('ROLLBACK');throw error;}finally{c.release();}
+  }
+  /** Resumable cleanup of tombstones, including projects hidden by older soft-delete UI. */
+  async pendingPermanentDeletes(limit=50):Promise<{id:string;owner_key:string}[]> {
+    if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new RangeError('Invalid limit');
+    return (await this.pool.query<{id:string;owner_key:string}>(
+      'SELECT id,owner_key FROM bw_projects WHERE deletion_requested_at IS NOT NULL ORDER BY deletion_requested_at,id LIMIT $1',
+      [limit])).rows;
+  }
   async addRevision(owner:string,id:string,note='',artifactPrefix:string|null=null):Promise<Revision|null> {
     required(owner,200,'owner');optional(note,5000,'note');
     if(artifactPrefix!==null)required(artifactPrefix,1024,'artifactPrefix');

@@ -48,7 +48,7 @@ function layout(title:string,body:string):string {
  '<nav aria-label="Huvudnavigering"><a href="/" aria-current="page">Projekt</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
  '<main>'+body+'</main></body></html>';
 }
-export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[]):string {
+export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[],message?:string):string {
  const cards=items.map(({project:p,revisions})=>{
   const latest=revisions.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
   const description=p.description?'<p class="muted">'+escapeHtml(p.description)+'</p>':'';
@@ -64,7 +64,8 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
   '<div class="empty-state"><h2>Inga projekt ännu</h2><p class="muted">Skapa en modell med Blender Workspace i ChatGPT. Den visas sedan här.</p></div>';
  return layout('Mina projekt','<div class="intro"><div><h1>Mina projekt</h1>'+
   '<p class="muted">Granska dina sparade Blender-modeller och revisioner. Modellering sker i ChatGPT.</p></div>'+
-  '<span class="tag">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</span></div>'+listing);
+  '<span class="tag">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</span></div>'+
+  (message==='cleanup'?'<p class="warning" role="status">Projektet har dolts medan den permanenta borttagningen slutförs. Filstädningen försöks automatiskt igen om något gick fel.</p>':'')+listing);
 }
 export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string):string {
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
@@ -102,11 +103,11 @@ export function projectDeletePage(p:PortalProject,csrf:string,message?:string):s
    :message==='error'?'<p role="alert" class="warning">Projektet kunde inte tas bort. Försök igen.</p>':'';
  return layout('Bekräfta borttagning','<div class="breadcrumb"><a href="'+path+'">← Tillbaka till projektet</a></div>'+
   '<section class="panel"><h1>Ta bort projekt?</h1>'+
-  warning+'<p>Du är på väg att ta bort <strong>'+escapeHtml(p.name)+'</strong> från din projektlista.</p>'+
-  '<p class="muted">Projektet och dess revisioner blir inte längre åtkomliga. Filerna raderas inte permanent i detta steg. Åtgärden kan inte ångras via webbgränssnittet.</p>'+
+  warning+'<p>Du är på väg att permanent ta bort <strong>'+escapeHtml(p.name)+'</strong> från din projektlista.</p>'+
+  '<p class="muted">Projektet, alla revisioner, sparade modellfiler och jobbhistorik raderas permanent. Åtgärden kan inte ångras. Exportera först projektet om du vill kunna spara en kopia (exportfunktionen är ännu inte implementerad).</p>'+
   '<form method="post" action="'+path+'/delete">'+
   '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
   '<label><input name="confirm" type="checkbox" value="yes" required> Ja, ta bort detta projekt</label>'+
-  '<div class="actions" style="margin-top:18px"><button class="button danger-button" type="submit">Ta bort projekt</button>'+
+  '<div class="actions" style="margin-top:18px"><button class="button danger-button" type="submit">Radera permanent</button>'+
   '<a class="button alt" href="'+path+'">Avbryt</a></div></form></section>');
 }

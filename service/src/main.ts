@@ -8,6 +8,7 @@ import {GoogleOAuthServer} from './auth/google-server.js';
 import {ModalAccountManager} from './modal/modal-accounts.js';
 import {ModalCliTokenVerifier} from './modal/modal-token-verifier.js';
 import {LocalArtifactStore} from './storage/artifact-store.js';
+import {ProjectDeletionService} from './jobs/project-deletion.js';
 
 const config=loadConfig();
 const databaseConfig=databasePoolConfig();
@@ -18,13 +19,31 @@ const google=config.google&&pool?new GoogleOAuthServer(config.google,pool):undef
 const modalAccounts=pool && process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY
   ?ModalAccountManager.fromBase64(pool,process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY,
     new ModalCliTokenVerifier()):undefined;
+const projects=pool?new ProjectRepository(pool):undefined;
+const artifacts=pool?new LocalArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'):undefined;
+const projectDeletion=projects&&artifacts?new ProjectDeletionService(projects,artifacts):undefined;
 const app=createApp(config,pool?{
-  ownerKey:config.ownerKey,projects:new ProjectRepository(pool),jobs:new JobRepository(pool),
-  artifacts:new LocalArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'),
+  ownerKey:config.ownerKey,projects:projects!,jobs:new JobRepository(pool),
+  artifacts:artifacts!,projectDeletion:projectDeletion!,
   ...(modalAccounts?{modalAccounts}:{})
 }:undefined,google?{google}:undefined);
 if(pool)app.addHook('onClose',async()=>{await pool.end();});
-const shutdown=async()=>{await app.close();process.exit(0);};
+// Retry pending file/DB cleanup on restart and while running. These passes
+// never launch Blender and do not touch legacy soft-deleted projects.
+let cleanupActive=false;
+async function retryDeletion(){
+  if(!projectDeletion||cleanupActive)return;
+  cleanupActive=true;
+  try{
+    const result=await projectDeletion.resumePending();
+    if(result.failed)app.log.warn({failed:result.failed},'Project deletion cleanup incomplete; retry scheduled');
+  }catch{app.log.warn('Project deletion cleanup unavailable; retry scheduled');}
+  finally{cleanupActive=false;}
+}
+await retryDeletion();
+const cleanupTimer=setInterval(()=>{void retryDeletion();},60_000);
+cleanupTimer.unref();
+const shutdown=async()=>{clearInterval(cleanupTimer);await app.close();process.exit(0);};
 process.once('SIGTERM',()=>void shutdown());
 process.once('SIGINT',()=>void shutdown());
 await app.listen({port:config.port,host:config.host});

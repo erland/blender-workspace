@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
+import type {ProjectDeletionService} from './jobs/project-deletion.js';
 import {projectIndexPage,projectDetailPage,projectDeletePage} from './web/project-pages.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
@@ -13,7 +14,8 @@ import {bearerChallenge,protectedResourceMetadata,remoteJwks,verifyOAuthAccessTo
 
 export function createApp(config:ServiceConfig,
  services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs'];
-  modalAccounts?:ProjectServices['modalAccounts'];artifacts?:ProjectServices['artifacts']},
+  modalAccounts?:ProjectServices['modalAccounts'];artifacts?:ProjectServices['artifacts'];
+  projectDeletion?:Pick<ProjectDeletionService,'delete'>},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
@@ -73,7 +75,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const items=await Promise.all(projects.map(async project=>({
            project,revisions:await services!.projects.revisions(session.ownerKey,project.id)
          })));
-         return projectIndexPage(items);
+         const message=(request.query as {message?:string}).message;
+         return projectIndexPage(items,message);
        }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
      });
      app.get('/projects/:projectId',async(request,reply)=>{
@@ -138,12 +141,19 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            }
            // The separate confirmation form requires a checked confirmation.
            if(form.get('confirm')!=='yes')return reply.code(400).send('Bekräftelse saknas');
-           const deleted=await services!.projects.softDelete(session.ownerKey,projectId);
-           if(!deleted)return reply.code(303).header('location','/projects/'+projectId+'/delete?message=busy').send();
+           if(!services!.projectDeletion)
+             return reply.code(503).send('Projektborttagning är inte konfigurerad');
+           const outcome=await services!.projectDeletion.delete(session.ownerKey,projectId);
+           if(outcome==='missing')return reply.code(404).send('Projektet hittades inte');
+           if(outcome==='busy')
+             return reply.code(303).header('location','/projects/'+projectId+'/delete?message=busy').send();
            return reply.code(303).header('location','/').send();
          }catch{
-           const dest='/projects/'+projectId+(action==='delete'?'/delete':'');
-           return reply.code(303).header('location',dest+'?message=error').send();
+           // A permanent deletion may have committed its tombstone but failed
+           // file cleanup. The project detail is then intentionally hidden.
+           if(action==='delete')
+             return reply.code(303).header('location','/?message=cleanup').send();
+           return reply.code(303).header('location','/projects/'+projectId+'?message=error').send();
          }
        });
      }

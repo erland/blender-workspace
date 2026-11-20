@@ -69,6 +69,22 @@ export class LocalArtifactStore {
   private revisionDir(project: string, number: number) {
     return path.join(this.directory(project), revision(number));
   }
+  /** Remove all artifacts for an already tombstoned project. Missing directories
+   * count as success so interrupted deletion may be retried. Never accept a
+   * filesystem path from the browser; the UUID determines the directory.
+   */
+  async deleteProject(project: string): Promise<void> {
+    const directory = this.directory(project);
+    try {
+      const info = await lstat(directory);
+      if (!info.isDirectory() || info.isSymbolicLink())
+        throw new Error('Unsafe project artifact directory');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
   async listRevisions(project: string): Promise<number[]> {
     const directory = this.directory(project);
     let names: string[];
