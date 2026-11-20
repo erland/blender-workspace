@@ -130,7 +130,7 @@ export function jobsOverviewPage(items:PortalJobItem[]):string {
  const attention=items.filter(x=>x.status==='failed'||x.status==='needs_recovery');
  const complete=items.filter(x=>!activeStatus(x.status)&&x.status!=='failed'&&x.status!=='needs_recovery');
  const section=(jobs:PortalJobItem[],empty:string)=>jobs.length
-   ?'<ul class="history job-list">'+jobs.map(jobRow).join('')+'</ul>'
+   ?'<ul class="history job-list">'+jobs.map(j=>jobRow(j)).join('')+'</ul>'
    :'<p class="muted">'+empty+'</p>';
  return layout('Jobb','<div class="intro"><div><h1>Jobb</h1>'+
    '<p class="muted small">Modellering och rendering · senaste 50 jobben per typ</p></div>'+
