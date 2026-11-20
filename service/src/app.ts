@@ -82,7 +82,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            project,revisions:await services!.projects.revisions(session.ownerKey,project.id)
          })));
          const message=(request.query as {message?:string}).message;
-         reply.header('content-security-policy',"default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+         reply.header('content-security-policy',"default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          return projectIndexPage(items,message,session.csrf);
        }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
      });
