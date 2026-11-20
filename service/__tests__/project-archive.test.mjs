@@ -119,3 +119,27 @@ test('strict ZIP reader rejects traversal paths, duplicate names and symlinks',a
       {cwd:process.cwd()}),kind);
   }
 });
+
+
+test('empty projects can be exported and reimported without a Modal job',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+    const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:2});
+    await applyMigrations(pool);
+    const root=await mkdtemp(path.join(os.tmpdir(),'bw-empty-archive-'));
+    const projects=new ProjectRepository(pool);
+    const service=new ProjectArchiveService(projects,new LocalArtifactStore(root));
+    const owner='archive-empty-'+randomUUID();
+    const original=await projects.create(owner,'Empty model');
+    const ids=[original.id];
+    t.after(async()=>{
+      try{
+        for(const id of ids)await pool.query('DELETE FROM bw_projects WHERE id=$1',[id]);
+      }finally{await pool.end();await rm(root,{recursive:true,force:true});}
+    });
+    const {archive,directory}=await service.export(owner,original.id);
+    t.after(()=>rm(directory,{recursive:true,force:true}));
+    const imported=await service.import(owner,await readFile(archive));
+    ids.push(imported);
+    assert.equal((await projects.get(owner,imported)).current_revision,0);
+    assert.deepEqual(await projects.revisions(owner,imported),[]);
+});
