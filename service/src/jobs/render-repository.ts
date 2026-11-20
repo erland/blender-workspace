@@ -52,6 +52,16 @@ export class RenderJobRepository {
       ORDER BY j.created_at DESC,j.id DESC LIMIT 50`,
      [projectId,owner,revision??null])).rows;
  }
+ /** Recent render jobs across all owned, non-deleted projects. */
+ async listForOwner(owner:string,limit=50):Promise<RenderJob[]>{
+   if(!owner.trim()||owner.length>200||!Number.isInteger(limit)||limit<1||limit>100)
+     throw new RangeError('Invalid render history request');
+   return (await this.pool.query<RenderJob>(
+     `SELECT j.* FROM bw_render_jobs j JOIN bw_projects p ON p.id=j.project_id
+      WHERE j.owner_key=$1 AND p.owner_key=$1 AND p.deleted_at IS NULL
+      ORDER BY j.created_at DESC,j.id DESC LIMIT $2`,
+     [owner,limit])).rows;
+ }
  async get(owner:string,id:string):Promise<RenderJob|null>{
    return (await this.pool.query<RenderJob>(
      `SELECT j.* FROM bw_render_jobs j JOIN bw_projects p ON p.id=j.project_id

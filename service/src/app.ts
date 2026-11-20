@@ -8,7 +8,7 @@ import {importClientScript} from './web/import-client.js';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
 import type {ProjectDeletionService} from './jobs/project-deletion.js';
-import {projectIndexPage,projectDetailPage,projectDeletePage} from './web/project-pages.js';
+import {projectIndexPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -22,7 +22,7 @@ export function createApp(config:ServiceConfig,
   modalAccounts?:ProjectServices['modalAccounts'];artifacts?:ProjectServices['artifacts'];
   projectDeletion?:Pick<ProjectDeletionService,'delete'>;
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
-  renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'get'>;
+  renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
@@ -99,6 +99,32 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          return projectIndexPage(items,message,session.csrf);
        }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
      });
+     // Owner-only combined modeling/render history. No Python source or browser token is embedded.
+     app.get('/jobs',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
+       if(!session)return reply.redirect('/settings/login');
+       try{
+         const [models,renders,projects]=await Promise.all([
+           services!.jobs.list?.(session.ownerKey,undefined,50)??Promise.resolve([]),
+           services!.renderJobs?.listForOwner?.(session.ownerKey,50)??Promise.resolve([]),
+           services!.projects.list(session.ownerKey,100)
+         ]);
+         const names=new Map(projects.map(p=>[p.id,p.name]));
+         const entries:PortalJobItem[]=[
+           ...models.map(j=>({id:j.id,project_id:j.project_id,
+             project_name:names.get(j.project_id)??'Projekt',type:'model' as const,
+             revision:j.requested_revision,status:j.status,created_at:j.created_at,
+             detail:j.note||'Blender Python',error:j.error_message})),
+           ...renders.map(r=>({id:r.id,project_id:r.project_id,
+             project_name:names.get(r.project_id)??'Projekt',type:'render' as const,
+             revision:r.source_revision,status:r.status,created_at:r.created_at,
+             detail:(r.engine==='CYCLES'?'Cycles':'Eevee')+' · '+r.width+' × '+r.height+
+               ' · '+r.samples+' samples',error:r.error_code}))
+         ].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime());
+         return jobsOverviewPage(entries);
+       }catch{return reply.code(503).send('Jobblistan kunde inte hämtas. Försök igen senare.');}
+     });
      app.get('/projects/:projectId',async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
        secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
@@ -120,7 +146,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const message=(request.query as {message?:string}).message;
          const renderJobs=services!.renderJobs
            ?await services!.renderJobs.list(session.ownerKey,projectId):[];
-         return projectDetailPage(project,previews,session.csrf,message,renderJobs);
+         const modelJobs=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
+         return projectDetailPage(project,previews,session.csrf,message,renderJobs,modelJobs);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
      // Render requests are explicitly billed. Never launch Modal in an HTTP request.
