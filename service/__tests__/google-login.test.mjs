@@ -189,8 +189,11 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
     {headers:{cookie:sessionCookie}});
   assert.equal(projectPage.status,200);
   const projectHtml=await projectPage.text();
-  assert.match(projectHtml,/Revisionshistorik/);
-  assert.match(projectHtml,/Testrevision &lt;tag&gt;/);
+  assert.match(projectHtml,/Senaste renderingar/);
+  assert.match(projectHtml,/view=history/);
+  const historyPage=await get('/projects/'+portalProject.id+'?view=history',
+    {headers:{cookie:sessionCookie}});
+  assert.match(await historyPage.text(),/Testrevision &lt;tag&gt;/);
   assert.doesNotMatch(projectHtml,/<tag>/);
   assert.equal((await get('/projects/'+portalProject.id)).status,302);
   assert.equal((await get('/projects/not-a-uuid',
