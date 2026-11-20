@@ -35,7 +35,8 @@ test('UX-004 groups active and error work above collapsible completed history',(
  assert.ok(active>=0&&active<attention&&attention<archive);
  assert.match(html,/<details class="panel job-archive"/);
  assert.doesNotMatch(html,/<details class="panel job-archive"[^>]* open/);
- assert.match(html,/<meta http-equiv="refresh" content="10">/);
+ assert.doesNotMatch(html,/<meta http-equiv="refresh"/);
+ assert.match(html,/portal\\/assets\\/live-status\\.js/);
 });
 test('UX-004 finished-only jobs are visible by default and do not auto refresh',()=>{
  const html=jobsOverviewPage([jobs[1]]);
