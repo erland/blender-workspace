@@ -1,6 +1,7 @@
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
 export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean}
+export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null}
 export function escapeHtml(v:string):string {
  return v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -39,6 +40,7 @@ const style=[
 '.danger{color:#9a2029}.danger-button{background:#9a2029;color:white}',
 '.warning{padding:16px;background:#fff4f2;border:1px solid #f1b5ae;border-radius:9px;margin-bottom:20px}',
 '.actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}',
+'select{display:block;margin-top:6px;padding:10px 12px;border:1px solid #8090a9;border-radius:8px;background:white;font:inherit;max-width:100%}',
 '@media(max-width:560px){main{padding:0 18px 40px}.bar{padding:14px 18px}nav{gap:12px}}'
 ].join('');
 function layout(title:string,body:string):string {
@@ -76,7 +78,7 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
     '<p id="archive-result" role="status" aria-live="polite"></p></form></section>')+listing+
     (csrf===undefined?'':'<script src="/archive/assets/import.js" defer></script>'));
 }
-export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string):string {
+export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string,renders:PortalRender[]=[]):string {
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
   const status=r.artifact_prefix?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
@@ -84,13 +86,39 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
   return '<li><div><p><strong>Revision '+r.revision+'</strong> '+status+'</p><p class="muted small">'+
     escapeHtml(r.note||'Ingen beskrivning')+' · '+when(r.created_at)+'</p></div>'+open+'</li>';
  }).join('');
- const mainLink=latest?'<a class="button" href="'+viewerUrl(p.id,latest.revision)+'">Öppna senaste modellen</a>':'';
+ const mainLink=latest&&latest.glbAvailable!==false?'<a class="button" href="'+viewerUrl(p.id,latest.revision)+'">Öppna GLB-förhandsvisning</a>':'';
  return layout(p.name,'<div class="breadcrumb"><a href="/">← Alla projekt</a></div><div class="intro">'+
   '<div><h1>'+escapeHtml(p.name)+'</h1><p class="muted">'+escapeHtml(p.description||'Ingen projektbeskrivning angiven.')+
   '</p><p class="muted small">Ändrad '+when(p.updated_at)+' · Aktuell revision '+p.current_revision+'</p></div>'+mainLink+
   '</div><p class="muted small">GLB är en förenklad förhandsvisning och kan sakna hår, procedurmaterial och andra Blender-detaljer. Originalmodellen sparas alltid som .blend.</p><section class="panel"><h2>Revisionshistorik</h2>'+
   (history?'<ul class="history">'+history+'</ul>':
     '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+'</section>'+
+  (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Rendera bild från Blender</h2>'+
+    '<p class="muted">Separat, betald Modal-körning. Blender-originalet ändras inte och ingen ny modellrevision skapas.</p>'+
+    (message==='render_queued'?'<p role="status">Renderingsjobbet har lagts i kö. Uppdatera sidan för att se status.</p>':
+     message==='render_error'?'<p role="alert" class="danger">Renderingen kunde inte köas. Kontrollera Modal-koppling och inställningar.</p>':'')+
+    (revs.length?'<form method="post" action="'+projectUrl(p.id)+'/renders">'+
+      '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+      '<div class="form-row"><label>Revision <select name="revision">'+
+      revs.filter(r=>r.artifact_prefix).map(r=>'<option value="'+r.revision+'"'+
+        (r.revision===p.current_revision?' selected':'')+'>Revision '+r.revision+'</option>').join('')+
+      '</select></label><label>Motor <select name="engine">'+
+      '<option value="BLENDER_EEVEE_NEXT">Eevee (snabb)</option>'+
+      '<option value="CYCLES">Cycles (högre kvalitet)</option></select></label>'+
+      '<label>Storlek <select name="size"><option value="256">256 × 256</option>'+
+      '<option value="512" selected>512 × 512</option><option value="1024">1024 × 1024</option></select></label>'+
+      '<label>Samples <select name="samples"><option value="8">8</option>'+
+      '<option value="16" selected>16</option><option value="32">32</option></select></label>'+
+      '<button class="button" type="submit">Starta rendering i Modal</button></div></form>':
+      '<p class="muted">En sparad revision krävs för rendering.</p>')+
+    '<h2 style="margin-top:20px">Renderade bilder</h2>'+
+    (renders.length?'<ul class="history">'+renders.map(r=>'<li><div><p><strong>Revision '+r.source_revision+
+      ' · '+escapeHtml(r.engine==='CYCLES'?'Cycles':'Eevee')+'</strong></p>'+
+      '<p class="muted small">'+r.width+' × '+r.height+' · '+r.samples+
+      ' samples · '+escapeHtml(r.status)+'</p></div>'+
+      (r.status==='completed'?'<a href="/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+
+      '.png" target="_blank" rel="noopener">Visa PNG-bild</a>':'')+'</li>').join('')+'</ul>':
+      '<p class="muted">Inga renderingar ännu.</p>')+'</section>')+
   (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Hantera projektet</h2>'+
     (message==='renamed'?'<p role="status">Projektnamnet har uppdaterats.</p>':
      message==='invalid'?'<p role="alert" class="danger">Ange ett projektnamn med 1–200 tecken.</p>':

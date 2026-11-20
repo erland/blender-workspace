@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import type {ProjectArchiveService} from './jobs/project-archive.js';
+import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from './jobs/render-repository.js';
+import type {RenderArtifactStore} from './storage/render-artifacts.js';
 import {importClientScript} from './web/import-client.js';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
@@ -19,7 +21,9 @@ export function createApp(config:ServiceConfig,
  services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs'];
   modalAccounts?:ProjectServices['modalAccounts'];artifacts?:ProjectServices['artifacts'];
   projectDeletion?:Pick<ProjectDeletionService,'delete'>;
-  projectArchive?:Pick<ProjectArchiveService,'export'|'import'>},
+  projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
+  renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'get'>;
+  renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
@@ -114,8 +118,58 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            }catch{return {...revision,glbAvailable:false};}
          }));
          const message=(request.query as {message?:string}).message;
-         return projectDetailPage(project,previews,session.csrf,message);
+         const renderJobs=services!.renderJobs
+           ?await services!.renderJobs.list(session.ownerKey,projectId):[];
+         return projectDetailPage(project,previews,session.csrf,message,renderJobs);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
+     });
+     // Render requests are explicitly billed. Never launch Modal in an HTTP request.
+     app.post('/projects/:projectId/renders',{bodyLimit:4096},async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie');
+       if(!session)return reply.code(401).send('Unauthorized');
+       const origin=request.headers.origin;
+       const safari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+       if(origin!==config.publicOrigin&&!safari)return reply.code(403).send('Forbidden');
+       if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+         return reply.code(415).send('Unsupported Media Type');
+       const params=new URLSearchParams(typeof request.body==='string'?request.body:'');
+       if(params.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
+       const id=(request.params as {projectId:string}).projectId;
+       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))
+         return reply.code(404).send('Not found');
+       if(!services!.renderJobs)return reply.code(503).send('Render service unavailable');
+       const project=await services!.projects.get(session.ownerKey,id);
+       if(!project)return reply.code(404).send('Not found');
+       try{
+         const connected=await services!.modalAccounts?.status(session.ownerKey);
+         if(!connected?.connected)return reply.code(409).send('Anslut Modal i Inställningar');
+         const revision=Number(params.get('revision'));
+         const options=validateRenderOptions({
+           engine:params.get('engine') as RenderEngine,
+           width:Number(params.get('size')),height:Number(params.get('size')),
+           samples:Number(params.get('samples'))});
+         const queued=await services!.renderJobs.reserve(session.ownerKey,id,revision,options);
+         return reply.code(303).header('location','/projects/'+id+'?message=render_queued').send();
+       }catch{return reply.code(303).header('location','/projects/'+id+'?message=render_error').send();}
+     });
+     // Signed-cookie owner-only PNG retrieval; file bytes never contain an access token.
+     app.get('/renders/:projectId/:jobId.png',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').header('content-security-policy',"default-src 'none'")
+         .header('cross-origin-resource-policy','same-origin');
+       if(!session)return reply.code(401).send('Unauthorized');
+       const {projectId,jobId}=request.params as {projectId:string;jobId:string};
+       if(!/^[0-9a-f-]{36}$/i.test(projectId)||!/^[0-9a-f-]{36}$/i.test(jobId))
+         return reply.code(404).send('Not found');
+       if(!services!.renderJobs||!services!.renderedImages)return reply.code(404).send('Not found');
+       try{
+         const job=await services!.renderJobs.get(session.ownerKey,jobId);
+         if(!job||job.project_id!==projectId||job.status!=='completed'||!job.sha256||!job.size_bytes)
+           return reply.code(404).send('Not found');
+         const file=await services!.renderedImages.verifiedPath(projectId,jobId,job.sha256,job.size_bytes);
+         return reply.type('image/png').send(createReadStream(file));
+       }catch{return reply.code(404).send('Not found');}
      });
      // Archive JS is static and contains no session state or credentials.
      app.get('/archive/assets/import.js',async(_request,reply)=>{
@@ -481,6 +535,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        projects:services.projects,jobs:services.jobs,
        ...(services.artifacts?{artifacts:services.artifacts}:{}),
        ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{}),
+       ...(services.renderJobs?{renderJobs:services.renderJobs}:{}),
        ...(options?.google?{viewerOrigin:config.publicOrigin}:{})},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
    }
    const transport=new NodeStreamableHTTPServerTransport({sessionIdGenerator:undefined});

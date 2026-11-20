@@ -1,0 +1,71 @@
+# On-demand rendered PNG previews
+
+This capability is **separate from creating/editing Blender model revisions**.
+
+## User-visible behavior
+
+In the web portal, open a project and use **Rendera bild från Blender**.
+Choose a saved revision, Eevee or Cycles, square output 256/512/1024,
+and 8/16/32 samples. Clicking **Starta rendering i Modal** explicitly queues
+a separately billed job using the user's personal connected Modal account.
+
+From ChatGPT, call `workspace_queue_render` only after an explicit
+render request. Check progress via `workspace_get_render`, which returns a
+Google-authenticated browser link to the resulting PNG when complete.
+
+Rendering reads only the SHA-256-verified original scene.blend from the
+selected revision. It does **not** create a new model revision, change
+the original Blender file, overwrite GLB, or execute a model edit script.
+
+## Cost/resource policy
+
+- **Never render automatically** when a model is created or modified.
+- Owner-billed Modal Sandbox uses two physical CPU cores, 8 GiB RAM,
+  a 360-second sandbox limit and a 7-minute worker watchdog.
+- Square output is at most 1024 x 1024 and samples at most 32 for Cycles,
+  with a fixed allowlist of engine, size and sample choices.
+- Only one active render per project is permitted. The queue prioritizes
+  modeling jobs.
+- Canceled, timed-out, disconnected or crashed jobs are **not retried
+  automatically**; doing so could charge the user twice.
+- Completed PNG files are SHA-256 verified and linked to the job journal.
+  Images can be viewed without starting Blender or Modal again.
+- If a worker crashes after storing a PNG but before marking completion,
+  use `node dist/jobs/cli.js render-recover OWNER JOB_ID` within the worker
+  to verify and finalize metadata without a new Modal job. Investigate
+  jobs in `needs_recovery` with no PNG manually.
+- The original model revision and GLB remain untouched.
+
+## Security and fidelity
+
+Render only inside the isolated, network-blocked Modal Sandbox using a
+fixed trusted Blender Python script. Blender loads the saved scene with
+script auto-execution disabled. Never put Modal credentials in URLs or in
+rendered images. Browser forms use the signed Google session, owner scope,
+same-origin checks and CSRF. PNG downloads are also owner checked.
+
+If the scene has no camera, the render worker creates a temporary fallback
+camera and a light in memory (not written back into the original .blend).
+Cycles is CPU-based; Eevee may require graphics support from the pinned
+Blender image and can fail on headless hosts. Failed renders do not affect
+the source model.
+
+## Artifact lifecycle
+
+Stored at `<ARTIFACT_ROOT>/<project UUID>/renders/<render-job UUID>.png`
+with the checksum and size in `bw_render_jobs`. Render output is a *derived*
+preview, not part of the immutable revision manifest and currently **not
+included** in `.bwproject.zip` export/import. Reimporting a project preserves
+its models and revisions but not previously rendered images.
+
+Permanent project deletion blocks pending/running/recovery render jobs and
+removes completed PNGs, render records, source Blender files and revision
+history together.
+
+## Acceptance test (no paid run needed for CI)
+
+Verify input validation, owner isolation, CSRF/origin rules, PostgreSQL
+reservation conflict and deletion block, valid saved PNG retrieval, render
+job completed status, unchanged source revision count, and recovery without
+calling Modal. A single explicitly approved real Modal run with Cycles and a
+hair/curves scene is a follow-up live test, not part of CI.

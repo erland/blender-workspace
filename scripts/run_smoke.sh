@@ -33,3 +33,18 @@ assert old['Python Sphere'] == new['Python Sphere']
 assert new['Python Cylinder'] not in set(old.values())
 print('BW_PYTHON_FIRST_SMOKE PASS', flush=True)
 PY
+
+# Offline CPU render regression. This is local Docker Blender, NOT a Modal job.
+cp "$OUT/scene.blend" "$OUT/input.blend"
+blender -b -t 2 --factory-startup --disable-autoexec \
+  --python blender_workspace_poc/render_saved.py -- \
+  --source /workspace/out/input.blend --output /workspace/out/render.png \
+  --engine CYCLES --width 128 --height 128 --samples 1
+python3 - <<'PY'
+from pathlib import Path
+import struct
+image=Path('/workspace/out/render.png').read_bytes()
+assert image[:8]==b'\x89PNG\r\n\x1a\n'
+assert struct.unpack_from('>II',image,16)==(128,128)
+print('BW_RENDER_SMOKE PASS',flush=True)
+PY

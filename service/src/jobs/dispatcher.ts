@@ -2,6 +2,8 @@ import {JobExecutionError} from './job-diagnostics.js';
 import {setTimeout as sleep} from 'node:timers/promises';
 import type {JobRepository} from './job-repository.js';
 import type {JobOrchestrator} from './orchestrator.js';
+import type {RenderJobRepository} from './render-repository.js';
+import type {RenderOrchestrator} from './render-orchestrator.js';
 
 export interface DispatchOptions {pollMs?:number;graceMinutes?:number;}
 export interface DispatchOutcome {state:'idle'|'completed'|'failed';jobId?:string;}
@@ -14,7 +16,9 @@ export class JobDispatcher {
   readonly graceMinutes:number;
   constructor(private readonly jobs:Pick<JobRepository,'claimNext'|'quarantineStaleRunning'>,
     private readonly workflow:Pick<JobOrchestrator,'executeClaimed'>,
-    options:DispatchOptions={}){
+    options:DispatchOptions={},
+    private readonly renders?:Pick<RenderJobRepository,'claimNext'|'quarantineStale'>,
+    private readonly renderWorkflow?:Pick<RenderOrchestrator,'executeClaimed'>){
     this.pollMs=options.pollMs??2000;
     this.graceMinutes=options.graceMinutes??30;
     if(!Number.isInteger(this.pollMs)||this.pollMs<250||this.pollMs>60000)
@@ -24,7 +28,19 @@ export class JobDispatcher {
   }
   async dispatchOnce():Promise<DispatchOutcome>{
     const job=await this.jobs.claimNext();
-    if(!job)return {state:'idle'};
+    if(!job){
+      if(!this.renders||!this.renderWorkflow)return {state:'idle'};
+      const render=await this.renders.claimNext();
+      if(!render)return {state:'idle'};
+      try{
+        await this.renderWorkflow.executeClaimed(render);
+        return {state:'completed',jobId:render.id};
+      }catch{
+        console.error(JSON.stringify({event:'render_job_failed',jobId:render.id,
+          phase:'render',code:'render_failed'}));
+        return {state:'failed',jobId:render.id};
+      }
+    }
     try{
       await this.workflow.executeClaimed(job);
       return {state:'completed',jobId:job.id};
@@ -39,10 +55,12 @@ export class JobDispatcher {
   }
   async run(signal:AbortSignal):Promise<void>{
     await this.jobs.quarantineStaleRunning(this.graceMinutes);
+    if(this.renders)await this.renders.quarantineStale(this.graceMinutes);
     while(!signal.aborted){
       const outcome=await this.dispatchOnce();
       if(outcome.state==='idle'){
         await this.jobs.quarantineStaleRunning(this.graceMinutes);
+        if(this.renders)await this.renders.quarantineStale(this.graceMinutes);
         try{await sleep(this.pollMs,undefined,{signal});}
         catch(error){
           if(signal.aborted)return;
