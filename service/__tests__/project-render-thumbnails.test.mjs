@@ -14,7 +14,7 @@ test('project page shows same click-to-open lazy images from project and GLB vie
   {...base,id:failedJob,source_revision:2,status:'failed',error_code:'render_failed'},
   {...base,id:queuedJob,source_revision:1,status:'pending'}
  ];
- const html=projectDetailPage(project,revisions,'csrf',undefined,renders);
+ const html=projectDetailPage(project,revisions,'csrf',undefined,renders,[],'images');
  for(const jobId of [projectJob,viewerJob]){
   const url='/renders/'+id+'/'+jobId+'.png';
   assert.ok(html.includes('src="'+url+'"'));
@@ -39,7 +39,7 @@ test('render status errors are escaped and failed jobs never receive image eleme
  assert.doesNotMatch(html,/<img/);
 });
 test('empty render history retains a useful empty state',()=>{
- const html=projectDetailPage(project,revisions,'csrf',undefined,[]);
+ const html=projectDetailPage(project,revisions,'csrf',undefined,[],[],'images');
  assert.match(html,/Inga renderingar ännu/);
  assert.doesNotMatch(html,/class="render-tile"/);
 });
