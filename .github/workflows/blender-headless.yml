@@ -38,6 +38,10 @@ jobs:
           docker run --rm -v "$PWD/out/second:/workspace/out" --entrypoint blender blender-workspace:python-first \
             -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
             -- /workspace/out/input.blend /workspace/out/model.py 2
+      - name: Verify animation is preserved by the Blender GLB exporter
+        run: |
+          docker run --rm --entrypoint blender blender-workspace:python-first \
+            -b --factory-startup --python /workspace/tests/blender_animation_smoke.py
       - name: Verify Python-created immutable scene artifacts and object IDs
         run: |
           python3 - <<'PY'
