@@ -6,6 +6,7 @@ on:
       - "service/viewer/**"
       - "service/src/viewer-page.ts"
       - "service/__tests__/viewer-visual-inspection.test.mjs"
+      - "service/__tests__/viewer-animation.test.mjs"
       - "service/__tests__/viewer.test.mjs"
       - ".github/workflows/viewer-dev031.yml"
   workflow_dispatch:
@@ -30,7 +31,7 @@ jobs:
       - name: Verify camera presets, overlays and existing viewer security
         working-directory: service
         run: |
-          node --test __tests__/viewer-visual-inspection.test.mjs __tests__/viewer.test.mjs
+          node --test __tests__/viewer-visual-inspection.test.mjs __tests__/viewer-animation.test.mjs __tests__/viewer.test.mjs
       - name: Confirm bundled client has no remote rendering dependency
         working-directory: service
         run: |
