@@ -52,7 +52,8 @@ test('owner-scoped web job monitor merges model and render history, escapes text
  assert.match(response.body,/<meta http-equiv="refresh" content="10">/);
  assert.match(response.body,/Modellering/);
  assert.match(response.body,/Rendering/);
- assert.match(response.body,/Visa PNG/);
+ assert.match(response.body,/view=images/);
+ assert.doesNotMatch(response.body,/Visa PNG/);
  assert.match(response.body,/Katt &amp; &lt;test&gt;/);
  assert.match(response.body,/Päls &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
  assert.doesNotMatch(response.body,/<script>alert/);
