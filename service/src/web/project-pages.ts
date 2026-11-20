@@ -116,7 +116,7 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
  const cards=items.map(({project:p,revisions,renders=[]})=>{
   const latest=revisions.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
   const description=p.description?'<p class="card-description muted">'+escapeHtml(p.description)+'</p>':'';
-  const meta=latest?'Revision '+latest.revision:'Ingen sparad modell';
+  const meta=latest?'Senaste revision '+latest.revision:'Ingen sparad modell';
   const recent=renders.filter(r=>r.status==='completed').slice(0,3);
   const thumbnails=recent.length
     ?'<div class="project-thumbnails" aria-hidden="true">'+recent.map(r=>{
