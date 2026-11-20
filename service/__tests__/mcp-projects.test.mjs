@@ -48,6 +48,14 @@ test('authenticated MCP project tools, owner isolation and queued job', {skip:!p
   t.after(()=>rm(root,{recursive:true,force:true}));
   const artifacts=new LocalArtifactStore(root);
   const call=await start(t,owner,pool,artifacts),otherCall=await start(t,other,pool,artifacts);
+  const capabilities=output(await call('tools/call',{name:'workspace_status',arguments:{}}));
+  assert.equal(capabilities.blender_jobs_available,true);
+  assert.equal(capabilities.blender_jobs_availability_scope,'queue_only');
+  assert.equal(capabilities.worker_health,'not_checked');
+  const metadataOnly=await start(t,'mcp-metadata-'+randomUUID(),pool);
+  const limited=output(await metadataOnly('tools/call',{name:'workspace_status',arguments:{}}));
+  assert.equal(limited.blender_jobs_available,false);
+  assert.equal(limited.worker_health,'not_checked');
   const toolList=await call('tools/list');
   const names=toolList.tools.map(x=>x.name);
   for (const name of ['workspace_create_project','workspace_list_projects','workspace_get_project',
