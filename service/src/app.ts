@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
+import {projectIndexPage,projectDetailPage} from './web/project-pages.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -51,7 +52,7 @@ export function createApp(config:ServiceConfig,
 section{border:1px solid #bbb;border-radius:12px;padding:20px}
 label{display:block;margin-top:12px}input{box-sizing:border-box;width:100%;padding:12px}
 button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
-<section><h1>Modal – Blender Workspace</h1><p>Kontostatus: ${escape(status)}</p>
+<section><p><a href="/">← Mina projekt</a></p><h1>Modal – Blender Workspace</h1><p>Kontostatus: ${escape(status)}</p>
 <p>${escape(message)}</p><p>Dina Modal-uppgifter lagras krypterat och visas aldrig i ChatGPT.</p>
 <form method="post" action="/settings/modal/save">
 <input type="hidden" name="csrf" value="${escape(csrf)}">
@@ -62,9 +63,32 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
 <form method="post" action="/settings/modal/disconnect"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>Koppla bort</button></form>
 <form method="post" action="/settings/logout"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>Logga ut</button></form>
 </section></body></html>`;
-     app.get('/',async(_request,reply)=>{
-       secure(reply).type('text/html; charset=utf-8');
-       return '<!doctype html><html lang="sv"><meta charset="utf-8"><title>Blender Workspace</title><p><a href="/settings/login">Logga in med Google för att hantera Modal</a></p></html>';
+     app.get('/',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
+       if(!session)return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blender Workspace</title><style>body{font:16px system-ui,sans-serif;background:#f4f7fb;color:#19263b;display:grid;place-items:center;min-height:90vh;margin:0;padding:24px}main{background:white;padding:32px;border-radius:14px;border:1px solid #d8e2ed;max-width:480px}a{display:inline-block;background:#215dd5;color:white;text-decoration:none;padding:12px 18px;border-radius:9px}</style></head><body><main><h1>Blender Workspace</h1><p>Logga in med Google för att visa dina projekt och sparade 3D-modeller.</p><a href="/settings/login">Logga in med Google</a></main></body></html>';
+       try{
+         // Bound the number of owner-scoped queries on each request.
+         const projects=await services!.projects.list(session.ownerKey,50);
+         const items=await Promise.all(projects.map(async project=>({
+           project,revisions:await services!.projects.revisions(session.ownerKey,project.id)
+         })));
+         return projectIndexPage(items);
+       }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
+     });
+     app.get('/projects/:projectId',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
+       if(!session)return reply.redirect('/settings/login');
+       const {projectId}=request.params as {projectId:string};
+       if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId))
+         return reply.code(404).send('Projektet hittades inte');
+       try{
+         const project=await services!.projects.get(session.ownerKey,projectId);
+         if(!project)return reply.code(404).send('Projektet hittades inte');
+         const revisions=await services!.projects.revisions(session.ownerKey,projectId);
+         return projectDetailPage(project,revisions);
+       }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
      app.get('/settings/login',async(_request,reply)=>{
        const response=await google.beginSettingsLogin();
