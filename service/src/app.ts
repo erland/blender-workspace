@@ -9,7 +9,7 @@ import {importClientScript} from './web/import-client.js';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
 import type {ProjectDeletionService} from './jobs/project-deletion.js';
-import {projectIndexPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
+import {projectIndexPage,projectImportPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -127,6 +127,15 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          ].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime());
          return jobsOverviewPage(entries);
        }catch{return reply.code(503).send('Jobblistan kunde inte hämtas. Försök igen senare.');}
+     });
+     // Dedicated secondary import workflow: the project list stays the first content on mobile.
+     app.get('/projects/import',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
+       if(!session)return reply.redirect('/settings/login');
+       reply.header('content-security-policy',
+         "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+       return projectImportPage(session.csrf);
      });
      app.get('/projects/:projectId',async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
