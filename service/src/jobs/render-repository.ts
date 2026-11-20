@@ -1,19 +1,28 @@
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
+import {validateViewerCamera,type ViewerCamera} from './viewer-camera.js';
 
 export type RenderEngine='BLENDER_EEVEE_NEXT'|'CYCLES';
-export interface RenderOptions {engine:RenderEngine;width:number;height:number;samples:number;}
+export interface RenderOptions {engine:RenderEngine;width:number;height:number;samples:number;requestedFrom?:'viewer'|'project';camera?:ViewerCamera;}
 export interface RenderJob {
  id:string;project_id:string;owner_key:string;source_revision:number;engine:RenderEngine;
- width:number;height:number;samples:number;status:'pending'|'running'|'needs_recovery'|'completed'|'failed';
+ width:number;height:number;samples:number;requested_from:'viewer'|'project';camera_override:ViewerCamera|null;status:'pending'|'running'|'needs_recovery'|'completed'|'failed';
  error_code:string|null;sha256:string|null;size_bytes:number|null;created_at:Date;
 }
 export function validateRenderOptions(value:RenderOptions):RenderOptions {
- if(!value||!['BLENDER_EEVEE_NEXT','CYCLES'].includes(value.engine) ||
-   !Number.isInteger(value.width)||![256,512,1024].includes(value.width) ||
-   !Number.isInteger(value.height)||![256,512,1024].includes(value.height) ||
+ if(!value||!['BLENDER_EEVEE_NEXT','CYCLES'].includes(value.engine)||
+   !Number.isInteger(value.width)||!Number.isInteger(value.height)||
    !Number.isInteger(value.samples)||![8,16,32].includes(value.samples))
    throw new RangeError('Invalid bounded render options');
+ if(value.requestedFrom===undefined||value.requestedFrom==='project'){
+   if(value.camera!==undefined||![256,512,1024].includes(value.width)||
+      ![256,512,1024].includes(value.height))throw new RangeError('Invalid project render');
+ }else if(value.requestedFrom==='viewer'){
+   if(value.engine!=='CYCLES'||value.samples!==16||!value.camera||
+     Math.min(value.width,value.height)!==256||Math.max(value.width,value.height)>1024)
+     throw new RangeError('Invalid viewer render');
+   validateViewerCamera(value.camera);
+ }else throw new RangeError('Invalid render source');
  return value;
 }
 export class RenderJobRepository {
@@ -33,9 +42,10 @@ export class RenderJobRepository {
      if(!exists.rowCount)throw new RangeError('Saved revision unavailable');
      const inserted=await c.query<RenderJob>(
        `INSERT INTO bw_render_jobs
-       (id,project_id,owner_key,source_revision,engine,width,height,samples,status)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING *`,
-       [randomUUID(),projectId,owner,revision,options.engine,options.width,options.height,options.samples]);
+       (id,project_id,owner_key,source_revision,engine,width,height,samples,status,requested_from,camera_override)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10::jsonb) RETURNING *`,
+       [randomUUID(),projectId,owner,revision,options.engine,options.width,options.height,options.samples,
+        options.requestedFrom??'project',options.camera?JSON.stringify(options.camera):null]);
      await c.query('COMMIT');
      return inserted.rows[0];
    }catch(e){

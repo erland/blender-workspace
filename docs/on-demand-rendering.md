@@ -17,6 +17,36 @@ Rendering reads only the SHA-256-verified original scene.blend from the
 selected revision. It does **not** create a new model revision, change
 the original Blender file, overwrite GLB, or execute a model edit script.
 
+## DEV-039: Render current GLB viewer camera
+
+The browser viewer offers **Rendera aktuell vy (Modal)** after a model is loaded.
+The operation requires an explicit confirmation before queuing a chargeable
+Cycles CPU render under the signed-in owner's connected Modal account.
+
+- Uses the same saved source `.blend`, render job journal, PNG artifact store
+  and project-page image history as renders started on the project page.
+- Uses 16 Cycles samples with denoising. The **shortest image edge is 256 px**;
+  the longer edge follows the canvas aspect ratio, up to 1024 px (4:1 limit).
+- The viewer sends a bounded perspective camera position, orbit target,
+  camera up direction and vertical field of view. Its glTF/Three.js Y-up
+  world coordinates are transformed to Blender's Z-up coordinates. The
+  existing scene camera is overridden only in Blender memory, not in `.blend`.
+- The selected revision's three latest saved PNGs appear below the viewer,
+  with an expandable history and a link to the project's full history.
+  Active render statuses refresh at ten-second intervals; reading the
+  history never calls Modal.
+- The viewer endpoints require the existing signed Google browser session;
+  the POST also requires same-origin checking, a CSRF token and active Modal
+  connection. The token is fetched by an owner-scoped history request and
+  never appears in the static viewer HTML.
+- Existing project-page and MCP render requests remain square and retain
+  their prior options. Viewer-only camera renders are stored with
+  `requested_from='viewer'` and validated `camera_override` JSON.
+- A local headless Blender/Cycles smoke test verifies camera rendering and
+  non-square output without a paid Modal job. Visual fidelity, realistic hair
+  and running Cycles against a real user-funded Modal Sandbox still require
+  explicit live acceptance testing.
+
 ## Cost/resource policy
 
 - **Never render automatically** when a model is created or modified.

@@ -27,6 +27,14 @@ main{height:calc(100dvh - 165px);min-height:320px;padding:12px}
 select{padding:8px;border:1px solid #64748b;border-radius:8px}
 canvas{display:block;width:100%;height:100%;border-radius:12px;touch-action:none}
 footer{padding:5px 20px;font-size:.9rem}
+.render-section{background:#fff;border-top:1px solid #cbd5e1;padding:16px 20px}
+.render-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.render-controls h2{font-size:1rem;margin:0}
+.render-gallery{display:flex;flex-wrap:wrap;gap:12px;padding:12px 0}
+.render-card{width:160px;border:1px solid #cbd5e1;border-radius:10px;padding:8px}
+.render-card img{display:block;max-width:100%;height:110px;object-fit:contain;background:#f1f4f8}
+.render-card small{display:block;color:#475569}
+
 </style></head><body>
 <header><h1>Blender Workspace · revision ${revision}</h1>
 <nav class="actions" aria-label="Visningskontroller">
@@ -58,6 +66,14 @@ footer{padding:5px 20px;font-size:.9rem}
 <main><div class="viewports"><div class="viewport"><canvas id="viewport" aria-label="Interaktiv 3D-modell för aktuell revision"></canvas></div>
 <div class="viewport" id="compare-pane" hidden><canvas id="comparison-viewport" aria-label="Interaktiv 3D-modell för jämförd revision"></canvas></div>
 </div></main>
+<section class="render-section" aria-label="Renderingar för denna revision">
+ <div class="render-controls"><h2>Cycles-renderingar · revision ${revision}</h2>
+ <button id="render-current-view" disabled>Rendera aktuell vy (Modal)</button>
+ <a href="/projects/${projectId}">Alla renderingar i projektet</a></div>
+ <p id="render-status" role="status" aria-live="polite">Laddar renderingshistorik…</p>
+ <div id="render-history" class="render-gallery"></div>
+ <button id="render-show-all" hidden>Visa fler bilder</button>
+</section>
 <footer><span id="status" role="status" aria-live="polite">Laddar modell…</span> · <span id="comparison">Ingen jämförelse</span></footer>
 <script type="module" src="/viewer/assets/viewer.js"></script>
 </body></html>`;

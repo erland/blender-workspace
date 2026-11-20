@@ -20,7 +20,8 @@ export class ModalRenderExecutor {
    await new Promise<void>((resolve,reject)=>{
      const args=[script,'--out',outDir,'--input-blend',source,'--engine',options.engine,
        '--width',String(options.width),'--height',String(options.height),
-       '--samples',String(options.samples)];
+       '--samples',String(options.samples),
+       ...(options.camera?['--camera-json',JSON.stringify(options.camera)]:[])];
      const proc=spawn('python3',args,{cwd:this.root,env,stdio:['ignore','ignore','pipe']});
      let finished=false,timedOut=false;
      let diagnostic='';

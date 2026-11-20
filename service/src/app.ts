@@ -3,6 +3,7 @@ import {createReadStream} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import type {ProjectArchiveService} from './jobs/project-archive.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from './jobs/render-repository.js';
+import {validateViewerCamera,viewerDimensions} from './jobs/viewer-camera.js';
 import type {RenderArtifactStore} from './storage/render-artifacts.js';
 import {importClientScript} from './web/import-client.js';
 import {fileURLToPath} from 'node:url';
@@ -460,6 +461,66 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        }
        return reply.type('application/json').send({projectId,revisions:available});
      }catch{return reply.code(404).send({error:'not_found'});}
+   });
+   // Signed, owner-scoped render history for the selected model revision.
+   app.get('/viewer/api/projects/:projectId/revisions/:revision/renders',async(request,reply)=>{
+     viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const session=google.settingsSession(request.headers.cookie);
+     if(!session)return reply.code(401).send({error:'unauthorized'});
+     const {projectId,revision}=request.params as {projectId:string;revision:string};
+     if(!validViewerParams(projectId,revision))return reply.code(404).send({error:'not_found'});
+     if(request.headers.origin&&request.headers.origin!==config.publicOrigin)
+       return reply.code(403).send({error:'origin_not_allowed'});
+     if(!services!.renderJobs)return reply.code(503).send({error:'unavailable'});
+     try{
+       if(!await ownedRevision(session.ownerKey,projectId,Number(revision)))
+         return reply.code(404).send({error:'not_found'});
+       const rows=await services!.renderJobs.list(session.ownerKey,projectId,Number(revision));
+       return reply.send({csrf:session.csrf,renders:rows.map(r=>({
+         id:r.id,revision:r.source_revision,status:r.status,engine:r.engine,
+         width:r.width,height:r.height,samples:r.samples,
+         requestedFrom:r.requested_from??'project',
+         createdAt:r.created_at,error:r.error_code??null,
+         imageUrl:r.status==='completed'
+           ?'/renders/'+encodeURIComponent(projectId)+'/'+encodeURIComponent(r.id)+'.png':null
+       }))});
+     }catch{return reply.code(503).send({error:'unavailable'});}
+   });
+   // Explicitly charged POST, protected by owner cookie, origin and CSRF checks.
+   app.post('/viewer/api/projects/:projectId/revisions/:revision/renders',
+     {bodyLimit:4096},async(request,reply)=>{
+     viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const session=google.settingsSession(request.headers.cookie);
+     if(!session)return reply.code(401).send({error:'unauthorized'});
+     const {projectId,revision}=request.params as {projectId:string;revision:string};
+     if(!validViewerParams(projectId,revision))return reply.code(404).send({error:'not_found'});
+     const origin=request.headers.origin;
+     const safari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+     if(origin!==config.publicOrigin&&!safari)return reply.code(403).send({error:'origin_not_allowed'});
+     if(!(request.headers['content-type']??'').startsWith('application/json'))
+       return reply.code(415).send({error:'unsupported_media_type'});
+     if(request.headers['x-csrf-token']!==session.csrf)
+       return reply.code(403).send({error:'csrf'});
+     if(!services!.renderJobs||!services!.modalAccounts)
+       return reply.code(503).send({error:'unavailable'});
+     try{
+       if(!await ownedRevision(session.ownerKey,projectId,Number(revision)))
+         return reply.code(404).send({error:'not_found'});
+       const connected=await services!.modalAccounts.status(session.ownerKey);
+       if(!connected?.connected)return reply.code(409).send({error:'modal_not_connected'});
+       const payload=request.body as {camera?:unknown;viewportWidth?:number;viewportHeight?:number};
+       const camera=validateViewerCamera(payload?.camera);
+       const size=viewerDimensions(payload.viewportWidth!,payload.viewportHeight!);
+       const options=validateRenderOptions({
+         engine:'CYCLES',samples:16,width:size.width,height:size.height,
+         requestedFrom:'viewer',camera
+       });
+       const job=await services!.renderJobs.reserve(session.ownerKey,projectId,Number(revision),options);
+       return reply.code(202).send({jobId:job.id,status:'pending'});
+     }catch(error){
+       if(error instanceof RangeError)return reply.code(422).send({error:'invalid_or_busy'});
+       return reply.code(503).send({error:'unavailable'});
+     }
    });
    app.get('/viewer/api/projects/:projectId/revisions/:revision/scene.glb',async(request,reply)=>{
      viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
