@@ -5,7 +5,7 @@ CREATE TABLE bw_render_jobs (
   project_id uuid NOT NULL REFERENCES bw_projects(id) ON DELETE RESTRICT,
   owner_key varchar(200) NOT NULL,
   source_revision integer NOT NULL CHECK (source_revision>0),
-  engine varchar(8) NOT NULL CHECK (engine IN ('BLENDER_EEVEE_NEXT','CYCLES')),
+  engine varchar(32) NOT NULL CHECK (engine IN ('BLENDER_EEVEE_NEXT','CYCLES')),
   width integer NOT NULL CHECK (width BETWEEN 128 AND 1024),
   height integer NOT NULL CHECK (height BETWEEN 128 AND 1024),
   samples integer NOT NULL CHECK (samples BETWEEN 1 AND 64),
