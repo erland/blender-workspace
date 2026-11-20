@@ -136,9 +136,11 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        const params=new URLSearchParams(typeof request.body==='string'?request.body:'');
        if(params.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
        const id=(request.params as {projectId:string}).projectId;
-       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))
          return reply.code(404).send('Not found');
        if(!services!.renderJobs)return reply.code(503).send('Render service unavailable');
+       const project=await services!.projects.get(session.ownerKey,id);
+       if(!project)return reply.code(404).send('Not found');
        try{
          const connected=await services!.modalAccounts?.status(session.ownerKey);
          if(!connected?.connected)return reply.code(409).send('Anslut Modal i Inställningar');
