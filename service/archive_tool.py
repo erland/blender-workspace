@@ -118,7 +118,7 @@ def import_zip(input_zip, output_dir):
             if info.file_size and info.file_size > max(1, info.compress_size) * 300:
                 raise ValueError("Suspicious compression ratio")
         meta_info = inp.getinfo("project.json")
-        if meta_info.file_size > 256 * 1024:
+        if meta_info.file_size > 2 * 1024 * 1024:
             raise ValueError("Metadata too large")
         data = json.loads(inp.read(meta_info).decode("utf-8"))
         paths = validate_metadata(data)
