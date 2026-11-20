@@ -46,16 +46,30 @@ def main():
     meshes=[obj for obj in objects if obj.type=='MESH']
     if len(objects)<1 or len(objects)>512 or len(meshes)>256:
         raise ValueError('Scene object count outside bounded output limits')
-    if sum(len(obj.data.vertices) for obj in meshes)>200000 or sum(
-        len(obj.data.polygons) for obj in meshes)>100000:
-        raise ValueError('Scene topology exceeds output limits')
+    # Safety ceiling, not a GLB polygon budget. Higher-detail meshes and
+    # Blender hair/curves remain part of the authoritative .blend.
+    if sum(len(obj.data.vertices) for obj in meshes)>2_000_000 or sum(
+        len(obj.data.polygons) for obj in meshes)>1_000_000:
+        raise ValueError('Scene topology exceeds bounded processing limits')
     out=ensure_output()
     blend,glb,report=(out/'scene.blend',out/'scene.glb',out/'scene.json')
     # An uncompressed BLEND allows the trusted controller to verify its
     # native BLENDER header without parsing untrusted compressed input.
     bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=False)
-    export_glb(glb)
-    write_manifest(report,'sandbox_python',[blend,glb])
+    preview={'format':'glb','status':'unavailable','reason':'export_failed'}
+    files=[blend]
+    try:
+        export_glb(glb)
+        if not glb.is_file() or glb.stat().st_size==0:
+            raise RuntimeError('Empty GLB export')
+        files.append(glb)
+        # An exported GLB is a preview, not a proof of fidelity. Hair curves,
+        # procedural geometry and Blender-specific shader nodes may be absent.
+        preview={'format':'glb','status':'available','fidelity':'unverified'}
+    except Exception:
+        # Preview failure must never erase a valid native Blender scene.
+        glb.unlink(missing_ok=True)
+    write_manifest(report,'sandbox_python',files,preview=preview)
     print('BW_SANDBOX_PYTHON PASS',flush=True)
 
 if __name__=='__main__':
