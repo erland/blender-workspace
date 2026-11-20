@@ -62,6 +62,18 @@ six camera presets (including top/isometric), display bounding boxes,
 axes or wireframe, and download a PNG from the browser. Browser-only
 viewer operations use Three.js/WebGL and **do not start Modal rendering**.
 
+### Animated GLB playback (ANIM-001)
+
+Saved GLB files with supported animation clips can be played directly in the
+browser using Three.js. The viewer exposes clip selection, play/pause, timeline
+scrubbing and repeat controls only when usable clips exist. Revisions being
+compared follow the same normalized time position only when an animation with
+the same name exists in both revisions; other comparisons remain static.
+Playback is read-only, works without Modal jobs and does not create an MP4 or
+change the authoritative `.blend` file. Blender effects that cannot be
+represented as glTF animations may not animate in the browser. Browser/iPad
+acceptance remains a deployment test.
+
 ## Security and limitations
 
 - Python is **untrusted executable content**. It runs in a short-lived
