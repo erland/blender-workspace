@@ -102,11 +102,11 @@ export function projectDeletePage(p:PortalProject,csrf:string,message?:string):s
    :message==='error'?'<p role="alert" class="warning">Projektet kunde inte tas bort. Försök igen.</p>':'';
  return layout('Bekräfta borttagning','<div class="breadcrumb"><a href="'+path+'">← Tillbaka till projektet</a></div>'+
   '<section class="panel"><h1>Ta bort projekt?</h1>'+
-  warning+'<p>Du är på väg att ta bort <strong>'+escapeHtml(p.name)+'</strong> från din projektlista.</p>'+
-  '<p class="muted">Projektet och dess revisioner blir inte längre åtkomliga. Filerna raderas inte permanent i detta steg. Åtgärden kan inte ångras via webbgränssnittet.</p>'+
+  warning+'<p>Du är på väg att permanent ta bort <strong>'+escapeHtml(p.name)+'</strong> från din projektlista.</p>'+
+  '<p class="muted">Projektet, alla revisioner, sparade modellfiler och jobbhistorik raderas permanent. Åtgärden kan inte ångras. Exportera först projektet om du vill kunna spara en kopia (exportfunktionen är ännu inte implementerad).</p>'+
   '<form method="post" action="'+path+'/delete">'+
   '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
   '<label><input name="confirm" type="checkbox" value="yes" required> Ja, ta bort detta projekt</label>'+
-  '<div class="actions" style="margin-top:18px"><button class="button danger-button" type="submit">Ta bort projekt</button>'+
+  '<div class="actions" style="margin-top:18px"><button class="button danger-button" type="submit">Radera permanent</button>'+
   '<a class="button alt" href="'+path+'">Avbryt</a></div></form></section>');
 }
