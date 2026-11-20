@@ -269,7 +269,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      // Reuse settings' exact-origin + Safari null-origin exception, signed
      // Google session and per-session CSRF token. No MCP bearer in forms.
      for(const action of ['rename','description','delete'] as const){
-       app.post('/projects/:projectId/'+action,{bodyLimit:4096},async(request,reply)=>{
+       app.post('/projects/:projectId/'+action,{bodyLimit:action==='description'?65536:4096},async(request,reply)=>{
          const session=google.settingsSession(request.headers.cookie);
          secure(reply).header('vary','Cookie');
          if(!session)return reply.code(401).send('Unauthorized');
