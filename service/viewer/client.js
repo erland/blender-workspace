@@ -48,9 +48,10 @@ function createViewport(canvas,interactive=false){
     const w=Math.max(1,Math.round(rect.width)),h=Math.max(1,Math.round(rect.height));
     renderer.setSize(w,h,false);
     camera.aspect=w/h;
+    // A resize changes only the projection and the drawing buffer. Do not
+    // call orient() here: it would discard the user's orbit, pan and zoom when
+    // an iPad rotates or the comparison pane changes layout.
     camera.updateProjectionMatrix();
-    // Keep a fitted model visible when rotating the device or resizing panes.
-    if(state.bounds)orient(state.viewAngle);
   };
   const observer=new ResizeObserver(resize);
   observer.observe(canvas);resize();
