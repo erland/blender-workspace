@@ -33,6 +33,12 @@ const style=[
 '.history li:first-child{border-top:0}.history p{margin:0}.history .muted{overflow-wrap:anywhere}',
 '.empty-state{text-align:center;padding:48px 22px;border:1px dashed #b7c7dc;border-radius:14px;background:white}',
 '.breadcrumb{margin-bottom:20px}',
+'.form-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.form-row label{flex:1;min-width:220px;font-weight:600}',
+'input[type=text]{display:block;width:100%;margin-top:6px;padding:10px 12px;border:1px solid #8090a9;border-radius:8px;font:inherit}',
+'button{font:inherit;border:0;cursor:pointer}.button.alt{color:#2054b8}',
+'.danger{color:#9a2029}.danger-button{background:#9a2029;color:white}',
+'.warning{padding:16px;background:#fff4f2;border:1px solid #f1b5ae;border-radius:9px;margin-bottom:20px}',
+'.actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}',
 '@media(max-width:560px){main{padding:0 18px 40px}.bar{padding:14px 18px}nav{gap:12px}}'
 ].join('');
 function layout(title:string,body:string):string {
@@ -60,7 +66,7 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
   '<p class="muted">Granska dina sparade Blender-modeller och revisioner. Modellering sker i ChatGPT.</p></div>'+
   '<span class="tag">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</span></div>'+listing);
 }
-export function projectDetailPage(p:PortalProject,revs:PortalRevision[]):string {
+export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string):string {
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
   const status=r.artifact_prefix?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
@@ -74,5 +80,33 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[]):string 
   '</p><p class="muted small">Ändrad '+when(p.updated_at)+' · Aktuell revision '+p.current_revision+'</p></div>'+mainLink+
   '</div><section class="panel"><h2>Revisionshistorik</h2>'+
   (history?'<ul class="history">'+history+'</ul>':
-    '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+'</section>');
+    '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+'</section>'+
+  (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Hantera projektet</h2>'+
+    (message==='renamed'?'<p role="status">Projektnamnet har uppdaterats.</p>':
+     message==='invalid'?'<p role="alert" class="danger">Ange ett projektnamn med 1–200 tecken.</p>':
+     message==='error'?'<p role="alert" class="danger">Projektet kunde inte uppdateras.</p>':'')+
+    '<form method="post" action="'+projectUrl(p.id)+'/rename">'+
+    '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+    '<div class="form-row"><label for="project-name">Projektnamn'+
+    '<input id="project-name" type="text" name="name" value="'+escapeHtml(p.name)+'" required maxlength="200"></label>'+
+    '<button class="button" type="submit">Byt namn</button></div></form>'+
+    '<p style="margin-top:20px"><a class="danger" href="'+projectUrl(p.id)+'/delete">Ta bort projektet…</a></p>'+
+    '</section>'));
+}
+
+/** Deliberate separate confirmation step. A GET can never delete a project. */
+export function projectDeletePage(p:PortalProject,csrf:string,message?:string):string{
+ const path=projectUrl(p.id);
+ const warning=message==='busy'
+   ?'<p role="alert" class="warning">Projektet har ett aktivt eller återställningskrävande jobb och kan inte tas bort.</p>'
+   :message==='error'?'<p role="alert" class="warning">Projektet kunde inte tas bort. Försök igen.</p>':'';
+ return layout('Bekräfta borttagning','<div class="breadcrumb"><a href="'+path+'">← Tillbaka till projektet</a></div>'+
+  '<section class="panel"><h1>Ta bort projekt?</h1>'+
+  warning+'<p>Du är på väg att ta bort <strong>'+escapeHtml(p.name)+'</strong> från din projektlista.</p>'+
+  '<p class="muted">Projektet och dess revisioner blir inte längre åtkomliga. Filerna raderas inte permanent i detta steg. Åtgärden kan inte ångras via webbgränssnittet.</p>'+
+  '<form method="post" action="'+path+'/delete">'+
+  '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+  '<label><input name="confirm" type="checkbox" value="yes" required> Ja, ta bort detta projekt</label>'+
+  '<div class="actions" style="margin-top:18px"><button class="button danger-button" type="submit">Ta bort projekt</button>'+
+  '<a class="button alt" href="'+path+'">Avbryt</a></div></form></section>');
 }
