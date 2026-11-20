@@ -158,19 +158,39 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
   const portalProject=await new ProjectRepository(pool).create(settingsOwner,
     'Projekt <script>alert(1)</script>', 'Beskrivning & modeller');
   projects.push(portalProject.id);
+  // Only the signed-in identity sees this project, never an OAuth bearer token.
+  const bobStart=await get('/settings/login');
+  const bobLoginUrl=new URL(bobStart.headers.get('location'));
+  const bobCallback=await get('/auth/google/callback?'+new URLSearchParams({
+    state:bobLoginUrl.searchParams.get('state'),code:'bob'
+  }),{headers:{cookie:bobStart.headers.get('set-cookie').split(';')[0]}});
+  const bobCookie='bw_modal_settings='+
+    bobCallback.headers.get('set-cookie').match(/bw_modal_settings=([^;]+)/)?.[1];
+  const bobHome=await get('/',{headers:{cookie:bobCookie}});
+  assert.doesNotMatch(await bobHome.text(),/Projekt &lt;script/);
+  assert.equal((await get('/projects/'+portalProject.id,
+    {headers:{cookie:bobCookie}})).status,404);
+  // Existing revision links are listed, but no new Blender execution is started.
+  await new ProjectRepository(pool).addRevision(settingsOwner,portalProject.id,
+    'Testrevision <tag>',portalProject.id+'/00000001');
   const portalHome=await get('/',{headers:{cookie:sessionCookie}});
   const homeHtml=await portalHome.text();
   assert.equal(portalHome.status,200);
   assert.match(homeHtml,/Projekt &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.doesNotMatch(homeHtml,/<script>alert/);
   assert.match(homeHtml,/Beskrivning &amp; modeller/);
+  assert.match(homeHtml,/Senaste revision 1/);
+  assert.match(homeHtml,new RegExp('/viewer/'+portalProject.id+'/revisions/1'));
   assert.match(homeHtml,new RegExp('/projects/'+portalProject.id));
   assert.equal(portalHome.headers.get('cache-control'),'no-store');
   assert.equal(portalHome.headers.get('vary'),'Cookie');
   const projectPage=await get('/projects/'+portalProject.id,
     {headers:{cookie:sessionCookie}});
   assert.equal(projectPage.status,200);
-  assert.match(await projectPage.text(),/Revisionshistorik/);
+  const projectHtml=await projectPage.text();
+  assert.match(projectHtml,/Revisionshistorik/);
+  assert.match(projectHtml,/Testrevision &lt;tag&gt;/);
+  assert.doesNotMatch(projectHtml,/<tag>/);
   assert.equal((await get('/projects/'+portalProject.id)).status,302);
   assert.equal((await get('/projects/not-a-uuid',
     {headers:{cookie:sessionCookie}})).status,404);
