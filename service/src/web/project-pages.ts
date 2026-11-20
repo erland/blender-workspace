@@ -93,12 +93,12 @@ const style=[
 'select{display:block;margin-top:6px;padding:10px 12px;border:1px solid #8090a9;border-radius:8px;background:white;font:inherit;max-width:100%}',
 '@media(max-width:560px){main{padding:0 18px 40px}.bar{padding:14px 18px}nav{gap:12px}}'
 ].join('');
-function layout(title:string,body:string,autoRefresh=false):string {
+function layout(title:string,body:string,liveUpdates=false):string {
  return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
- '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+(autoRefresh?'<meta http-equiv="refresh" content="10">':'')+'<style>'+style+'</style></head><body>'+
+ '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+'<style>'+style+'</style></head><body>'+
  '<header><div class="bar"><a class="logo" href="/">◈ Blender Workspace</a>'+
  '<nav aria-label="Huvudnavigering"><a href="/">Projekt</a><a href="/jobs">Jobb</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
- '<main>'+body+'</main></body></html>';
+ '<main>'+body+'</main>'+(liveUpdates?'<script src="/portal/assets/live-status.js" defer></script>':'')+'</body></html>';
 }
 const activeStatus=(status:string)=>status==='pending'||status==='running';
 const statusLabels:Record<string,string>={
@@ -135,16 +135,16 @@ export function jobsOverviewPage(items:PortalJobItem[]):string {
  return layout('Jobb','<div class="intro"><div><h1>Jobb</h1>'+
    '<p class="muted small">Modellering och rendering · senaste 50 jobben per typ</p></div>'+
    '<a class="button alt refresh-link" href="/jobs">Uppdatera</a></div>'+
-   (active.length?'<p class="muted small" role="status">Pågående jobb uppdateras var tionde sekund.</p>':'')+
-   '<section class="panel"><h2>Pågående jobb ('+active.length+')</h2>'+
+   '<p id="live-update-message" class="muted small" role="status" aria-live="polite">Jobbstatus uppdateras automatiskt utan att sidan laddas om.</p>'+
+   '<div id="live-job-sections"><section class="panel"><h2>Pågående jobb ('+active.length+')</h2>'+
    section(active,'Inga jobb pågår.')+'</section>'+
    (attention.length?'<section class="panel" style="margin-top:16px">'+
      '<h2>Kräver uppmärksamhet ('+attention.length+')</h2>'+
-     section(attention,'')+'</section>':'')+
-   '<details class="panel job-archive" style="margin-top:16px"'+
+     section(attention,'')+'</section>':'')+'</div>'+
+   '<details id="live-job-archive" class="panel job-archive" style="margin-top:16px"'+
      (active.length===0&&attention.length===0?' open':'')+'>'+
-     '<summary>Avslutade jobb ('+complete.length+')</summary>'+
-     section(complete,'Inga avslutade jobb.')+'</details>',active.length>0);
+     '<summary>Avslutade jobb ('+complete.length+')</summary><div id="live-job-completed">'+
+     section(complete,'Inga avslutade jobb.')+'</div></details>',true);
 }
 export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[];renders?:PortalRender[]}[],message?:string,csrf?:string):string {
  const cards=items.map(({project:p,revisions,renders=[]})=>{
@@ -278,11 +278,11 @@ export function projectDetailPage(
    '</section><section class="panel" style="margin-top:16px">'+
    '<div class="project-section-heading"><h2>Modelleringsjobb</h2>'+
    '<a href="/jobs">Alla jobb</a></div>'+
-   (modelJobs.length?'<ul class="history">'+modelJobs.map(j=>jobRow({
+   '<div id="live-project-model-jobs">'+(modelJobs.length?'<ul class="history">'+modelJobs.map(j=>jobRow({
      id:j.id,project_id:p.id,project_name:p.name,type:'model',revision:j.requested_revision,
      status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
      error:j.error_message
-   },false)).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>';
+   },false)).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</div></section>';
  const renderSection=csrf===undefined?'':'<details class="panel" style="margin-bottom:16px"'+
    (message==='render_error'?' open':'')+'><summary style="cursor:pointer;min-height:44px;font-weight:700">Skapa rendering (Modal)</summary>'+
    '<div style="margin-top:12px"><h2>Rendera bild från Blender</h2>'+
@@ -305,7 +305,8 @@ export function projectDetailPage(
       '<p class="muted">En sparad revision krävs för rendering.</p>')+
    '</div></details>';
  const imageHistory='<section class="panel" style="margin-top:16px">'+
-   '<h2>Renderingsjobb och bilder</h2>'+projectRenderHistory(p.id,renders)+'</section>';
+   '<h2>Renderingsjobb och bilder</h2><div id="live-project-render-jobs">'+
+   projectRenderHistory(p.id,renders)+'</div></section>';
  const settings=csrf===undefined?'':'<section class="panel"><h2>Hantera projektet</h2>'+
    (message==='renamed'?'<p role="status">Projektnamnet har uppdaterats.</p>':
     message==='description_updated'?'<p role="status">Projektbeskrivningen har uppdaterats.</p>':
@@ -329,10 +330,10 @@ export function projectDetailPage(
    '</section>';
  const body=view==='images'?renderSection+imageHistory:
    view==='history'?modelHistory:view==='settings'?settings:overview;
- // Only the job history refreshes automatically. Rendering list can be refreshed
- // manually without unexpectedly resetting the user's editing form or overview.
+ // Live changes are confined to job/image containers. User input, any open
+ // rendering form and the page scroll remain untouched.
  return layout(p.name,intro+tabs+body,
-   view==='history'&&modelJobs.some(j=>activeStatus(j.status)));
+   view==='history'||view==='images');
 }
 
 /** Deliberate separate confirmation step. A GET can never delete a project. */
