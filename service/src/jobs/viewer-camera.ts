@@ -25,12 +25,12 @@ export function validateViewerCamera(value:unknown):ViewerCamera {
  if(Math.hypot(...cross)/(d*u)<0.01)throw new RangeError('Camera up is parallel to view');
  return c as unknown as ViewerCamera;
 }
-/** Same aspect as canvas; short edge 256, long edge limited to 1024. */
+/** Same aspect as canvas; short edge 512, long edge limited to 2048. */
 export function viewerDimensions(width:number,height:number):{width:number;height:number} {
  if(!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)
    throw new RangeError('Invalid viewport');
  const ratio=width/height;
  if(ratio<0.25||ratio>4)throw new RangeError('Viewport aspect exceeds safe limit');
- return ratio>=1?{width:Math.round(256*ratio),height:256}:
-   {width:256,height:Math.round(256/ratio)};
+ return ratio>=1?{width:Math.round(512*ratio),height:512}:
+   {width:512,height:Math.round(512/ratio)};
 }
