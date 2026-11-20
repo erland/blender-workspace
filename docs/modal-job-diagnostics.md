@@ -15,7 +15,7 @@ A missing `failure` field on an older job means diagnostic detail is
 unavailable; it does not mean the run succeeded. The historical
 `Modal worker exited 1` message cannot be reconstructed retroactively.
 
-Phases: `setup`, `modal_start`, `blender_execution`,
+A `setup / image_reference_invalid` failure means the worker has no valid pinned\n`MODAL_BLENDER_IMAGE` configured. A `setup / modal_sdk_unavailable` failure\nmeans the Python controller cannot import the Modal SDK. Neither condition\nrequires starting a paid Sandbox. Direct execution of the controller now\nensures its package imports resolve, including on exception paths.\n\nPhases: `setup`, `modal_start`, `blender_execution`,
 `artifact_transfer`, `artifact_validation`, `artifact_storage`,
 `revision_commit`, `cleanup`.
 
