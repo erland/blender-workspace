@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {cameraPlacement,DEFAULT_VIEW,VIEW_DIRECTIONS} from './view-controls.js';
+import {resizeViewportProjection} from './viewport-resize.js';
 
 // Read-only same-origin GLB viewer; no user code, access tokens or Modal calls.
 const match=location.pathname.match(/^\/viewer\/([0-9a-f-]{36})\/revisions\/([1-9][0-9]{0,7})$/i);
@@ -45,12 +46,9 @@ function createViewport(canvas,interactive=false){
     viewAngle:DEFAULT_VIEW,showBounds:false,showAxes:false,showWireframe:false};
   const resize=()=>{
     const rect=canvas.getBoundingClientRect();
-    const w=Math.max(1,Math.round(rect.width)),h=Math.max(1,Math.round(rect.height));
-    renderer.setSize(w,h,false);
-    camera.aspect=w/h;
-    camera.updateProjectionMatrix();
-    // Keep a fitted model visible when rotating the device or resizing panes.
-    if(state.bounds)orient(state.viewAngle);
+    // Only update viewport dimensions; never reset the saved user orbit,
+    // pan or zoom when the iPad rotates or comparison layout changes.
+    resizeViewportProjection(renderer,camera,rect.width,rect.height);
   };
   const observer=new ResizeObserver(resize);
   observer.observe(canvas);resize();
