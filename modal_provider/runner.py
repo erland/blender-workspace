@@ -9,6 +9,10 @@ from pathlib import Path
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+# Executing runner.py directly sets sys.path[0] to modal_provider/, not
+# necessarily the repository root. Preserve package imports in every failure path.
+if __package__ in (None, "") and str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 ARTIFACT_NAMES = ("scene.blend", "scene.glb", "scene.json")
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
@@ -86,7 +90,10 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
     except UnicodeDecodeError as exc:
         raise ValueError('Python source must be UTF-8') from exc
     # Validate the pinned image before any chargeable Modal API call.
-    image_ref = blender_image_reference()
+    try:
+        image_ref = blender_image_reference()
+    except ValueError:
+        raise RunnerDiagnostic("setup", "image_reference_invalid") from None
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -181,8 +188,11 @@ def main():
         p.error("timeout must be 30-1800 seconds")
     if not 0.125 <= args.cpu <= 4 or not 512 <= args.memory_mib <= 16384:
         p.error("resource limit exceeded")
-    import modal
     try:
+        try:
+            import modal
+        except ImportError:
+            raise RunnerDiagnostic("setup", "modal_sdk_unavailable") from None
         report = run(modal, args.out, cpu=args.cpu, memory_mib=args.memory_mib,
                      timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
                      python_file=args.python_file)

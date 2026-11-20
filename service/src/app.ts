@@ -308,7 +308,10 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      ...(config.oauth?{_meta:{securitySchemes:[{type:'oauth2' as const,scopes:[READ_SCOPE]}]}}:{})
    },async()=>({content:[{type:'text' as const,text:JSON.stringify({
      service:'blender-workspace',stage:'DEV-008',
-     project_tools_available:Boolean(services),blender_jobs_available:false})}]}));
+     project_tools_available:Boolean(services),
+     // Indicates the queue API is configured, not that the independent worker is healthy.
+     blender_jobs_available:Boolean(services?.modalAccounts&&services?.artifacts),
+     blender_jobs_availability_scope:'queue_only',worker_health:'not_checked'})}]}));
    if(services){
      const principal=principals.get(request);
      if(!principal){reply.code(401).send({error:'unauthorized'});return;}

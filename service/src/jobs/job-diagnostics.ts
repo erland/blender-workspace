@@ -2,7 +2,8 @@
 export const JOB_PHASES=['setup','modal_start','blender_execution','artifact_transfer',
   'artifact_validation','artifact_storage','revision_commit','cleanup'] as const;
 export type JobPhase=typeof JOB_PHASES[number];
-export const JOB_CODES=['initialization_failed','image_unavailable','authentication_failed',
+export const JOB_CODES=['initialization_failed','image_reference_invalid','modal_sdk_unavailable',
+  'image_unavailable','authentication_failed',
   'sandbox_start_failed','blender_exit_nonzero','blender_execution_failed',
   'artifact_transfer_failed','artifact_invalid','artifact_storage_failed',
   'revision_commit_failed','sandbox_cleanup_failed','worker_timeout','worker_exit_nonzero',
