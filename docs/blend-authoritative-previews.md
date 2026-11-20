@@ -8,7 +8,7 @@ Cycles materials, modifiers, simulation or advanced scene objects.
 ## Job contract
 - Blender executes the approved Python script in the existing isolated sandbox.
 - scene.blend is always saved before any attempt to create a GLB.
-- Export of scene.glb is best effort. Failure or unusable GLB is recorded in
+- Export of scene.glb is best effort and capped at 90 seconds within the sandbox. Failure or unusable GLB is recorded in
   scene.json (preview.status=unavailable, reason=export_failed), without leaking
   arbitrary exporter errors or failing an otherwise valid modeling revision.
 - When GLB exists, preview.status=available and fidelity=unverified. This
