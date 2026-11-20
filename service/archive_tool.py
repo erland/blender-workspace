@@ -126,6 +126,7 @@ def import_zip(input_zip, output_dir):
             raise ValueError("Unexpected or missing archive entries")
         if sum(info.file_size for info in entries) > MAX_TOTAL:
             raise ValueError("Expanded archive too large")
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
         for name, expected in paths.items():
             info = inp.getinfo(name)
             if info.file_size != expected["sizeBytes"]:
