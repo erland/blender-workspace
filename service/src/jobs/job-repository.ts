@@ -72,6 +72,19 @@ export class JobRepository {
       RETURNING id`,[minAgeMinutes]);
     return r.rowCount??0;
   }
+  /** Bounded, owner-scoped history for the web portal; never returns Python source. */
+  async list(owner:string,projectId?:string,limit=50):Promise<Job[]> {
+    if(!owner.trim()||owner.length>200||!Number.isInteger(limit)||limit<1||limit>100)
+      throw new RangeError('Invalid job history request');
+    return (await this.pool.query<Job>(
+      `SELECT j.id,j.project_id,j.owner_key,j.expected_revision,j.requested_revision,
+         j.status,j.note,j.error_message,j.created_at,j.updated_at,j.finished_at
+       FROM bw_jobs j JOIN bw_projects p ON p.id=j.project_id
+       WHERE j.owner_key=$1 AND p.owner_key=$1 AND p.deleted_at IS NULL
+         AND ($2::uuid IS NULL OR j.project_id=$2::uuid)
+       ORDER BY j.created_at DESC,j.id DESC LIMIT $3`,
+      [owner,projectId??null,limit])).rows;
+  }
   async get(owner:string,id:string):Promise<Job|null> {
     if (!owner.trim() || owner.length>200) throw new RangeError('Invalid owner');
     const r=await this.pool.query<Job>(
