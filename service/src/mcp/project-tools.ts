@@ -8,6 +8,7 @@ import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
+import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from '../jobs/render-repository.js';
 import {inspectSavedScene,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
 
 export interface ProjectServices {
@@ -17,6 +18,7 @@ export interface ProjectServices {
   modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
   artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'>;
   viewerOrigin?:string;
+  renderJobs?:Pick<RenderJobRepository,'reserve'|'get'|'list'>;
 }
 const uuid = z.string().uuid();
 const cleanName = z.string().trim().min(1).max(200);
@@ -41,7 +43,7 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
-  const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin}=deps;
+  const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin,renderJobs}=deps;
   const viewerLink=(projectId:string,revision:number)=>
     viewerOrigin+'/viewer/'+encodeURIComponent(projectId)+'/revisions/'+revision;
   async function ownedViewerRevision(projectId:string,revision:number):Promise<boolean>{
@@ -189,6 +191,50 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
         return result({projectId,revision,viewerUrl:viewerLink(projectId,revision),
           requiresGoogleLogin:true,modalExecution:false});
       }catch{return failure(new JobConflict('Saved GLB revision not found'));}
+    });
+  }
+  if(renderJobs){
+    server.registerTool('workspace_queue_render',{
+      description:'Explicitly queue an additional paid Modal Sandbox render of an existing saved Blender .blend revision. Does not change project revisions. Eevee/Cycles CPU, size 256/512/1024 square, samples 8/16/32, timeout at most 6 minutes. Only call when the user explicitly requests rendering.',
+      inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999),
+        engine:z.enum(['BLENDER_EEVEE_NEXT','CYCLES']).default('BLENDER_EEVEE_NEXT'),
+        size:z.union([z.literal(256),z.literal(512),z.literal(1024)]).default(512),
+        samples:z.union([z.literal(8),z.literal(16),z.literal(32)]).default(16)},
+      ...schemes(WRITE_SCOPE)
+    },async({projectId,revision,engine,size,samples})=>{
+      const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
+      try{
+        if(!modalAccounts||!(await modalAccounts.status(ownerKey)).connected)
+          return failure(new JobConflict('Connect Modal before requesting a paid render'));
+        if(!artifacts)return failure(new JobConflict('Saved artifacts unavailable'));
+        const project=await projects.get(ownerKey,projectId);
+        if(!project)return failure(new JobConflict('Project not found'));
+        const history=await projects.revisions(ownerKey,projectId);
+        if(!history.some(r=>r.revision===revision&&r.artifact_prefix))
+          return failure(new JobConflict('Saved revision not found'));
+        await artifacts.verifiedArtifactPath(projectId,revision,'scene.blend');
+        const options=validateRenderOptions({engine:engine as RenderEngine,width:size,height:size,samples});
+        const job=await renderJobs.reserve(ownerKey,projectId,revision,options);
+        return result({renderJobId:job.id,projectId,revision,engine,size,samples,
+          status:job.status,additionalModalExecution:true,modelRevisionUnchanged:true});
+      }catch{return failure(new JobConflict('Render could not be queued'));}
+    });
+    server.registerTool('workspace_get_render',{
+      description:'Read status of an explicitly requested render job. Completed images are available through a Google-authenticated browser PNG URL. Does not start Modal.',
+      inputSchema:{renderJobId:uuid},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+    },async({renderJobId})=>{
+      const blocked=denied(READ_SCOPE);if(blocked)return blocked;
+      try{
+        const job=await renderJobs.get(ownerKey,renderJobId);
+        if(!job)return failure(new JobConflict('Render not found'));
+        return result({renderJobId:job.id,projectId:job.project_id,
+          revision:job.source_revision,engine:job.engine,size:[job.width,job.height],
+          samples:job.samples,status:job.status,
+          ...(job.status==='failed'?{failure:job.error_code}:{}),
+          ...(job.status==='completed'&&viewerOrigin
+             ?{pngUrl:viewerOrigin+'/renders/'+job.project_id+'/'+job.id+'.png',
+               requiresGoogleLogin:true}:{})});
+      }catch{return failure(new JobConflict('Render status unavailable'));}
     });
   }
   server.registerTool('workspace_queue_python_script',{
