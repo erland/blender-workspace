@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
-import {projectIndexPage,projectDetailPage} from './web/project-pages.js';
+import {projectIndexPage,projectDetailPage,projectDeletePage} from './web/project-pages.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -87,9 +87,66 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const project=await services!.projects.get(session.ownerKey,projectId);
          if(!project)return reply.code(404).send('Projektet hittades inte');
          const revisions=await services!.projects.revisions(session.ownerKey,projectId);
-         return projectDetailPage(project,revisions);
+         const message=(request.query as {message?:string}).message;
+         return projectDetailPage(project,revisions,session.csrf,message);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
+     const validProjectId=(id:string)=>
+       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+     // The confirmation page is read-only, including on Safari.
+     app.get('/projects/:projectId/delete',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
+       if(!session)return reply.redirect('/settings/login');
+       const {projectId}=request.params as {projectId:string};
+       if(!validProjectId(projectId))return reply.code(404).send('Projektet hittades inte');
+       try{
+         const project=await services!.projects.get(session.ownerKey,projectId);
+         if(!project)return reply.code(404).send('Projektet hittades inte');
+         const message=(request.query as {message?:string}).message;
+         return projectDeletePage(project,session.csrf,message);
+       }catch{return reply.code(503).send('Projektet kunde inte hämtas.');}
+     });
+     // Reuse settings' exact-origin + Safari null-origin exception, signed
+     // Google session and per-session CSRF token. No MCP bearer in forms.
+     for(const action of ['rename','delete'] as const){
+       app.post('/projects/:projectId/'+action,{bodyLimit:4096},async(request,reply)=>{
+         const session=google.settingsSession(request.headers.cookie);
+         secure(reply).header('vary','Cookie');
+         if(!session)return reply.code(401).send('Unauthorized');
+         const origin=request.headers.origin;
+         const sameOriginSafari=origin==='null'&&
+           request.headers['sec-fetch-site']==='same-origin';
+         if(origin!==config.publicOrigin&&!sameOriginSafari)
+           return reply.code(403).send('Forbidden');
+         if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+           return reply.code(415).send('Unsupported Media Type');
+         const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
+         if(form.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
+         const {projectId}=request.params as {projectId:string};
+         if(!validProjectId(projectId))return reply.code(404).send('Projektet hittades inte');
+         try{
+           const project=await services!.projects.get(session.ownerKey,projectId);
+           if(!project)return reply.code(404).send('Projektet hittades inte');
+           if(action==='rename'){
+             const name=form.get('name')??'';
+             if(!name.trim()||name.length>200)
+               return reply.code(303).header('location','/projects/'+projectId+'?message=invalid').send();
+             const renamed=await services!.projects.rename(session.ownerKey,projectId,name);
+             if(!renamed)return reply.code(404).send('Projektet hittades inte');
+             return reply.code(303).header('location','/projects/'+projectId+'?message=renamed').send();
+           }
+           // The separate confirmation form requires a checked confirmation.
+           if(form.get('confirm')!=='yes')return reply.code(400).send('Bekräftelse saknas');
+           const deleted=await services!.projects.softDelete(session.ownerKey,projectId);
+           if(!deleted)return reply.code(303).header('location','/projects/'+projectId+'/delete?message=busy').send();
+           return reply.code(303).header('location','/').send();
+         }catch{
+           const dest='/projects/'+projectId+(action==='delete'?'/delete':'');
+           return reply.code(303).header('location',dest+'?message=error').send();
+         }
+       });
+     }
      app.get('/settings/login',async(_request,reply)=>{
        const response=await google.beginSettingsLogin();
        for(const [key,value] of Object.entries(response.headers))reply.header(key,value);
