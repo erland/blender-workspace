@@ -1,5 +1,5 @@
 /** Browser-only same-origin archive upload; no credentials embedded. */
-export const importClientScript = String.raw\`
+export const importClientScript = String.raw`
 const form=document.getElementById('import-project-form');
 if(form){
   form.addEventListener('submit',async event=>{
@@ -31,4 +31,4 @@ if(form){
     }
   });
 }
-\`;
+`;
