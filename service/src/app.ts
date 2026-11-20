@@ -23,7 +23,7 @@ export function createApp(config:ServiceConfig,
   modalAccounts?:ProjectServices['modalAccounts'];artifacts?:ProjectServices['artifacts'];
   projectDeletion?:Pick<ProjectDeletionService,'delete'>;
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
-  renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'get'>;
+  renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
@@ -83,20 +83,22 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        try{
          // Bound the number of owner-scoped queries on each request.
          const projects=await services!.projects.list(session.ownerKey,50);
+         const recentRenders=await services!.renderJobs?.recentCompletedByProjects?.(
+           session.ownerKey,projects.map(p=>p.id),3)??[];
          const items=await Promise.all(projects.map(async project=>{
            const revisions=await services!.projects.revisions(session.ownerKey,project.id);
            const last=revisions.at(-1);
            if(last?.artifact_prefix&&services!.artifacts){
              try{
                const manifest=await services!.artifacts.inspect(project.id,last.revision,false);
-               return {project,revisions:revisions.map(r=>r.revision===last.revision
+               return {project,renders:recentRenders.filter(r=>r.project_id===project.id),revisions:revisions.map(r=>r.revision===last.revision
                  ?{...r,glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb')}:r)};
              }catch{/* Display native-only on broken/legacy preview manifests. */}
            }
-           return {project,revisions:revisions.map(r=>({...r,glbAvailable:false}))};
+           return {project,renders:recentRenders.filter(r=>r.project_id===project.id),revisions:revisions.map(r=>({...r,glbAvailable:false}))};
          }));
          const message=(request.query as {message?:string}).message;
-         reply.header('content-security-policy',"default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+         reply.header('content-security-policy',"default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          return projectIndexPage(items,message,session.csrf);
        }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
      });
@@ -148,6 +150,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const renderJobs=services!.renderJobs
            ?await services!.renderJobs.list(session.ownerKey,projectId):[];
          const modelJobs=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
+         reply.header('content-security-policy',"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          return projectDetailPage(project,previews,session.csrf,message,renderJobs,modelJobs);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
@@ -265,8 +268,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      });
      // Reuse settings' exact-origin + Safari null-origin exception, signed
      // Google session and per-session CSRF token. No MCP bearer in forms.
-     for(const action of ['rename','delete'] as const){
-       app.post('/projects/:projectId/'+action,{bodyLimit:4096},async(request,reply)=>{
+     for(const action of ['rename','description','delete'] as const){
+       app.post('/projects/:projectId/'+action,{bodyLimit:action==='description'?65536:4096},async(request,reply)=>{
          const session=google.settingsSession(request.headers.cookie);
          secure(reply).header('vary','Cookie');
          if(!session)return reply.code(401).send('Unauthorized');
@@ -291,6 +294,14 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
              const renamed=await services!.projects.rename(session.ownerKey,projectId,name);
              if(!renamed)return reply.code(404).send('Projektet hittades inte');
              return reply.code(303).header('location','/projects/'+projectId+'?message=renamed').send();
+           }
+           if(action==='description'){
+             const description=form.get('description')??'';
+             if(description.length>5000)
+               return reply.code(303).header('location','/projects/'+projectId+'?message=description_invalid').send();
+             const updated=await services!.projects.updateDescription(session.ownerKey,projectId,description);
+             if(!updated)return reply.code(404).send('Projektet hittades inte');
+             return reply.code(303).header('location','/projects/'+projectId+'?message=description_updated').send();
            }
            // The separate confirmation form requires a checked confirmation.
            if(form.get('confirm')!=='yes')return reply.code(400).send('Bekräftelse saknas');

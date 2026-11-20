@@ -72,6 +72,25 @@ export class RenderJobRepository {
       ORDER BY j.created_at DESC,j.id DESC LIMIT $2`,
      [owner,limit])).rows;
  }
+ /** One bounded query for the latest saved images of every project card.
+  * Owner scope and deletion visibility are enforced by the JOIN. */
+ async recentCompletedByProjects(owner:string,projectIds:string[],perProject=3):Promise<RenderJob[]>{
+   if(!owner.trim()||owner.length>200||!Number.isInteger(perProject)||perProject<1||perProject>3||
+      projectIds.length>100||projectIds.some(id=>!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))
+     throw new RangeError('Invalid gallery request');
+   if(projectIds.length===0)return [];
+   return (await this.pool.query<RenderJob>(
+     `SELECT recent.* FROM (
+        SELECT j.*,ROW_NUMBER() OVER (PARTITION BY j.project_id
+          ORDER BY j.created_at DESC,j.id DESC) AS gallery_rank
+        FROM bw_render_jobs j
+        JOIN bw_projects p ON p.id=j.project_id
+        WHERE p.owner_key=$1 AND j.owner_key=$1 AND p.deleted_at IS NULL
+          AND j.project_id=ANY($2::uuid[]) AND j.status='completed'
+          AND j.sha256 IS NOT NULL AND j.size_bytes IS NOT NULL
+      ) recent WHERE gallery_rank<=$3
+      ORDER BY recent.project_id,recent.gallery_rank`,[owner,projectIds,perProject])).rows;
+ }
  async get(owner:string,id:string):Promise<RenderJob|null>{
    return (await this.pool.query<RenderJob>(
      `SELECT j.* FROM bw_render_jobs j JOIN bw_projects p ON p.id=j.project_id

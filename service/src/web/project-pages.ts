@@ -26,6 +26,11 @@ const style=[
 '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,285px),1fr));gap:18px}',
 '.card,.panel{background:#fff;border:1px solid #d8e2ed;border-radius:14px;overflow:hidden}',
 '.illustration{height:115px;background:linear-gradient(130deg,#e5ecf8,#f6f8fc);display:grid;place-items:center;font-size:3rem;color:#7890bd}',
+'.project-thumbnails{height:115px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;background:#e5ecf8}',
+'.project-thumbnails a{display:block;min-width:0;overflow:hidden;background:#eef2f7}',
+'.project-thumbnails img{display:block;width:100%;height:115px;object-fit:contain}',
+'.project-thumbnails:has(a:only-child){grid-template-columns:1fr}',
+'.project-thumbnails:has(a:nth-child(2):last-child){grid-template-columns:repeat(2,minmax(0,1fr))}',
 '.card-body{padding:18px}.card-body h2{overflow-wrap:anywhere}.card-body h2 a{text-decoration:none;color:#19263b}',
 '.card-footer{border-top:1px solid #d8e2ed;padding:12px 18px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}',
 '.tag{display:inline-block;border-radius:99px;background:#e8eefc;color:#244c9c;padding:3px 10px;font-size:.83rem;font-weight:650}',
@@ -45,7 +50,8 @@ const style=[
 '.empty-state{text-align:center;padding:48px 22px;border:1px dashed #b7c7dc;border-radius:14px;background:white}',
 '.breadcrumb{margin-bottom:20px}',
 '.form-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.form-row label{flex:1;min-width:220px;font-weight:600}',
-'input[type=text]{display:block;width:100%;margin-top:6px;padding:10px 12px;border:1px solid #8090a9;border-radius:8px;font:inherit}',
+'input[type=text],textarea{display:block;width:100%;margin-top:6px;padding:10px 12px;border:1px solid #8090a9;border-radius:8px;font:inherit}',
+'textarea{min-height:96px;resize:vertical}',
 'button{font:inherit;border:0;cursor:pointer}.button.alt{color:#2054b8}',
 '.danger{color:#9a2029}.danger-button{background:#9a2029;color:white}',
 '.warning{padding:16px;background:#fff4f2;border:1px solid #f1b5ae;border-radius:9px;margin-bottom:20px}',
@@ -95,15 +101,24 @@ export function jobsOverviewPage(items:PortalJobItem[]):string {
    '<section class="panel" style="margin-top:18px"><h2>Tidigare jobb</h2>'+
    section(recent,'Inga tidigare jobb.')+'</section>',active.length>0);
 }
-export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[],message?:string,csrf?:string):string {
- const cards=items.map(({project:p,revisions})=>{
+export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[];renders?:PortalRender[]}[],message?:string,csrf?:string):string {
+ const cards=items.map(({project:p,revisions,renders=[]})=>{
   const latest=revisions.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
   const preview=latest?.glbAvailable!==false?latest:undefined;
   const description=p.description?'<p class="muted">'+escapeHtml(p.description)+'</p>':'';
   const tag='<span class="tag'+(latest?'':' empty')+'">'+
     (latest?'Senaste revision '+latest.revision:'Ingen sparad modell')+'</span>';
   const viewer=preview?'<a href="'+viewerUrl(p.id,preview.revision)+'">Öppna GLB-förhandsvisning</a>':'<span class="muted small">Ingen GLB-förhandsvisning</span>';
-  return '<article class="card"><div class="illustration" aria-hidden="true">⬡</div>'+
+  const recent=renders.filter(r=>r.status==='completed').slice(0,3);
+  const thumbnails=recent.length
+    ?'<div class="project-thumbnails">'+recent.map(r=>{
+       const src='/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+'.png';
+       return '<a href="'+src+'" target="_blank" rel="noopener" aria-label="Visa rendering för revision '+
+         r.source_revision+'"><img loading="lazy" decoding="async" src="'+src+
+         '" alt="Rendering för revision '+r.source_revision+'"></a>';
+     }).join('')+'</div>'
+    :'<div class="illustration" aria-hidden="true">⬡</div>';
+  return '<article class="card">'+thumbnails+
     '<div class="card-body"><h2><a href="'+projectUrl(p.id)+'">'+escapeHtml(p.name)+'</a></h2>'+
     description+'<p class="muted small">Ändrad '+when(p.updated_at)+'</p>'+tag+'</div>'+
     '<div class="card-footer"><a href="'+projectUrl(p.id)+'">Visa projekt</a>'+viewer+'</div></article>';
@@ -198,6 +213,8 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
     projectRenderHistory(p.id,renders)+'</section>')+
   (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Hantera projektet</h2>'+
     (message==='renamed'?'<p role="status">Projektnamnet har uppdaterats.</p>':
+     message==='description_updated'?'<p role="status">Projektbeskrivningen har uppdaterats.</p>':
+     message==='description_invalid'?'<p role="alert" class="danger">Beskrivningen får vara högst 5 000 tecken.</p>':
      message==='invalid'?'<p role="alert" class="danger">Ange ett projektnamn med 1–200 tecken.</p>':
      message==='error'?'<p role="alert" class="danger">Projektet kunde inte uppdateras.</p>':'')+
     '<form method="post" action="'+projectUrl(p.id)+'/rename">'+
@@ -205,6 +222,11 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
     '<div class="form-row"><label for="project-name">Projektnamn'+
     '<input id="project-name" type="text" name="name" value="'+escapeHtml(p.name)+'" required maxlength="200"></label>'+
     '<button class="button" type="submit">Byt namn</button></div></form>'+
+    '<form method="post" action="'+projectUrl(p.id)+'/description" style="margin-top:18px">'+
+    '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+    '<label for="project-description">Projektbeskrivning'+
+    '<textarea id="project-description" name="description" maxlength="5000">'+escapeHtml(p.description)+'</textarea></label>'+
+    '<button class="button" type="submit" style="margin-top:10px">Spara beskrivning</button></form>'+
     '<p style="margin-top:20px"><a class="button alt" href="'+projectUrl(p.id)+'/export">Exportera projekt (ZIP)</a></p>'+
     '<p style="margin-top:20px"><a class="danger" href="'+projectUrl(p.id)+'/delete">Ta bort projektet…</a></p>'+
     '</section>'),modelJobs.some(j=>activeStatus(j.status))||renders.some(r=>activeStatus(r.status)));

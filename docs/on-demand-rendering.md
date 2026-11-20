@@ -17,6 +17,23 @@ Rendering reads only the SHA-256-verified original scene.blend from the
 selected revision. It does **not** create a new model revision, change
 the original Blender file, overwrite GLB, or execute a model edit script.
 
+## Project page and index image galleries
+
+Saved PNG renderings are shared across the project page and GLB viewer
+regardless of whether they were requested from the project form or viewer.
+Project details show clickable thumbnails grouped by revision; the home
+page shows up to three most recent completed renderings per project,
+across revisions. Both link to the same owner-protected PNG endpoint.
+Neither display triggers a Modal or Blender job. Older projects without
+renderings continue to show the existing abstract illustration.
+
+The project home and detail pages explicitly permit same-origin images
+in their Content Security Policy; scripts and remote images remain blocked.
+The project description is existing persisted metadata and may be edited
+(or cleared) from the project page, independently of renaming, with
+owner-scoped authorization, same-origin/CSRF checks, a 5000-character
+limit and HTML escaping. No migration is required.
+
 ## DEV-039: Render current GLB viewer camera
 
 The browser viewer offers **Rendera aktuell vy (Modal)** after a model is loaded.
