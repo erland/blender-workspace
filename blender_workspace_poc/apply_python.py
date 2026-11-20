@@ -17,6 +17,8 @@ from blender_workspace_poc.common import ensure_output, export_glb, write_manife
 def preview_is_structurally_usable(path):
     # The GLB exporter can succeed while generating a preview without scene
     # nodes (e.g. an all-curves scene). This is not a modeling failure.
+    if Path(path).stat().st_size > 128 * 1024 * 1024:
+        return False
     data=Path(path).read_bytes()
     if len(data)<20 or data[:4]!=b'glTF':
         return False
