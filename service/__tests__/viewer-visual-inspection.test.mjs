@@ -61,8 +61,12 @@ test('DEV-031 browser image export does not invoke Blender/Modal',async()=>{
   // render button is a separate and intentionally billed feature.
   const snapshot=src.slice(src.indexOf("document.getElementById('snapshot').addEventListener"),
     src.indexOf("revisionPicker.addEventListener"));
-  assert.doesNotMatch(snapshot,/fetch\\s*\\(|Modal|renderApi|workspace_queue_/i);
-  assert.doesNotMatch(src,/\\/mcp|MODAL_TOKEN|workspace_queue_/i);
-  assert.match(src,/renderButton.addEventListener\\('click'/);
-  assert.match(src,/confirm\\(/);
+  assert.equal(snapshot.includes('fetch('),false);
+  assert.equal(snapshot.includes('renderApi'),false);
+  assert.equal(snapshot.includes('Modal'),false);
+  assert.equal(src.includes('/mcp'),false);
+  assert.equal(src.includes('MODAL_TOKEN'),false);
+  assert.equal(src.includes('workspace_queue_'),false);
+  assert.ok(src.includes("renderButton.addEventListener('click'"));
+  assert.ok(src.includes('confirm('));
 });
