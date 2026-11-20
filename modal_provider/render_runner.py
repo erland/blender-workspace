@@ -1,5 +1,6 @@
 """Separate owner-billed, explicitly requested render runner. No retries."""
 import argparse
+import json
 import os
 from pathlib import Path
 import struct
@@ -24,9 +25,11 @@ def validate_png(path, width, height):
     if (w,hgt)!=(width,height) or h[24]!=8 or h[25] not in (2,6):
         raise ValueError('invalid_png_dimensions')
 
-def render(sdk, out_dir, input_blend, engine, width, height, samples):
-    if engine not in ('CYCLES','BLENDER_EEVEE_NEXT') or width not in (256,512,1024) or height not in (256,512,1024):
+def render(sdk, out_dir, input_blend, engine, width, height, samples, camera_json=None):
+    if engine not in ('CYCLES','BLENDER_EEVEE_NEXT') or width<128 or height<128 or width>1024 or height>1024:
         raise ValueError('Invalid render options')
+    if camera_json is not None and (engine!='CYCLES' or samples!=16 or min(width,height)!=256 or len(camera_json)>1024):
+        raise ValueError('Invalid viewer render')
     if samples not in (8,16,32) or engine=='CYCLES' and samples>32:
         raise ValueError('Invalid samples')
     source=Path(input_blend)
@@ -43,10 +46,12 @@ def render(sdk, out_dir, input_blend, engine, width, height, samples):
                                    memory=8192,timeout=360,workdir='/workspace',
                                    block_network=True)
         sandbox.filesystem.copy_from_local(str(source.resolve()),'/workspace/out/input.blend')
+        render_args=['--source','/workspace/out/input.blend','--output','/workspace/out/render.png',
+                     '--engine',engine,'--width',str(width),'--height',str(height),'--samples',str(samples)]
+        if camera_json is not None:
+            render_args+=['--camera-json',camera_json]
         proc=sandbox.exec('blender','-b','--factory-startup','--disable-autoexec','--python',
-          '/workspace/blender_workspace_poc/render_saved.py','--',
-          '--source','/workspace/out/input.blend','--output','/workspace/out/render.png',
-          '--engine',engine,'--width',str(width),'--height',str(height),'--samples',str(samples))
+          '/workspace/blender_workspace_poc/render_saved.py','--',*render_args)
         code=proc.wait()
         stdout=proc.stdout.read()[-4096:]
         proc.stderr.read()
@@ -67,10 +72,11 @@ if __name__=='__main__':
     p.add_argument('--width',required=True,type=int)
     p.add_argument('--height',required=True,type=int)
     p.add_argument('--samples',required=True,type=int)
+    p.add_argument('--camera-json',default=None)
     a=p.parse_args()
     try:
         import modal
-        render(modal,a.out,a.input_blend,a.engine,a.width,a.height,a.samples)
+        render(modal,a.out,a.input_blend,a.engine,a.width,a.height,a.samples,a.camera_json)
     except Exception:
         # Credentials, Blender output and Modal exceptions must never leak.
         print('BW_RENDER_ERROR',file=sys.stderr)
