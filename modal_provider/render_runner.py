@@ -1,0 +1,74 @@
+"""Separate owner-billed, explicitly requested render runner. No retries."""
+import argparse
+import os
+from pathlib import Path
+import struct
+import sys
+from modal_provider.runner import blender_image_reference
+
+PNG_SIGNATURE=b'\x89PNG\r\n\x1a\n'
+MAX_PNG=16*1024*1024
+
+def validate_png(path, width, height):
+    p=Path(path)
+    if p.is_symlink() or not p.is_file() or not 33<=p.stat().st_size<=MAX_PNG:
+        raise ValueError('invalid_render_file')
+    with p.open('rb') as stream:
+        h=stream.read(33)
+    if h[:8]!=PNG_SIGNATURE or h[12:16]!=b'IHDR':
+        raise ValueError('invalid_png_header')
+    w,hgt=struct.unpack_from('>II',h,16)
+    if (w,hgt)!=(width,height) or h[24]!=8 or h[25] not in (2,6):
+        raise ValueError('invalid_png_dimensions')
+
+def render(sdk, out_dir, input_blend, engine, width, height, samples):
+    if engine not in ('CYCLES','BLENDER_EEVEE_NEXT') or width not in (256,512,1024) or height not in (256,512,1024):
+        raise ValueError('Invalid render options')
+    if samples not in (8,16,32) or engine=='CYCLES' and samples>32:
+        raise ValueError('Invalid samples')
+    source=Path(input_blend)
+    if source.is_symlink() or not source.is_file() or source.stat().st_size>256*1024*1024:
+        raise ValueError('Invalid source model')
+    image_ref=blender_image_reference()
+    sandbox=None
+    out=Path(out_dir)
+    out.mkdir(parents=True,exist_ok=True)
+    try:
+        image=sdk.Image.from_registry(image_ref,add_python='3.11')
+        app=sdk.App.lookup('blender-workspace-dev002',create_if_missing=True)
+        sandbox=sdk.Sandbox.create('sleep','360',app=app,image=image,cpu=2,
+                                   memory=8192,timeout=360,workdir='/workspace',
+                                   block_network=True)
+        sandbox.filesystem.copy_from_local(str(source.resolve()),'/workspace/out/input.blend')
+        proc=sandbox.exec('blender','-b','--factory-startup','--disable-autoexec','--python',
+          '/workspace/blender_workspace_poc/render_saved.py','--',
+          '--source','/workspace/out/input.blend','--output','/workspace/out/render.png',
+          '--engine',engine,'--width',str(width),'--height',str(height),'--samples',str(samples))
+        code=proc.wait()
+        stdout=proc.stdout.read()[-4096:]
+        proc.stderr.read()
+        if code!=0 or 'BW_SANDBOX_RENDER PASS' not in stdout:
+            raise RuntimeError('render_execution_failed')
+        sandbox.filesystem.copy_to_local('/workspace/out/render.png',str(out/'render.png'))
+        validate_png(out/'render.png',width,height)
+        return True
+    finally:
+        if sandbox is not None:
+            sandbox.terminate(wait=True)
+
+if __name__=='__main__':
+    p=argparse.ArgumentParser()
+    p.add_argument('--out',required=True)
+    p.add_argument('--input-blend',required=True)
+    p.add_argument('--engine',required=True)
+    p.add_argument('--width',required=True,type=int)
+    p.add_argument('--height',required=True,type=int)
+    p.add_argument('--samples',required=True,type=int)
+    a=p.parse_args()
+    try:
+        import modal
+        render(modal,a.out,a.input_blend,a.engine,a.width,a.height,a.samples)
+    except Exception:
+        # Credentials, Blender output and Modal exceptions must never leak.
+        print('BW_RENDER_ERROR',file=sys.stderr)
+        sys.exit(1)
