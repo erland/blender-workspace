@@ -1,5 +1,6 @@
 """Render an existing verified Blender revision. No user-edit Python is executed."""
 import argparse
+import sys
 from pathlib import Path
 import bpy
 
@@ -63,5 +64,9 @@ if __name__=='__main__':
     p.add_argument('--width',type=int,required=True)
     p.add_argument('--height',type=int,required=True)
     p.add_argument('--samples',type=int,required=True)
-    a=p.parse_args()
+    # Blender exposes its own CLI flags in sys.argv. User script flags follow '--'.
+    # Never parse Blender flags as rendering options or silently lose them.
+    if '--' not in sys.argv:
+        p.error("missing '--' separator for render options")
+    a=p.parse_args(sys.argv[sys.argv.index('--')+1:])
     render(a.source,a.output,a.engine,a.width,a.height,a.samples)
