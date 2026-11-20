@@ -1,6 +1,8 @@
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
 export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean}
+export interface PortalModelJob {id:string;project_id:string;requested_revision:number;status:string;note:string;error_message:string|null;created_at:Date}
+export interface PortalJobItem {id:string;project_id:string;project_name:string;type:'model'|'render';revision:number;status:string;created_at:Date;detail:string;error:string|null}
 export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null}
 export function escapeHtml(v:string):string {
  return v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -43,12 +45,47 @@ const style=[
 'select{display:block;margin-top:6px;padding:10px 12px;border:1px solid #8090a9;border-radius:8px;background:white;font:inherit;max-width:100%}',
 '@media(max-width:560px){main{padding:0 18px 40px}.bar{padding:14px 18px}nav{gap:12px}}'
 ].join('');
-function layout(title:string,body:string):string {
+function layout(title:string,body:string,autoRefresh=false):string {
  return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
- '<title>'+escapeHtml(title)+' – Blender Workspace</title><style>'+style+'</style></head><body>'+
+ '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+(autoRefresh?'<meta http-equiv="refresh" content="10">':'')+'<style>'+style+'</style></head><body>'+
  '<header><div class="bar"><a class="logo" href="/">◈ Blender Workspace</a>'+
- '<nav aria-label="Huvudnavigering"><a href="/" aria-current="page">Projekt</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
+ '<nav aria-label="Huvudnavigering"><a href="/">Projekt</a><a href="/jobs">Jobb</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
  '<main>'+body+'</main></body></html>';
+}
+const activeStatus=(status:string)=>status==='pending'||status==='running';
+const statusLabels:Record<string,string>={
+ pending:'I kö',running:'Körs',completed:'Slutfört',failed:'Misslyckades',
+ needs_recovery:'Kräver åtgärd'
+};
+function jobRow(job:PortalJobItem):string {
+ const status=statusLabels[job.status]??'Okänd status';
+ const target=projectUrl(job.project_id);
+ const link=job.type==='render'&&job.status==='completed'
+   ?'<a href="/renders/'+encodeURIComponent(job.project_id)+'/'+encodeURIComponent(job.id)+'.png" target="_blank" rel="noopener">Visa PNG</a>'
+   :job.type==='model'&&job.status==='completed'
+    ?'<a href="'+target+'">Visa revision</a>'
+    :'<a href="'+target+'">Visa projekt</a>';
+ const safeError=job.error?'<p class="danger small" role="status">'+escapeHtml(job.error)+'</p>':'';
+ return '<li><div><p><strong>'+escapeHtml(job.project_name)+'</strong> · '+
+  (job.type==='model'?'Modellering':'Rendering')+' · revision '+job.revision+'</p>'+
+  '<p class="muted small">'+escapeHtml(job.detail)+' · '+when(job.created_at)+'</p>'+
+  '<p><span class="tag'+(job.status==='failed'||job.status==='needs_recovery'?' empty':'')+'">'+
+  escapeHtml(status)+'</span></p>'+safeError+'</div>'+link+'</li>';
+}
+export function jobsOverviewPage(items:PortalJobItem[]):string {
+ const active=items.filter(x=>activeStatus(x.status));
+ const recent=items.filter(x=>!activeStatus(x.status));
+ const section=(jobs:PortalJobItem[],empty:string)=>jobs.length
+   ?'<ul class="history">'+jobs.map(jobRow).join('')+'</ul>'
+   :'<p class="muted">'+empty+'</p>';
+ return layout('Jobb','<div class="intro"><div><h1>Jobb</h1>'+
+   '<p class="muted">Modellering och rendering för dina projekt. Visar de senaste 50 jobben per typ.</p></div>'+
+   '<a class="button alt" href="/jobs">Uppdatera</a></div>'+
+   (active.length?'<p class="muted small" role="status">Pågående jobb uppdateras var tionde sekund.</p>':'')+
+   '<section class="panel"><h2>Pågående jobb ('+active.length+')</h2>'+
+   section(active,'Inga jobb pågår.')+'</section>'+
+   '<section class="panel" style="margin-top:18px"><h2>Tidigare jobb</h2>'+
+   section(recent,'Inga tidigare jobb.')+'</section>',active.length>0);
 }
 export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[],message?:string,csrf?:string):string {
  const cards=items.map(({project:p,revisions})=>{
@@ -78,7 +115,7 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
     '<p id="archive-result" role="status" aria-live="polite"></p></form></section>')+listing+
     (csrf===undefined?'':'<script src="/archive/assets/import.js" defer></script>'));
 }
-export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string,renders:PortalRender[]=[]):string {
+export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string,renders:PortalRender[]=[],modelJobs:PortalModelJob[]=[]):string {
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
   const status=r.artifact_prefix?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
@@ -93,6 +130,12 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
   '</div><p class="muted small">GLB är en förenklad förhandsvisning och kan sakna hår, procedurmaterial och andra Blender-detaljer. Originalmodellen sparas alltid som .blend.</p><section class="panel"><h2>Revisionshistorik</h2>'+
   (history?'<ul class="history">'+history+'</ul>':
     '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+'</section>'+
+  '<section class="panel" style="margin-top:18px"><div class="intro"><h2>Modelleringsjobb</h2><a href="/jobs">Alla jobb</a></div>'+
+  (modelJobs.length?'<ul class="history">'+modelJobs.map(j=>jobRow({
+    id:j.id,project_id:p.id,project_name:p.name,type:'model',revision:j.requested_revision,
+    status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
+    error:j.error_message
+  })).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>'+
   (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Rendera bild från Blender</h2>'+
     '<p class="muted">Separat, betald Modal-körning. Blender-originalet ändras inte och ingen ny modellrevision skapas.</p>'+
     (message==='render_queued'?'<p role="status">Renderingsjobbet har lagts i kö. Uppdatera sidan för att se status.</p>':
@@ -111,11 +154,11 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
       '<option value="16" selected>16</option><option value="32">32</option></select></label>'+
       '<button class="button" type="submit">Starta rendering i Modal</button></div></form>':
       '<p class="muted">En sparad revision krävs för rendering.</p>')+
-    '<h2 style="margin-top:20px">Renderade bilder</h2>'+
+    '<h2 style="margin-top:20px">Renderingsjobb och bilder</h2>'+
     (renders.length?'<ul class="history">'+renders.map(r=>'<li><div><p><strong>Revision '+r.source_revision+
       ' · '+escapeHtml(r.engine==='CYCLES'?'Cycles':'Eevee')+'</strong></p>'+
       '<p class="muted small">'+r.width+' × '+r.height+' · '+r.samples+
-      ' samples · '+escapeHtml(r.status)+'</p></div>'+
+      ' samples · '+escapeHtml(statusLabels[r.status]??'Okänd status')+'</p>'+(r.error_code?'<p class="danger small">'+escapeHtml(r.error_code)+'</p>':'')+'</div>'+
       (r.status==='completed'?'<a href="/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+
       '.png" target="_blank" rel="noopener">Visa PNG-bild</a>':'')+'</li>').join('')+'</ul>':
       '<p class="muted">Inga renderingar ännu.</p>')+'</section>')+
@@ -130,7 +173,7 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
     '<button class="button" type="submit">Byt namn</button></div></form>'+
     '<p style="margin-top:20px"><a class="button alt" href="'+projectUrl(p.id)+'/export">Exportera projekt (ZIP)</a></p>'+
     '<p style="margin-top:20px"><a class="danger" href="'+projectUrl(p.id)+'/delete">Ta bort projektet…</a></p>'+
-    '</section>'));
+    '</section>'),modelJobs.some(j=>activeStatus(j.status))||renders.some(r=>activeStatus(r.status)));
 }
 
 /** Deliberate separate confirmation step. A GET can never delete a project. */
