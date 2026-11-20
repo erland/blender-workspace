@@ -263,8 +263,9 @@ export function projectDetailPage(
      status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
      error:j.error_message
    })).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>';
- const renderSection=csrf===undefined?'':'<section class="panel">'+
-   '<h2>Rendera bild från Blender</h2>'+
+ const renderSection=csrf===undefined?'':'<details class="panel" style="margin-bottom:16px"'+
+   (message==='render_error'?' open':'')+'><summary style="cursor:pointer;min-height:44px;font-weight:700">Skapa rendering (Modal)</summary>'+
+   '<div style="margin-top:12px"><h2>Rendera bild från Blender</h2>'+
    '<p class="muted">Separat betald Modal-körning. Originalet och revisionen ändras inte.</p>'+
    (message==='render_queued'?'<p role="status">Renderingsjobbet har lagts i kö. Uppdatera sidan för att se status.</p>':
     message==='render_error'?'<p role="alert" class="danger">Renderingen kunde inte köas. Kontrollera Modal-koppling och inställningar.</p>':'')+
@@ -282,7 +283,7 @@ export function projectDetailPage(
       '<option value="16" selected>16</option><option value="32">32</option></select></label>'+
       '<button class="button" type="submit">Starta rendering i Modal</button></div></form>':
       '<p class="muted">En sparad revision krävs för rendering.</p>')+
-   '</section>';
+   '</div></details>';
  const imageHistory='<section class="panel" style="margin-top:16px">'+
    '<h2>Renderingsjobb och bilder</h2>'+projectRenderHistory(p.id,renders)+'</section>';
  const settings=csrf===undefined?'':'<section class="panel"><h2>Hantera projektet</h2>'+
