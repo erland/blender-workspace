@@ -12,7 +12,7 @@ import {JobOrchestrator} from '../dist/jobs/orchestrator.js';
 import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
 
 const code={kind:'python_script',code:'import bpy\nbpy.ops.mesh.primitive_cube_add()'};
-const files=['scene.blend','scene.glb','scene.json'];
+const files=['scene.blend','scene.json','scene.glb'];
 
 async function setup(t) {
   const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:8});

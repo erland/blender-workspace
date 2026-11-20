@@ -21,29 +21,35 @@ def _file(folder,name,max_bytes):
 
 def _validate_python_outputs(folder):
     blend=_file(folder,'scene.blend',MAX_MODEL_BYTES)
-    glb=_file(folder,'scene.glb',MAX_MODEL_BYTES)
+    glb=None
     raw_report=_file(folder,'scene.json',MAX_REPORT_BYTES)
     if not blend.startswith(b'BLENDER') or len(blend)<12:
         raise ValueError('Sandbox returned invalid BLEND header')
-    if len(glb)<20 or glb[:4]!=b'glTF':
-        raise ValueError('Sandbox returned invalid GLB header')
-    version,total=struct.unpack_from('<II',glb,4)
-    if version!=2 or total!=len(glb):
-        raise ValueError('Sandbox returned invalid GLB v2 length')
-    length,chunk=struct.unpack_from('<I4s',glb,12)
-    if chunk!=b'JSON' or length==0 or length%4 or 20+length>len(glb):
-        raise ValueError('Sandbox returned invalid GLB JSON chunk')
-    document=json.loads(glb[20:20+length].decode('utf8'))
-    if not isinstance(document,dict) or document.get('asset',{}).get('version')!='2.0':
-        raise ValueError('Sandbox returned invalid glTF JSON')
-    if not isinstance(document.get('nodes'),list) or not document['nodes']:
-        raise ValueError('Exported GLB has no scene nodes')
-    if not isinstance(document.get('meshes'),list) or not document['meshes']:
-        raise ValueError('Exported GLB has no visible meshes')
-    for collection in ('buffers','images'):
-        for item in document.get(collection,[]):
-            if not isinstance(item,dict) or 'uri' in item:
-                raise ValueError('GLB cannot reference external assets')
+    node_count=0
+    mesh_count=0
+    if (Path(folder)/'scene.glb').exists():
+        glb=_file(folder,'scene.glb',MAX_MODEL_BYTES)
+        if len(glb)<20 or glb[:4]!=b'glTF':
+            raise ValueError('Sandbox returned invalid GLB header')
+        version,total=struct.unpack_from('<II',glb,4)
+        if version!=2 or total!=len(glb):
+            raise ValueError('Sandbox returned invalid GLB v2 length')
+        length,chunk=struct.unpack_from('<I4s',glb,12)
+        if chunk!=b'JSON' or length==0 or length%4 or 20+length>len(glb):
+            raise ValueError('Sandbox returned invalid GLB JSON chunk')
+        document=json.loads(glb[20:20+length].decode('utf8'))
+        if not isinstance(document,dict) or document.get('asset',{}).get('version')!='2.0':
+            raise ValueError('Sandbox returned invalid glTF JSON')
+        if not isinstance(document.get('nodes'),list) or not document['nodes']:
+            raise ValueError('Exported GLB has no scene nodes')
+        if not isinstance(document.get('meshes',[]),list):
+            raise ValueError('Exported GLB has invalid mesh list')
+        for collection in ('buffers','images'):
+            for item in document.get(collection,[]):
+                if not isinstance(item,dict) or 'uri' in item:
+                    raise ValueError('GLB cannot reference external assets')
+        node_count=len(document['nodes'])
+        mesh_count=len(document.get('meshes',[]))
     report=json.loads(raw_report.decode('utf8'))
     if not isinstance(report,dict) or report.get('schema_version')!=1 or report.get('stage')!='sandbox_python':
         raise ValueError('Sandbox report has invalid provenance')
@@ -63,17 +69,28 @@ def _validate_python_outputs(folder):
             raise ValueError('Duplicate scene object identity')
         seen.add(identifier)
     artifacts=report.get('artifacts')
-    if not isinstance(artifacts,list) or len(artifacts)!=2:
+    if not isinstance(artifacts,list) or len(artifacts) not in (1,2):
         raise ValueError('Sandbox report must list both model files')
-    checks={'scene.blend':blend,'scene.glb':glb}
+    checks={'scene.blend':blend}
+    if glb is not None:
+        checks['scene.glb']=glb
     if {item.get('path') for item in artifacts if isinstance(item,dict)}!=set(checks):
         raise ValueError('Unexpected sandbox artifact list')
     for item in artifacts:
         payload=checks[item['path']]
         if item.get('size_bytes')!=len(payload) or item.get('sha256')!=hashlib.sha256(payload).hexdigest():
             raise ValueError('Sandbox artifact checksum mismatch')
-    return {'object_count':len(scene['objects']),'node_count':len(document['nodes']),
-            'mesh_count':len(document['meshes'])}
+    preview=report.get('preview')
+    if preview is not None:
+        if not isinstance(preview,dict) or preview.get('format')!='glb':
+            raise ValueError('Invalid preview metadata')
+        if glb is None:
+            if preview.get('status')!='unavailable' or preview.get('reason')!='export_failed':
+                raise ValueError('Invalid preview metadata')
+        elif preview.get('status')!='available' or preview.get('fidelity')!='unverified':
+            raise ValueError('Invalid preview metadata')
+    return {'object_count':len(scene['objects']),'node_count':node_count,
+            'mesh_count':mesh_count,'glb_available':glb is not None}
 
 # Only these literal validation outcomes can cross the Modal/controller boundary.
 # Never export exception text, model names, paths or arbitrary JSON values.
@@ -84,7 +101,8 @@ VALIDATION_REASONS = {
     'Sandbox returned invalid GLB JSON chunk': 'glb_json_chunk_invalid',
     'Sandbox returned invalid glTF JSON': 'gltf_document_invalid',
     'Exported GLB has no scene nodes': 'glb_nodes_missing',
-    'Exported GLB has no visible meshes': 'glb_meshes_missing',
+    'Exported GLB has invalid mesh list': 'glb_meshes_invalid',
+    'Invalid preview metadata': 'preview_metadata_invalid',
     'GLB cannot reference external assets': 'glb_external_assets',
     'Sandbox report has invalid provenance': 'report_provenance_invalid',
     'Sandbox report has invalid objects': 'report_objects_invalid',

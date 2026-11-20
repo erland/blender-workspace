@@ -78,9 +78,18 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        try{
          // Bound the number of owner-scoped queries on each request.
          const projects=await services!.projects.list(session.ownerKey,50);
-         const items=await Promise.all(projects.map(async project=>({
-           project,revisions:await services!.projects.revisions(session.ownerKey,project.id)
-         })));
+         const items=await Promise.all(projects.map(async project=>{
+           const revisions=await services!.projects.revisions(session.ownerKey,project.id);
+           const last=revisions.at(-1);
+           if(last?.artifact_prefix&&services!.artifacts){
+             try{
+               const manifest=await services!.artifacts.inspect(project.id,last.revision,false);
+               return {project,revisions:revisions.map(r=>r.revision===last.revision
+                 ?{...r,glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb')}:r)};
+             }catch{/* Display native-only on broken/legacy preview manifests. */}
+           }
+           return {project,revisions:revisions.map(r=>({...r,glbAvailable:false}))};
+         }));
          const message=(request.query as {message?:string}).message;
          reply.header('content-security-policy',"default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          return projectIndexPage(items,message,session.csrf);
@@ -97,8 +106,15 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const project=await services!.projects.get(session.ownerKey,projectId);
          if(!project)return reply.code(404).send('Projektet hittades inte');
          const revisions=await services!.projects.revisions(session.ownerKey,projectId);
+         const previews=await Promise.all(revisions.map(async revision=>{
+           if(!revision.artifact_prefix||!services!.artifacts)return {...revision,glbAvailable:false};
+           try{
+             const manifest=await services!.artifacts.inspect(projectId,revision.revision,false);
+             return {...revision,glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb')};
+           }catch{return {...revision,glbAvailable:false};}
+         }));
          const message=(request.query as {message?:string}).message;
-         return projectDetailPage(project,revisions,session.csrf,message);
+         return projectDetailPage(project,previews,session.csrf,message);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
      // Archive JS is static and contains no session state or credentials.

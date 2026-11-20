@@ -52,5 +52,9 @@ def inspect_scene():
 def artifact_record(path):
     p=Path(path)
     return {'path':p.name,'size_bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
-def write_manifest(path,stage,artifacts):
-    Path(path).write_text(json.dumps({'schema_version':1,'stage':stage,'scene':inspect_scene(),'artifacts':[artifact_record(p) for p in artifacts]},indent=2,ensure_ascii=False)+'\n')
+def write_manifest(path,stage,artifacts,preview=None):
+    report={'schema_version':1,'stage':stage,'scene':inspect_scene(),
+            'artifacts':[artifact_record(p) for p in artifacts]}
+    if preview is not None:
+        report['preview']=preview
+    Path(path).write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n')
