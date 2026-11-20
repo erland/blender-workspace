@@ -59,6 +59,20 @@ const style=[
 '.render-tile-details{padding:9px;font-size:.88rem}.render-tile-details p{margin:0 0 3px}',
 '.render-tile:focus-within{outline:2px solid #215dd5;outline-offset:2px}',
 '.empty-state{text-align:center;padding:48px 22px;border:1px dashed #b7c7dc;border-radius:14px;background:white}',
+'.project-header{margin-bottom:16px}.project-header h1{margin-bottom:6px}',
+'.project-description{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}',
+'.project-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}',
+'.project-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80px;gap:5px;padding:10px 6px;border:1px solid #c9d6e5;border-radius:12px;background:#fff;text-decoration:none;color:#19263b;text-align:center;font-size:.95rem;font-weight:650}',
+'.project-tab:hover{background:#f1f5ff;text-decoration:none}.project-tab:focus-visible{outline:3px solid #215dd5;outline-offset:2px}',
+'.project-tab[aria-current="page"]{background:#eaf0fb;border-color:#215dd5}',
+'.project-tab .tab-icon{font-size:1.4rem;line-height:1.1}',
+'.project-settings-link{display:inline-flex;align-items:center;min-height:44px;padding:8px 12px;border-radius:8px;font-size:.92rem}',
+'.overview-images{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}',
+'.overview-image{display:block;min-width:0;overflow:hidden;background:#f1f4f8;border-radius:9px}',
+'.overview-image img{display:block;width:100%;aspect-ratio:4/3;object-fit:contain}',
+'.project-section-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}',
+'.project-section-heading a{padding:8px 2px;min-height:44px;display:inline-flex;align-items:center}',
+'@media(max-width:560px){.project-tab{min-height:76px}.project-tab .tab-icon{font-size:1.3rem}.project-header{margin-bottom:8px}.panel{padding:16px}.overview-images{gap:6px}}',
 '.breadcrumb{margin-bottom:20px}',
 '.form-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.form-row label{flex:1;min-width:220px;font-weight:600}',
 'input[type=text],textarea{display:block;width:100%;margin-top:6px;padding:10px 12px;border:1px solid #8090a9;border-radius:8px;font:inherit}',
@@ -186,32 +200,75 @@ function projectRenderHistory(projectId:string,renders:PortalRender[]):string {
    }).join('')+'</div></section>'
  ).join('');
 }
-export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string,renders:PortalRender[]=[],modelJobs:PortalModelJob[]=[]):string {
+/** Views are server-rendered to keep iPhone navigation fast, accessible and JS-free. */
+export type ProjectView='overview'|'images'|'history'|'settings';
+export function projectDetailPage(
+ p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string,
+ renders:PortalRender[]=[],modelJobs:PortalModelJob[]=[],view:ProjectView='overview'
+):string {
+ const base=projectUrl(p.id);
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
+ const latestView=latest?.glbAvailable!==false&&latest?viewerUrl(p.id,latest.revision):null;
+ const imagesUrl=base+'?view=images',historyUrl=base+'?view=history',settingsUrl=base+'?view=settings';
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
-  const status=r.artifact_prefix?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
-  const open=r.artifact_prefix&&r.glbAvailable!==false?'<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa GLB</a>':'<span class="muted small">GLB saknas · Blender-original sparat</span>';
-  return '<li><div><p><strong>Revision '+r.revision+'</strong> '+status+'</p><p class="muted small">'+
-    escapeHtml(r.note||'Ingen beskrivning')+' · '+when(r.created_at)+'</p></div>'+open+'</li>';
+   const saved=r.artifact_prefix;
+   const status=saved?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
+   const open=saved&&r.glbAvailable!==false?
+     '<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa GLB</a>':
+     '<span class="muted small">GLB saknas · Blender-original sparat</span>';
+   return '<li><div><p><strong>Revision '+r.revision+'</strong> '+status+'</p>'+
+     '<p class="muted small">'+escapeHtml(r.note||'Ingen beskrivning')+' · '+when(r.created_at)+
+     '</p></div>'+open+'</li>';
  }).join('');
- const mainLink=latest&&latest.glbAvailable!==false?'<a class="button" href="'+viewerUrl(p.id,latest.revision)+'">Öppna GLB-förhandsvisning</a>':'';
- return layout(p.name,'<div class="breadcrumb"><a href="/">← Alla projekt</a></div><div class="intro">'+
-  '<div><h1>'+escapeHtml(p.name)+'</h1><p class="muted">'+escapeHtml(p.description||'Ingen projektbeskrivning angiven.')+
-  '</p><p class="muted small">Ändrad '+when(p.updated_at)+' · Aktuell revision '+p.current_revision+'</p></div>'+mainLink+
-  '</div><p class="muted small">GLB är en förenklad förhandsvisning och kan sakna hår, procedurmaterial och andra Blender-detaljer. Originalmodellen sparas alltid som .blend.</p><section class="panel"><h2>Revisionshistorik</h2>'+
-  (history?'<ul class="history">'+history+'</ul>':
-    '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+'</section>'+
-  '<section class="panel" style="margin-top:18px"><div class="intro"><h2>Modelleringsjobb</h2><a href="/jobs">Alla jobb</a></div>'+
-  (modelJobs.length?'<ul class="history">'+modelJobs.map(j=>jobRow({
-    id:j.id,project_id:p.id,project_name:p.name,type:'model',revision:j.requested_revision,
-    status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
-    error:j.error_message
-  })).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>'+
-  (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Rendera bild från Blender</h2>'+
-    '<p class="muted">Separat, betald Modal-körning. Blender-originalet ändras inte och ingen ny modellrevision skapas.</p>'+
-    (message==='render_queued'?'<p role="status">Renderingsjobbet har lagts i kö. Uppdatera sidan för att se status.</p>':
-     message==='render_error'?'<p role="alert" class="danger">Renderingen kunde inte köas. Kontrollera Modal-koppling och inställningar.</p>':'')+
-    (revs.length?'<form method="post" action="'+projectUrl(p.id)+'/renders">'+
+ const tab=(title:string,icon:string,url:string,selected:boolean)=>
+   '<a class="project-tab" href="'+url+'"'+(selected?' aria-current="page"':'')+'>'+
+   '<span class="tab-icon" aria-hidden="true">'+icon+'</span>'+title+'</a>';
+ const tabs='<nav class="project-tabs" aria-label="Projektets funktioner">'+
+   (latestView?tab('3D-modell','⬡',latestView,false):
+    '<span class="project-tab" aria-disabled="true" title="Ingen GLB-modell sparad">'+
+    '<span class="tab-icon" aria-hidden="true">⬡</span>3D saknas</span>')+
+   tab('Bilder','▧',imagesUrl,view==='images')+
+   tab('Historik','◷',historyUrl,view==='history')+'</nav>';
+ const intro='<div class="breadcrumb"><a href="/">← Mina projekt</a></div>'+
+   '<div class="project-header"><div class="project-section-heading"><h1>'+
+     escapeHtml(p.name)+'</h1>'+
+     (csrf===undefined?'':'<a class="project-settings-link" href="'+settingsUrl+
+       '"'+(view==='settings'?' aria-current="page"':'')+'>⚙ Projektinställningar</a>')+
+   '</div>'+
+   (p.description?'<p class="muted project-description">'+escapeHtml(p.description)+'</p>':'')+
+   '<p class="muted small">Senaste revision '+p.current_revision+' · Ändrad '+when(p.updated_at)+'</p></div>';
+ const latestImages=renders.filter(r=>r.status==='completed').slice(0,3);
+ const previews=latestImages.length
+   ?'<div class="overview-images">'+latestImages.map(r=>{
+     const imageUrl='/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+'.png';
+     return '<a class="overview-image" href="'+imageUrl+'" target="_blank" rel="noopener"'+
+       ' aria-label="Öppna rendering för revision '+r.source_revision+'">'+
+       '<img loading="lazy" decoding="async" src="'+imageUrl+'"'+
+       ' alt="Rendering för revision '+r.source_revision+'"></a>';
+   }).join('')+'</div>'
+   :'<p class="muted">Inga sparade renderingar ännu.</p>';
+ const overview='<section class="panel"><div class="project-section-heading">'+
+   '<h2>Senaste renderingar</h2><a href="'+imagesUrl+'">Visa alla bilder</a></div>'+
+   previews+'</section>'+
+   (latestView?'<p class="muted small" style="margin-top:14px">GLB är en förenklad förhandsvisning.'+
+      ' Blender-originalet kan innehålla hår, material och detaljer som inte syns i 3D-visaren.</p>':'');
+ const modelHistory='<section class="panel"><h2>Revisionshistorik</h2>'+
+   (history?'<ul class="history">'+history+'</ul>':
+     '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+
+   '</section><section class="panel" style="margin-top:16px">'+
+   '<div class="project-section-heading"><h2>Modelleringsjobb</h2>'+
+   '<a href="/jobs">Alla jobb</a></div>'+
+   (modelJobs.length?'<ul class="history">'+modelJobs.map(j=>jobRow({
+     id:j.id,project_id:p.id,project_name:p.name,type:'model',revision:j.requested_revision,
+     status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
+     error:j.error_message
+   })).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>';
+ const renderSection=csrf===undefined?'':'<section class="panel">'+
+   '<h2>Rendera bild från Blender</h2>'+
+   '<p class="muted">Separat betald Modal-körning. Originalet och revisionen ändras inte.</p>'+
+   (message==='render_queued'?'<p role="status">Renderingsjobbet har lagts i kö. Uppdatera sidan för att se status.</p>':
+    message==='render_error'?'<p role="alert" class="danger">Renderingen kunde inte köas. Kontrollera Modal-koppling och inställningar.</p>':'')+
+   (revs.some(r=>r.artifact_prefix)?'<form method="post" action="'+base+'/renders">'+
       '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
       '<div class="form-row"><label>Revision <select name="revision">'+
       revs.filter(r=>r.artifact_prefix).map(r=>'<option value="'+r.revision+'"'+
@@ -220,32 +277,41 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
       '<option value="BLENDER_EEVEE_NEXT">Eevee (snabb)</option>'+
       '<option value="CYCLES">Cycles (högre kvalitet)</option></select></label>'+
       '<label>Storlek <select name="size"><option value="256">256 × 256</option>'+
-      '<option value="512" selected>512 × 512</option><option value="1024">1024 × 1024</option></select></label>'+
-      '<label>Samples <select name="samples"><option value="8">8</option>'+
+      '<option value="512" selected>512 × 512</option><option value="1024">1024 × 1024</option>'+
+      '</select></label><label>Samples <select name="samples"><option value="8">8</option>'+
       '<option value="16" selected>16</option><option value="32">32</option></select></label>'+
       '<button class="button" type="submit">Starta rendering i Modal</button></div></form>':
       '<p class="muted">En sparad revision krävs för rendering.</p>')+
-    '<h2 style="margin-top:20px">Renderingsjobb och bilder</h2>'+
-    projectRenderHistory(p.id,renders)+'</section>')+
-  (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Hantera projektet</h2>'+
-    (message==='renamed'?'<p role="status">Projektnamnet har uppdaterats.</p>':
-     message==='description_updated'?'<p role="status">Projektbeskrivningen har uppdaterats.</p>':
-     message==='description_invalid'?'<p role="alert" class="danger">Beskrivningen får vara högst 5 000 tecken.</p>':
-     message==='invalid'?'<p role="alert" class="danger">Ange ett projektnamn med 1–200 tecken.</p>':
-     message==='error'?'<p role="alert" class="danger">Projektet kunde inte uppdateras.</p>':'')+
-    '<form method="post" action="'+projectUrl(p.id)+'/rename">'+
-    '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
-    '<div class="form-row"><label for="project-name">Projektnamn'+
-    '<input id="project-name" type="text" name="name" value="'+escapeHtml(p.name)+'" required maxlength="200"></label>'+
-    '<button class="button" type="submit">Byt namn</button></div></form>'+
-    '<form method="post" action="'+projectUrl(p.id)+'/description" style="margin-top:18px">'+
-    '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
-    '<label for="project-description">Projektbeskrivning'+
-    '<textarea id="project-description" name="description" maxlength="5000">'+escapeHtml(p.description)+'</textarea></label>'+
-    '<button class="button" type="submit" style="margin-top:10px">Spara beskrivning</button></form>'+
-    '<p style="margin-top:20px"><a class="button alt" href="'+projectUrl(p.id)+'/export">Exportera projekt (ZIP)</a></p>'+
-    '<p style="margin-top:20px"><a class="danger" href="'+projectUrl(p.id)+'/delete">Ta bort projektet…</a></p>'+
-    '</section>'),modelJobs.some(j=>activeStatus(j.status))||renders.some(r=>activeStatus(r.status)));
+   '</section>';
+ const imageHistory='<section class="panel" style="margin-top:16px">'+
+   '<h2>Renderingsjobb och bilder</h2>'+projectRenderHistory(p.id,renders)+'</section>';
+ const settings=csrf===undefined?'':'<section class="panel"><h2>Hantera projektet</h2>'+
+   (message==='renamed'?'<p role="status">Projektnamnet har uppdaterats.</p>':
+    message==='description_updated'?'<p role="status">Projektbeskrivningen har uppdaterats.</p>':
+    message==='description_invalid'?'<p role="alert" class="danger">Beskrivningen får vara högst 5 000 tecken.</p>':
+    message==='invalid'?'<p role="alert" class="danger">Ange ett projektnamn med 1–200 tecken.</p>':
+    message==='error'?'<p role="alert" class="danger">Projektet kunde inte uppdateras.</p>':'')+
+   '<form method="post" action="'+base+'/rename">'+
+   '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+   '<div class="form-row"><label for="project-name">Projektnamn'+
+   '<input id="project-name" type="text" name="name" value="'+escapeHtml(p.name)+
+   '" required maxlength="200"></label>'+
+   '<button class="button" type="submit">Byt namn</button></div></form>'+
+   '<form method="post" action="'+base+'/description" style="margin-top:18px">'+
+   '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+   '<label for="project-description">Projektbeskrivning'+
+   '<textarea id="project-description" name="description" maxlength="5000">'+
+   escapeHtml(p.description)+'</textarea></label>'+
+   '<button class="button" type="submit" style="margin-top:10px">Spara beskrivning</button></form>'+
+   '<p style="margin-top:20px"><a class="button alt" href="'+base+'/export">Exportera projekt (ZIP)</a></p>'+
+   '<p style="margin-top:20px"><a class="danger" href="'+base+'/delete">Ta bort projektet…</a></p>'+
+   '</section>';
+ const body=view==='images'?renderSection+imageHistory:
+   view==='history'?modelHistory:view==='settings'?settings:overview;
+ // Only the job history refreshes automatically. Rendering list can be refreshed
+ // manually without unexpectedly resetting the user's editing form or overview.
+ return layout(p.name,intro+tabs+body,
+   view==='history'&&modelJobs.some(j=>activeStatus(j.status)));
 }
 
 /** Deliberate separate confirmation step. A GET can never delete a project. */
