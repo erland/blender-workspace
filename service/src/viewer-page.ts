@@ -54,15 +54,28 @@ select{padding:8px;border:1px solid #64748b;border-radius:8px;max-width:100%}
 .render-card img{display:block;max-width:100%;height:104px;object-fit:contain;background:#f1f4f8}
 .render-card small{display:block;color:#475569}
 footer{padding:9px 12px;font-size:.88rem;color:#475569}
+/* iPad portrait and narrower: compare revisions vertically, without
+   pushing primary rendering controls below two full-height canvases. */
+@media(max-width:1024px){
+ .viewports:has(#compare-pane:not([hidden])){grid-template-columns:minmax(0,1fr)}
+ .viewports:has(#compare-pane:not([hidden])) .viewport{
+   height:clamp(240px,30dvh,390px);min-height:0
+ }
+}
 @media(max-width:720px){
  header{padding:6px 12px}
  .header-title{font-size:.92rem}
  main{padding:6px 8px 0}
  .viewport{height:clamp(280px,56dvh,560px);min-height:0}
- .viewports:has(#compare-pane:not([hidden])){grid-template-columns:minmax(0,1fr)}
  .viewer-toolbar{padding:8px}
  .render-card{width:calc((100% - 20px)/3);min-width:95px}
  .render-card img{height:92px}
+}
+/* Specificity deliberately overrides the standard small-screen model height. */
+@media(max-width:720px){
+ .viewports:has(#compare-pane:not([hidden])) .viewport{
+   height:clamp(220px,30dvh,390px);min-height:0
+ }
 }
 </style></head><body>
 <header>
