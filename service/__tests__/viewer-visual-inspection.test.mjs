@@ -57,5 +57,12 @@ test('DEV-031 browser image export does not invoke Blender/Modal',async()=>{
   assert.match(src,/image\/png/);
   assert.match(src,/cameraPlacement/);
   assert.match(src,/wireframeMaterials/);
-  assert.doesNotMatch(src,/\/mcp|MODAL_TOKEN|workspace_queue_|fetch\s*\([^)]*render/i);
+  // Browser PNG export remains local; the new, explicitly confirmed
+  // render button is a separate and intentionally billed feature.
+  const snapshot=src.slice(src.indexOf("document.getElementById('snapshot').addEventListener"),
+    src.indexOf("revisionPicker.addEventListener"));
+  assert.doesNotMatch(snapshot,/fetch\\s*\\(|Modal|renderApi|workspace_queue_/i);
+  assert.doesNotMatch(src,/\\/mcp|MODAL_TOKEN|workspace_queue_/i);
+  assert.match(src,/renderButton.addEventListener\\('click'/);
+  assert.match(src,/confirm\\(/);
 });
