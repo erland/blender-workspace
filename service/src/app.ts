@@ -106,8 +106,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        if(!session)return reply.redirect('/settings/login');
        try{
          const [models,renders,projects]=await Promise.all([
-           services!.jobs.list(session.ownerKey,undefined,50),
-           services!.renderJobs?.listForOwner(session.ownerKey,50)??Promise.resolve([]),
+           services!.jobs.list?.(session.ownerKey,undefined,50)??Promise.resolve([]),
+           services!.renderJobs?.listForOwner?.(session.ownerKey,50)??Promise.resolve([]),
            services!.projects.list(session.ownerKey,100)
          ]);
          const names=new Map(projects.map(p=>[p.id,p.name]));
@@ -146,7 +146,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const message=(request.query as {message?:string}).message;
          const renderJobs=services!.renderJobs
            ?await services!.renderJobs.list(session.ownerKey,projectId):[];
-         const modelJobs=await services!.jobs.list(session.ownerKey,projectId,50);
+         const modelJobs=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
          return projectDetailPage(project,previews,session.csrf,message,renderJobs,modelJobs);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
