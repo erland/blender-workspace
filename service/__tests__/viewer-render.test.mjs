@@ -20,9 +20,11 @@ const google={
  metadata(){return {};},jwks:{keys:[]}
 };
 test('viewer render camera and short-edge dimensions are constrained',()=>{
- assert.deepEqual(viewerDimensions(16,9),{width:455,height:256});
- assert.deepEqual(viewerDimensions(9,16),{width:256,height:455});
- assert.deepEqual(viewerDimensions(1,1),{width:256,height:256});
+ assert.deepEqual(viewerDimensions(16,9),{width:910,height:512});
+ assert.deepEqual(viewerDimensions(9,16),{width:512,height:910});
+ assert.deepEqual(viewerDimensions(1,1),{width:512,height:512});
+ assert.deepEqual(viewerDimensions(4,1),{width:2048,height:512});
+ assert.deepEqual(viewerDimensions(1,4),{width:512,height:2048});
  assert.deepEqual(validateViewerCamera(camera),camera);
  for(const bad of [
    {...camera,position:[0,0,0]}, {...camera,up:[0,0,0]},
@@ -31,10 +33,12 @@ test('viewer render camera and short-edge dimensions are constrained',()=>{
    {...camera,script:'print(1)'}
  ])assert.throws(()=>validateViewerCamera(bad),RangeError);
  assert.throws(()=>viewerDimensions(10000,1),RangeError);
- assert.throws(()=>validateRenderOptions({engine:'CYCLES',width:455,height:256,samples:16}),RangeError);
+ assert.throws(()=>validateRenderOptions({engine:'CYCLES',width:910,height:512,samples:16}),RangeError);
  assert.deepEqual(validateRenderOptions({
-   engine:'CYCLES',width:455,height:256,samples:16,requestedFrom:'viewer',camera
- }),{engine:'CYCLES',width:455,height:256,samples:16,requestedFrom:'viewer',camera});
+   engine:'CYCLES',width:910,height:512,samples:16,requestedFrom:'viewer',camera
+ }),{engine:'CYCLES',width:910,height:512,samples:16,requestedFrom:'viewer',camera});
+ assert.throws(()=>validateRenderOptions({engine:'CYCLES',width:455,height:256,samples:16,requestedFrom:'viewer',camera}),RangeError);
+ assert.deepEqual(validateRenderOptions({engine:'CYCLES',width:2048,height:512,samples:16,requestedFrom:'viewer',camera}),{engine:'CYCLES',width:2048,height:512,samples:16,requestedFrom:'viewer',camera});
 });
 test('viewer render request requires explicit authenticated CSRF-protected action',async t=>{
  let queued=0,reads=0;
@@ -51,14 +55,14 @@ test('viewer render request requires explicit authenticated CSRF-protected actio
      async reserve(owner,id,revision,options){
        queued++;assert.equal(owner,OWNER);assert.equal(id,PROJECT);
        assert.equal(revision,1);
-       assert.deepEqual(options,{engine:'CYCLES',width:455,height:256,samples:16,
+       assert.deepEqual(options,{engine:'CYCLES',width:910,height:512,samples:16,
          requestedFrom:'viewer',camera});
        return {id:RENDER};
      },
      async list(owner,id,revision){reads++;
        assert.equal(owner,OWNER);assert.equal(id,PROJECT);assert.equal(revision,1);
        return [{id:RENDER,source_revision:1,status:'completed',engine:'CYCLES',
-         width:455,height:256,samples:16,requested_from:'viewer',
+         width:910,height:512,samples:16,requested_from:'viewer',
          created_at:new Date(),error_code:null}];
      }
    }
@@ -109,7 +113,7 @@ test('viewer camera and source are stored on the original revision', {skip:!proc
    }finally{await pool.end();}
  });
  await projects.addRevision(owner,p.id,'Original',p.id+'/00000001');
- const queued=await jobs.reserve(owner,p.id,1,{engine:'CYCLES',width:455,height:256,
+ const queued=await jobs.reserve(owner,p.id,1,{engine:'CYCLES',width:910,height:512,
    samples:16,requestedFrom:'viewer',camera});
  const stored=await jobs.get(owner,queued.id);
  assert.equal(stored.source_revision,1);
