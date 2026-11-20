@@ -50,6 +50,15 @@ const style=[
 '.button.alt{background:#eaf0fb;color:#2054b8}',
 '.panel{padding:22px}.history{list-style:none;padding:0;margin:0}.history li{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-top:1px solid #d8e2ed;padding:14px 0}',
 '.history li:first-child{border-top:0}.history p{margin:0}.history .muted{overflow-wrap:anywhere}',
+'.job-list li{display:block;padding:0}.job-list li:first-child{border-top:0}',
+'.job-link{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:76px;padding:12px 6px;color:inherit;text-decoration:none}',
+'.job-link:hover{background:#f1f5ff;text-decoration:none}.job-link:focus-visible{outline:3px solid #215dd5;outline-offset:-3px;border-radius:8px}',
+'.job-main{display:flex;flex-direction:column;min-width:0;gap:2px;overflow-wrap:anywhere}',
+'.job-detail{display:block}.job-end{display:flex;align-items:center;gap:10px;flex-shrink:0}',
+'.job-arrow{font-size:1.6rem;line-height:1;color:#64748b}',
+'.job-archive>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:1.1rem;font-weight:700}',
+'.job-archive>summary::marker{color:#64748b}.refresh-link{min-height:44px;display:inline-flex;align-items:center}',
+'@media(max-width:560px){.job-link{padding:12px 2px;align-items:flex-start}.job-end{gap:6px}.job-end .tag{font-size:.76rem}.job-arrow{font-size:1.4rem}}',
 '.render-revision{margin-top:18px}.render-revision:first-child{margin-top:12px}',
 '.render-revision h3{font-size:1rem;margin:0 0 10px}',
 '.render-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,170px),1fr));gap:12px}',
@@ -96,35 +105,46 @@ const statusLabels:Record<string,string>={
  pending:'I kö',running:'Körs',completed:'Slutfört',failed:'Misslyckades',
  needs_recovery:'Kräver åtgärd'
 };
-function jobRow(job:PortalJobItem):string {
+function jobRow(job:PortalJobItem,linked=true):string {
  const status=statusLabels[job.status]??'Okänd status';
- const target=projectUrl(job.project_id);
- const link=job.type==='render'&&job.status==='completed'
-   ?'<a href="/renders/'+encodeURIComponent(job.project_id)+'/'+encodeURIComponent(job.id)+'.png" target="_blank" rel="noopener">Visa PNG</a>'
-   :job.type==='model'&&job.status==='completed'
-    ?'<a href="'+target+'">Visa revision</a>'
-    :'<a href="'+target+'">Visa projekt</a>';
+ const destination=projectUrl(job.project_id)+(job.type==='render'?'?view=images':'?view=history');
  const safeError=job.error?'<p class="danger small" role="status">'+escapeHtml(job.error)+'</p>':'';
- return '<li><div><p><strong>'+escapeHtml(job.project_name)+'</strong> · '+
-  (job.type==='model'?'Modellering':'Rendering')+' · revision '+job.revision+'</p>'+
-  '<p class="muted small">'+escapeHtml(job.detail)+' · '+when(job.created_at)+'</p>'+
-  '<p><span class="tag'+(job.status==='failed'||job.status==='needs_recovery'?' empty':'')+'">'+
-  escapeHtml(status)+'</span></p>'+safeError+'</div>'+link+'</li>';
+ const category=job.type==='model'?'Modellering':'Rendering';
+ const warning=job.status==='failed'||job.status==='needs_recovery';
+ // The entire job entry is one accessible link, with no duplicate "Visa..." action.
+ return '<li class="job-item">'+(linked?
+   '<a class="job-link" href="'+destination+
+   '" aria-label="Visa '+category.toLowerCase()+' för '+escapeHtml(job.project_name)+
+   ', revision '+job.revision+', '+escapeHtml(status)+'">':
+   '<div class="job-link job-static">')+
+   '<span class="job-main"><strong>'+escapeHtml(job.project_name)+'</strong>'+
+   '<span class="muted small">'+category+' · revision '+job.revision+'</span>'+
+   '<span class="muted small job-detail">'+escapeHtml(job.detail)+' · '+when(job.created_at)+'</span>'+
+   safeError+'</span>'+
+   '<span class="job-end"><span class="tag'+(warning?' empty':'')+'">'+
+     escapeHtml(status)+'</span><span class="job-arrow" aria-hidden="true">›</span></span>'+
+   (linked?'</a>':'</div>')+'</li>';
 }
 export function jobsOverviewPage(items:PortalJobItem[]):string {
  const active=items.filter(x=>activeStatus(x.status));
- const recent=items.filter(x=>!activeStatus(x.status));
+ const attention=items.filter(x=>x.status==='failed'||x.status==='needs_recovery');
+ const complete=items.filter(x=>!activeStatus(x.status)&&x.status!=='failed'&&x.status!=='needs_recovery');
  const section=(jobs:PortalJobItem[],empty:string)=>jobs.length
-   ?'<ul class="history">'+jobs.map(jobRow).join('')+'</ul>'
+   ?'<ul class="history job-list">'+jobs.map(j=>jobRow(j)).join('')+'</ul>'
    :'<p class="muted">'+empty+'</p>';
  return layout('Jobb','<div class="intro"><div><h1>Jobb</h1>'+
-   '<p class="muted">Modellering och rendering för dina projekt. Visar de senaste 50 jobben per typ.</p></div>'+
-   '<a class="button alt" href="/jobs">Uppdatera</a></div>'+
+   '<p class="muted small">Modellering och rendering · senaste 50 jobben per typ</p></div>'+
+   '<a class="button alt refresh-link" href="/jobs">Uppdatera</a></div>'+
    (active.length?'<p class="muted small" role="status">Pågående jobb uppdateras var tionde sekund.</p>':'')+
    '<section class="panel"><h2>Pågående jobb ('+active.length+')</h2>'+
    section(active,'Inga jobb pågår.')+'</section>'+
-   '<section class="panel" style="margin-top:18px"><h2>Tidigare jobb</h2>'+
-   section(recent,'Inga tidigare jobb.')+'</section>',active.length>0);
+   (attention.length?'<section class="panel" style="margin-top:16px">'+
+     '<h2>Kräver uppmärksamhet ('+attention.length+')</h2>'+
+     section(attention,'')+'</section>':'')+
+   '<details class="panel job-archive" style="margin-top:16px"'+
+     (active.length===0&&attention.length===0?' open':'')+'>'+
+     '<summary>Avslutade jobb ('+complete.length+')</summary>'+
+     section(complete,'Inga avslutade jobb.')+'</details>',active.length>0);
 }
 export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[];renders?:PortalRender[]}[],message?:string,csrf?:string):string {
  const cards=items.map(({project:p,revisions,renders=[]})=>{
@@ -262,7 +282,7 @@ export function projectDetailPage(
      id:j.id,project_id:p.id,project_name:p.name,type:'model',revision:j.requested_revision,
      status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
      error:j.error_message
-   })).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>';
+   },false)).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>';
  const renderSection=csrf===undefined?'':'<details class="panel" style="margin-bottom:16px"'+
    (message==='render_error'?' open':'')+'><summary style="cursor:pointer;min-height:44px;font-weight:700">Skapa rendering (Modal)</summary>'+
    '<div style="margin-top:12px"><h2>Rendera bild från Blender</h2>'+
