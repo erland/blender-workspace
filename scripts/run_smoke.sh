@@ -61,7 +61,7 @@ from pathlib import Path
 import struct
 original=Path('/workspace/out/render-default.png').read_bytes()
 viewer=Path('/workspace/out/render.png').read_bytes()
-assert viewer[:8]==b'\\x89PNG\\r\\n\\x1a\\n'
+assert viewer[:8]==b'\x89PNG\r\n\x1a\n'
 assert struct.unpack_from('>II',viewer,16)==(341,256)
 assert original!=viewer
 assert Path('/workspace/out/scene.blend').is_file()
