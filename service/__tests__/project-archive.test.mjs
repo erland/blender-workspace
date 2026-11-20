@@ -102,10 +102,10 @@ test('strict ZIP reader rejects traversal paths, duplicate names and symlinks',a
   for(const kind of attacks){
     const file=path.join(root,kind+'.zip');
     const script=[
-      'import sys,zipfile,stat',
+      'import sys,zipfile,stat,json',
       'target=sys.argv[1]; kind=sys.argv[2]',
       'with zipfile.ZipFile(target,"w") as z:',
-      ' z.writestr("project.json", "{}")',
+      ' z.writestr("project.json", json.dumps({"formatVersion":1,"project":{"originalId":"11111111-1111-4111-8111-111111111111","name":"Valid project","description":"","currentRevision":0},"revisions":[]}))',
       ' if kind=="traversal": z.writestr("../escaped.txt", "attack")',
       ' if kind=="duplicate": z.writestr("project.json", "{}")',
       ' if kind=="symlink":',
