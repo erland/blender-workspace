@@ -3,6 +3,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {cameraPlacement,DEFAULT_VIEW,VIEW_DIRECTIONS} from './view-controls.js';
 import {resizeViewportProjection} from './viewport-resize.js';
+import {ClipPlayer} from './clip-player.js';
 
 // Read-only same-origin GLB viewer; no user code, access tokens or Modal calls.
 const match=location.pathname.match(/^\/viewer\/([0-9a-f-]{36})\/revisions\/([1-9][0-9]{0,7})$/i);
@@ -19,6 +20,12 @@ const viewPicker=document.getElementById('view-angle');
 const boundsToggle=document.getElementById('show-bounds');
 const axesToggle=document.getElementById('show-axes');
 const wireframeToggle=document.getElementById('show-wireframe');
+const animationBar=document.getElementById('animation-bar');
+const animationPicker=document.getElementById('animation-clip');
+const animationPlay=document.getElementById('animation-play');
+const animationSeek=document.getElementById('animation-seek');
+const animationClock=document.getElementById('animation-clock');
+const animationLoopToggle=document.getElementById('animation-loop');
 const getGlbUrl=r=>'/viewer/api/projects/'+projectId+'/revisions/'+r+'/scene.glb';
 const getRevisionsUrl=()=>'/viewer/api/projects/'+projectId+'/revisions';
 const loader=new GLTFLoader();
@@ -42,7 +49,7 @@ function createViewport(canvas,interactive=false){
   controls.enableDamping=true;
   controls.screenSpacePanning=true;
   const state={renderer,scene,camera,controls,canvas,model:null,bounds:null,
-    selectionHelper:null,boundsHelper:null,axesHelper:null,wireframeMaterials:new Map(),
+    selectionHelper:null,boundsHelper:null,axesHelper:null,wireframeMaterials:new Map(),animation:null,
     viewAngle:DEFAULT_VIEW,showBounds:false,showAxes:false,showWireframe:false};
   const resize=()=>{
     const rect=canvas.getBoundingClientRect();
@@ -115,6 +122,7 @@ function createViewport(canvas,interactive=false){
     }
   }
   function clear(){
+    if(state.animation){state.animation.dispose();state.animation=null;}
     clearHints();
     if(state.selectionHelper){scene.remove(state.selectionHelper);state.selectionHelper.geometry.dispose();state.selectionHelper.material.dispose();state.selectionHelper=null;}
     if(state.model){scene.remove(state.model);state.model=null;}
@@ -126,7 +134,16 @@ function createViewport(canvas,interactive=false){
     if(!canvas.closest('[hidden]')){controls.update();renderer.render(scene,camera);}
   }
   draw();
-  return Object.assign(state,{fit,orient,setHints,clear,dispose:()=>{observer.disconnect();controls.dispose();clear();renderer.dispose();}});
+  function setAnimations(model,clips){
+    state.animation?.dispose();
+    state.animation=new ClipPlayer(model,clips);
+  }
+  function seekAnimation(seconds){
+    state.animation?.seek(seconds);
+    state.selectionHelper?.update();
+  }
+  return Object.assign(state,{fit,orient,setHints,clear,setAnimations,seekAnimation,
+    dispose:()=>{observer.disconnect();controls.dispose();clear();renderer.dispose();}});
 }
 const main=createViewport(document.getElementById('viewport'),true);
 const secondary=createViewport(document.getElementById('comparison-viewport'));
@@ -143,6 +160,7 @@ async function load(rev,viewport){
   viewport.clear();
   viewport.model=model;
   viewport.bounds=bounds;
+  viewport.setAnimations(model,gltf.animations);
   viewport.scene.add(model);
   viewport.fit();
   viewport.setHints();
@@ -235,6 +253,77 @@ document.getElementById('snapshot').addEventListener('click',()=>{
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   },'image/png');
 });
+// The transport is shared across normal and comparison views. A comparison
+// revision follows the selected clip only when it has the same clip name.
+let animationTime=0,animationPlaying=false,animationLastFrame=null;
+const formatTime=time=>Number.isFinite(time)?time.toFixed(1)+' s':'0.0 s';
+function selectedAnimationName(){
+  return main.animation?.names[Number(animationPicker.value)]?.name??null;
+}
+function selectComparisonClip(){
+  const name=selectedAnimationName();
+  const index=secondary.animation?.names.find(item=>item.name===name)?.index;
+  secondary.animation?.select(index??-1);
+}
+function applyAnimationTime(){
+  main.seekAnimation(animationTime);
+  const primaryDuration=main.animation?.duration??0;
+  const comparisonDuration=secondary.animation?.duration??0;
+  if(primaryDuration>0&&comparisonDuration>0)
+    secondary.seekAnimation(animationTime/primaryDuration*comparisonDuration);
+  animationSeek.value=String(primaryDuration?Math.round(1000*animationTime/primaryDuration):0);
+  animationClock.textContent=formatTime(animationTime)+' / '+formatTime(primaryDuration);
+  animationPlay.textContent=animationPlaying?'Pausa':'Spela';
+  animationPlay.setAttribute('aria-label',animationPlaying?'Pausa animation':'Spela animation');
+}
+function selectAnimation(index){
+  animationPlaying=false;animationTime=0;
+  main.animation?.select(index);
+  selectComparisonClip();applyAnimationTime();
+}
+function configureAnimationControls(){
+  animationPicker.replaceChildren();
+  const clips=main.animation?.names??[];
+  animationBar.hidden=clips.length===0;
+  if(!clips.length){animationPlaying=false;return;}
+  for(const clip of clips){
+    const option=document.createElement('option');
+    option.value=String(clip.index);option.textContent=clip.name;
+    animationPicker.append(option);
+  }
+  animationPicker.value='0';selectAnimation(0);
+}
+animationPicker.addEventListener('change',()=>selectAnimation(Number(animationPicker.value)));
+animationPlay.addEventListener('click',()=>{
+  if(!main.animation?.duration)return;
+  if(!animationPlaying&&animationTime>=main.animation.duration)animationTime=0;
+  animationPlaying=!animationPlaying;applyAnimationTime();
+});
+animationSeek.addEventListener('input',()=>{
+  const duration=main.animation?.duration??0;
+  if(!duration)return;
+  animationTime=duration*Number(animationSeek.value)/1000;
+  applyAnimationTime();
+});
+function animationFrame(now){
+  if(!active)return;
+  const elapsed=animationLastFrame===null?0:(now-animationLastFrame)/1000;
+  animationLastFrame=now;
+  if(animationPlaying&&!document.hidden){
+    const duration=main.animation?.duration??0;
+    if(duration>0){
+      // Ignore unusually long gaps (background tab, device suspension).
+      animationTime+=elapsed>0&&elapsed<0.5?elapsed:0;
+      if(animationTime>=duration){
+        if(animationLoopToggle.checked)animationTime%=duration;
+        else{animationTime=duration;animationPlaying=false;}
+      }
+      applyAnimationTime();
+    }
+  }
+  requestAnimationFrame(animationFrame);
+}
+requestAnimationFrame(animationFrame);
 revisionPicker.addEventListener('change',async()=>{
   const rev=revisionPicker.value;
   if(!rev){comparePane.hidden=true;secondary.clear();comparison.textContent='Ingen jämförelse';return;}
@@ -242,6 +331,7 @@ revisionPicker.addEventListener('change',async()=>{
     comparison.textContent='Laddar revision '+rev+'…';
     comparePane.hidden=false;
     await load(rev,secondary);
+    selectComparisonClip();applyAnimationTime();
     comparison.textContent='Jämför revision '+revision+' med '+rev;
   }catch{
     secondary.clear();comparePane.hidden=true;
@@ -328,6 +418,7 @@ renderButton.addEventListener('click',async()=>{
 });
 try{
   await load(revision,main);
+  configureAnimationControls();
   document.getElementById('reset').disabled=false;
   document.getElementById('snapshot').disabled=false;
   renderButton.disabled=false;
