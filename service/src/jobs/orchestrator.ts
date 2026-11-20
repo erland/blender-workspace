@@ -1,4 +1,4 @@
-import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type { Job, JobRepository } from './job-repository.js';
@@ -37,12 +37,12 @@ export class JobOrchestrator {
       const artifacts:IncomingArtifact[]=SCENE_ARTIFACTS.map(name=>({
         name,sourcePath:path.join(temp,name)
       }));
-      const report=JSON.parse(await readFile(path.join(temp,'scene.json'),'utf8')) as {
-        artifacts?:{path?:string}[];preview?:{status?:string}};
-      if(report.artifacts?.some(a=>a.path==='scene.glb')){
-        const file=path.join(temp,'scene.glb');
-        if((await stat(file)).size<1)throw new JobExecutionError('artifact_storage','artifact_storage_failed');
-        artifacts.push({name:'scene.glb',sourcePath:file});
+      try {
+        if((await stat(path.join(temp,'scene.glb'))).isFile())
+          artifacts.push({name:'scene.glb',sourcePath:path.join(temp,'scene.glb')});
+      }catch(error){
+        if((error as NodeJS.ErrnoException).code!=='ENOENT')
+          throw new JobExecutionError('artifact_storage','artifact_storage_failed');
       }
       try{
         await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
