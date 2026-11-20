@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type { Job, JobRepository } from './job-repository.js';
@@ -10,7 +10,7 @@ export interface BlenderExecutor {
   runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,inputBlend?:string):Promise<void>;
 }
 
-const SCENE_ARTIFACTS=['scene.blend','scene.glb','scene.json'] as const;
+const SCENE_ARTIFACTS=['scene.blend','scene.json'] as const;
 export class JobOrchestrator {
   constructor(private readonly jobs:JobRepository,
               private readonly files:LocalArtifactStore,
@@ -32,9 +32,18 @@ export class JobOrchestrator {
       const source=job.expected_revision===0?undefined:await this.files.verifiedArtifactPath(
         job.project_id,job.expected_revision,'scene.blend');
       await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source);
+      // GLB is a disposable preview, never a prerequisite for the native
+      // Blender revision. Only publish one if the trusted worker declared it.
       const artifacts:IncomingArtifact[]=SCENE_ARTIFACTS.map(name=>({
         name,sourcePath:path.join(temp,name)
       }));
+      const report=JSON.parse(await readFile(path.join(temp,'scene.json'),'utf8')) as {
+        artifacts?:{path?:string}[];preview?:{status?:string}};
+      if(report.artifacts?.some(a=>a.path==='scene.glb')){
+        const file=path.join(temp,'scene.glb');
+        if((await stat(file)).size<1)throw new JobExecutionError('artifact_storage','artifact_storage_failed');
+        artifacts.push({name:'scene.glb',sourcePath:file});
+      }
       try{
         await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
           expectedPreviousRevision:job.expected_revision,artifacts});
