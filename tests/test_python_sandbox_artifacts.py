@@ -48,6 +48,17 @@ class OutputValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'GLB'):
                 validate_python_outputs(tmp)
 
+    def test_native_blend_and_scene_without_glb_is_valid(self):
+        with TemporaryDirectory() as tmp:
+            report=fixture(tmp)
+            (Path(tmp)/'scene.glb').unlink()
+            report['artifacts']=[a for a in report['artifacts'] if a['path']!='scene.glb']
+            report['preview']={'format':'glb','status':'unavailable','reason':'export_failed'}
+            (Path(tmp)/'scene.json').write_text(json.dumps(report))
+            result=validate_python_outputs(tmp)
+            self.assertFalse(result['glb_available'])
+            self.assertEqual(result['object_count'],1)
+
     def test_duplicate_object_ids_blocked(self):
         with TemporaryDirectory() as tmp:
             report=fixture(tmp)
@@ -79,7 +90,7 @@ class SafeReasonTests(unittest.TestCase):
             (Path(tmp)/'scene.glb').unlink()
             with self.assertRaises(ArtifactValidationError) as captured:
                 validate_python_outputs(tmp)
-            self.assertEqual(captured.exception.reason,'glb_file_invalid')
+            self.assertEqual(captured.exception.reason,'report_artifact_list_invalid')
 
     def test_invalid_glb_structure_reports_specific_reason(self):
         with TemporaryDirectory() as tmp:
