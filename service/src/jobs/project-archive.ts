@@ -85,9 +85,14 @@ export class ProjectArchiveService {
     }catch(error){
       if(createdId){
         try{
-          await this.artifacts.deleteProject(createdId);
-          await this.projects.cancelImport(owner,createdId);
-        }catch{/* Leave hidden staged project for administrative recovery. */}
+          // A lost connection around COMMIT can make finalization ambiguous.
+          // Never delete bytes of an import that may already be visible.
+          const visible=await this.projects.get(owner,createdId);
+          if(!visible){
+            await this.artifacts.deleteProject(createdId);
+            await this.projects.cancelImport(owner,createdId);
+          }
+        }catch{/* Preserve bytes if database visibility cannot be verified. */}
       }
       throw error;
     }finally{
