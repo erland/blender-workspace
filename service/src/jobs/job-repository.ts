@@ -7,7 +7,7 @@ import {safeStoredJobError} from './job-diagnostics.js';
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
   id:string; project_id:string;owner_key:string; expected_revision:number;
-  requested_revision:number;status:JobStatus;note:string;error_message:string|null;edit_spec:unknown|null;operation_spec:PythonScriptSpec|null;
+  requested_revision:number;status:JobStatus;note:string;error_message:string|null;created_at:Date;updated_at:Date;finished_at:Date|null;edit_spec:unknown|null;operation_spec:PythonScriptSpec|null;
 }
 export class JobConflict extends Error {
   constructor(message:string) {super(message);this.name='JobConflict';}
