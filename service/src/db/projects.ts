@@ -45,7 +45,12 @@ export class ProjectRepository {
   async softDelete(owner:string,id:string):Promise<boolean> {
     required(owner,200,'owner');
     const r=await this.pool.query(
-      'UPDATE bw_projects SET deleted_at=now(),updated_at=now() WHERE id=$1 AND owner_key=$2 AND deleted_at IS NULL',[id,owner]);
+      `UPDATE bw_projects p SET deleted_at=now(),updated_at=now()
+       WHERE p.id=$1 AND p.owner_key=$2 AND p.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM bw_jobs j WHERE j.project_id=p.id
+             AND j.status IN ('pending','running','needs_recovery')
+         )`,[id,owner]);
     return !!r.rowCount;
   }
   async addRevision(owner:string,id:string,note='',artifactPrefix:string|null=null):Promise<Revision|null> {
