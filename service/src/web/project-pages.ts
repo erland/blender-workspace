@@ -48,7 +48,7 @@ function layout(title:string,body:string):string {
  '<nav aria-label="Huvudnavigering"><a href="/" aria-current="page">Projekt</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
  '<main>'+body+'</main></body></html>';
 }
-export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[]):string {
+export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[],message?:string):string {
  const cards=items.map(({project:p,revisions})=>{
   const latest=revisions.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
   const description=p.description?'<p class="muted">'+escapeHtml(p.description)+'</p>':'';
@@ -64,7 +64,8 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
   '<div class="empty-state"><h2>Inga projekt ännu</h2><p class="muted">Skapa en modell med Blender Workspace i ChatGPT. Den visas sedan här.</p></div>';
  return layout('Mina projekt','<div class="intro"><div><h1>Mina projekt</h1>'+
   '<p class="muted">Granska dina sparade Blender-modeller och revisioner. Modellering sker i ChatGPT.</p></div>'+
-  '<span class="tag">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</span></div>'+listing);
+  '<span class="tag">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</span></div>'+
+  (message==='cleanup'?'<p class="warning" role="status">Projektet har dolts medan den permanenta borttagningen slutförs. Filstädningen försöks automatiskt igen om något gick fel.</p>':'')+listing);
 }
 export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string):string {
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
