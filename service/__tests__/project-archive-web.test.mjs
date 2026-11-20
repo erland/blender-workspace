@@ -72,7 +72,14 @@ test('archive browser endpoints require correct session, owner, exact origin and
   assert.equal(importedResponse.json().projectId,ID);
   assert.equal(imported,1);
   const portal=await app.inject({method:'GET',url:'/',headers:{cookie:'cookie=owner'}});
-  assert.match(portal.body,/import-project-form/);
-  assert.match(portal.headers['content-security-policy'],/connect-src 'self'/);
-  assert.match(portal.body,/archive\/assets\/import\.js/);
+  assert.ok(portal.body.includes('href="/projects/import"'));
+  assert.doesNotMatch(portal.body,/id="import-project-form"/);
+  const importDenied=await app.inject({method:'GET',url:'/projects/import'});
+  assert.equal(importDenied.statusCode,302);
+  const importPage=await app.inject({method:'GET',url:'/projects/import',headers:{cookie:'cookie=owner'}});
+  assert.equal(importPage.statusCode,200);
+  assert.match(importPage.body,/id="import-project-form"/);
+  assert.match(importPage.body,/name="csrf" value="browser-test-csrf"/);
+  assert.match(importPage.headers['content-security-policy'],/connect-src 'self'/);
+  assert.ok(importPage.body.includes('/archive/assets/import.js'));
 });

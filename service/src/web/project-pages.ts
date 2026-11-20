@@ -27,11 +27,22 @@ const style=[
 '.card,.panel{background:#fff;border:1px solid #d8e2ed;border-radius:14px;overflow:hidden}',
 '.illustration{height:115px;background:linear-gradient(130deg,#e5ecf8,#f6f8fc);display:grid;place-items:center;font-size:3rem;color:#7890bd}',
 '.project-thumbnails{height:115px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;background:#e5ecf8}',
-'.project-thumbnails a{display:block;min-width:0;overflow:hidden;background:#eef2f7}',
+'.project-thumbnails span{display:block;min-width:0;overflow:hidden;background:#eef2f7}',
 '.project-thumbnails img{display:block;width:100%;height:115px;object-fit:contain}',
-'.project-thumbnails:has(a:only-child){grid-template-columns:1fr}',
-'.project-thumbnails:has(a:nth-child(2):last-child){grid-template-columns:repeat(2,minmax(0,1fr))}',
-'.card-body{padding:18px}.card-body h2{overflow-wrap:anywhere}.card-body h2 a{text-decoration:none;color:#19263b}',
+'.project-thumbnails:has(span:only-child){grid-template-columns:1fr}',
+'.project-thumbnails:has(span:nth-child(2):last-child){grid-template-columns:repeat(2,minmax(0,1fr))}',
+'.card-body{padding:14px 16px}.card-body h2{overflow-wrap:anywhere;font-size:1.08rem;margin:0 0 6px}',
+'.project-card-link{display:block;height:100%;color:inherit;text-decoration:none}',
+'.project-card-link:hover{color:inherit;text-decoration:none;background:#f7faff}',
+'.project-card-link:focus-visible{outline:3px solid #215dd5;outline-offset:-3px;border-radius:14px}',
+'.project-card-link .card-body{display:flex;flex-direction:column;gap:5px}',
+'.project-card-link .card-body p{margin:0}',
+'.project-card-link .card-meta{font-size:.85rem;color:#57667b}',
+'.project-card-link .card-description{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}',
+'.project-card-link .card-title{display:flex;align-items:center;justify-content:space-between;gap:8px}',
+'.project-card-link .card-chevron{font-size:1.5rem;font-weight:400;color:#64748b}',
+'.project-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+'@media(max-width:560px){main{margin:16px auto;padding:0 14px 32px}.grid{gap:12px}.intro{margin-bottom:14px}.project-thumbnails,.project-thumbnails img{height:100px}}',
 '.card-footer{border-top:1px solid #d8e2ed;padding:12px 18px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}',
 '.tag{display:inline-block;border-radius:99px;background:#e8eefc;color:#244c9c;padding:3px 10px;font-size:.83rem;font-weight:650}',
 '.tag.empty{background:#edf1f5;color:#566577}',
@@ -104,40 +115,45 @@ export function jobsOverviewPage(items:PortalJobItem[]):string {
 export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[];renders?:PortalRender[]}[],message?:string,csrf?:string):string {
  const cards=items.map(({project:p,revisions,renders=[]})=>{
   const latest=revisions.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
-  const preview=latest?.glbAvailable!==false?latest:undefined;
-  const description=p.description?'<p class="muted">'+escapeHtml(p.description)+'</p>':'';
-  const tag='<span class="tag'+(latest?'':' empty')+'">'+
-    (latest?'Senaste revision '+latest.revision:'Ingen sparad modell')+'</span>';
-  const viewer=preview?'<a href="'+viewerUrl(p.id,preview.revision)+'">Öppna GLB-förhandsvisning</a>':'<span class="muted small">Ingen GLB-förhandsvisning</span>';
+  const description=p.description?'<p class="card-description muted">'+escapeHtml(p.description)+'</p>':'';
+  const meta=latest?'Senaste revision '+latest.revision:'Ingen sparad modell';
   const recent=renders.filter(r=>r.status==='completed').slice(0,3);
   const thumbnails=recent.length
-    ?'<div class="project-thumbnails">'+recent.map(r=>{
+    ?'<div class="project-thumbnails" aria-hidden="true">'+recent.map(r=>{
        const src='/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+'.png';
-       return '<a href="'+src+'" target="_blank" rel="noopener" aria-label="Visa rendering för revision '+
-         r.source_revision+'"><img loading="lazy" decoding="async" src="'+src+
-         '" alt="Rendering för revision '+r.source_revision+'"></a>';
+       return '<span><img loading="lazy" decoding="async" src="'+src+
+         '" alt=""></span>';
      }).join('')+'</div>'
     :'<div class="illustration" aria-hidden="true">⬡</div>';
-  return '<article class="card">'+thumbnails+
-    '<div class="card-body"><h2><a href="'+projectUrl(p.id)+'">'+escapeHtml(p.name)+'</a></h2>'+
-    description+'<p class="muted small">Ändrad '+when(p.updated_at)+'</p>'+tag+'</div>'+
-    '<div class="card-footer"><a href="'+projectUrl(p.id)+'">Visa projekt</a>'+viewer+'</div></article>';
+  return '<article class="card"><a class="project-card-link" href="'+projectUrl(p.id)+
+    '" aria-label="Öppna projekt '+escapeHtml(p.name)+'">'+thumbnails+
+    '<div class="card-body"><h2 class="card-title"><span>'+escapeHtml(p.name)+
+    '</span><span class="card-chevron" aria-hidden="true">›</span></h2>'+
+    description+'<p class="card-meta">'+meta+' · Ändrad '+when(p.updated_at)+
+    '</p></div></a></article>';
  }).join('');
  const listing=cards?'<div class="grid">'+cards+'</div>':
   '<div class="empty-state"><h2>Inga projekt ännu</h2><p class="muted">Skapa en modell med Blender Workspace i ChatGPT. Den visas sedan här.</p></div>';
  return layout('Mina projekt','<div class="intro"><div><h1>Mina projekt</h1>'+
-  '<p class="muted">Granska dina sparade Blender-modeller och revisioner. Modellering sker i ChatGPT.</p></div>'+
-  '<span class="tag">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</span></div>'+
+  '<p class="muted small">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</p></div>'+
+  (csrf===undefined?'':'<a class="button alt" href="/projects/import">Importera projekt</a>')+
+  '</div>'+
   (message==='cleanup'?'<p class="warning" role="status">Projektet har dolts medan den permanenta borttagningen slutförs. Filstädningen försöks automatiskt igen om något gick fel.</p>':'')+
-  (csrf===undefined?'':'<section class="panel" style="margin-bottom:22px"><h2>Importera projekt</h2>'+
-    '<p class="muted">Återställ ett sparat .bwproject.zip-arkiv. Ett nytt projekt skapas utan att köra Blender.</p>'+
-    '<form id="import-project-form"><input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
-    '<label for="archive-file">Projektarkiv (.bwproject.zip)</label> '+
-    '<input id="archive-file" name="archive" type="file" accept=".zip,.bwproject.zip" required> '+
-    '<button class="button" type="submit">Importera</button>'+
-    '<p id="archive-result" role="status" aria-live="polite"></p></form></section>')+listing+
-    (csrf===undefined?'':'<script src="/archive/assets/import.js" defer></script>'));
+  listing);
 }
+/** Secondary archive import task, kept off the main project browsing screen. */
+export function projectImportPage(csrf:string):string {
+ return layout('Importera projekt','<div class="breadcrumb"><a href="/">← Mina projekt</a></div>'+
+   '<section class="panel"><h1>Importera projekt</h1>'+
+   '<p class="muted">Återställ ett tidigare exporterat .bwproject.zip-arkiv. Ett nytt projekt skapas utan att köra Blender.</p>'+
+   '<form id="import-project-form"><input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+   '<label for="archive-file">Projektarkiv (.bwproject.zip)</label> '+
+   '<input id="archive-file" name="archive" type="file" accept=".zip,.bwproject.zip" required> '+
+   '<button class="button" type="submit">Importera projekt</button>'+
+   '<p id="archive-result" role="status" aria-live="polite"></p></form></section>'+
+   '<script src="/archive/assets/import.js" defer></script>');
+}
+
 /** All completed renders use the same owner-protected PNG endpoint, independent
  * of whether the job was requested from the project page or GLB viewer. */
 function projectRenderHistory(projectId:string,renders:PortalRender[]):string {
