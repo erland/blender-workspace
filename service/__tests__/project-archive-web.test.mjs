@@ -73,5 +73,6 @@ test('archive browser endpoints require correct session, owner, exact origin and
   assert.equal(imported,1);
   const portal=await app.inject({method:'GET',url:'/',headers:{cookie:'cookie=owner'}});
   assert.match(portal.body,/import-project-form/);
+  assert.match(portal.headers['content-security-policy'],/connect-src 'self'/);
   assert.match(portal.body,/archive\/assets\/import\.js/);
 });
