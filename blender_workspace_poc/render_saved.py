@@ -14,7 +14,11 @@ def render(source,output,engine,width,height,samples):
         raise ValueError('Cycles samples limit exceeded')
     bpy.ops.wm.open_mainfile(filepath=source,load_ui=False,use_scripts=False)
     scene=bpy.context.scene
-    scene.render.engine=engine
+    if engine=='BLENDER_EEVEE_NEXT':
+        supported={item.identifier for item in scene.render.bl_rna.properties['engine'].enum_items}
+        scene.render.engine='BLENDER_EEVEE_NEXT' if 'BLENDER_EEVEE_NEXT' in supported else 'BLENDER_EEVEE'
+    else:
+        scene.render.engine='CYCLES'
     scene.render.resolution_x=width
     scene.render.resolution_y=height
     scene.render.resolution_percentage=100
@@ -27,8 +31,7 @@ def render(source,output,engine,width,height,samples):
         scene.render.threads_mode='FIXED'
         scene.render.threads=2
     else:
-        scene.render.image_settings.color_mode='RGBA'
-        # Eevee uses a different sampling model; do not infer photorealism.
+        # Eevee sampling differs across Blender releases; keep settings bounded.
         scene.render.image_settings.color_mode='RGBA'
     if scene.camera is None:
         # Temporary preview camera, never saved back to the original .blend.
