@@ -34,6 +34,14 @@ const style=[
 '.button.alt{background:#eaf0fb;color:#2054b8}',
 '.panel{padding:22px}.history{list-style:none;padding:0;margin:0}.history li{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-top:1px solid #d8e2ed;padding:14px 0}',
 '.history li:first-child{border-top:0}.history p{margin:0}.history .muted{overflow-wrap:anywhere}',
+'.render-revision{margin-top:18px}.render-revision:first-child{margin-top:12px}',
+'.render-revision h3{font-size:1rem;margin:0 0 10px}',
+'.render-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,170px),1fr));gap:12px}',
+'.render-tile{border:1px solid #d8e2ed;border-radius:10px;overflow:hidden;min-width:0;background:#fff}',
+'.render-thumb{display:flex;align-items:center;justify-content:center;min-height:130px;background:#f1f4f8}',
+'.render-thumb img{display:block;width:100%;height:140px;object-fit:contain}',
+'.render-tile-details{padding:9px;font-size:.88rem}.render-tile-details p{margin:0 0 3px}',
+'.render-tile:focus-within{outline:2px solid #215dd5;outline-offset:2px}',
 '.empty-state{text-align:center;padding:48px 22px;border:1px dashed #b7c7dc;border-radius:14px;background:white}',
 '.breadcrumb{margin-bottom:20px}',
 '.form-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.form-row label{flex:1;min-width:220px;font-weight:600}',
@@ -115,6 +123,38 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
     '<p id="archive-result" role="status" aria-live="polite"></p></form></section>')+listing+
     (csrf===undefined?'':'<script src="/archive/assets/import.js" defer></script>'));
 }
+/** All completed renders use the same owner-protected PNG endpoint, independent
+ * of whether the job was requested from the project page or GLB viewer. */
+function projectRenderHistory(projectId:string,renders:PortalRender[]):string {
+ if(!renders.length)return '<p class="muted">Inga renderingar ännu.</p>';
+ const byRevision=new Map<number,PortalRender[]>();
+ for(const render of renders){
+   const items=byRevision.get(render.source_revision)??[];
+   items.push(render);
+   byRevision.set(render.source_revision,items);
+ }
+ return [...byRevision.entries()].sort((a,b)=>b[0]-a[0]).map(([revision,items])=>
+   '<section class="render-revision" aria-label="Renderingar för revision '+revision+'">'+
+   '<h3>Revision '+revision+'</h3><div class="render-gallery">'+items.map(r=>{
+     const engine=escapeHtml(r.engine==='CYCLES'?'Cycles':'Eevee');
+     const state=escapeHtml(statusLabels[r.status]??'Okänd status');
+     const metadata=engine+' · '+r.width+' × '+r.height+' · '+r.samples+' samples';
+     const imageUrl='/renders/'+encodeURIComponent(projectId)+'/'+encodeURIComponent(r.id)+'.png';
+     const visual=r.status==='completed'
+       ?'<a class="render-thumb" href="'+imageUrl+'" target="_blank" rel="noopener" aria-label="Öppna PNG för revision '+
+         revision+', '+metadata+'"><img loading="lazy" decoding="async" src="'+imageUrl+
+         '" alt="Rendering för revision '+revision+'" width="'+r.width+'" height="'+r.height+'"></a>'
+       :'<div class="render-thumb"><span class="tag'+
+         (r.status==='failed'||r.status==='needs_recovery'?' empty':'')+
+         '" role="status">'+state+'</span></div>';
+     return '<article class="render-tile">'+visual+
+       '<div class="render-tile-details"><p>'+metadata+'</p>'+
+       '<p class="muted">'+state+' · '+when(r.created_at)+'</p>'+
+       (r.error_code?'<p class="danger">'+escapeHtml(r.error_code)+'</p>':'')+
+       '</div></article>';
+   }).join('')+'</div></section>'
+ ).join('');
+}
 export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string,renders:PortalRender[]=[],modelJobs:PortalModelJob[]=[]):string {
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
@@ -155,13 +195,7 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
       '<button class="button" type="submit">Starta rendering i Modal</button></div></form>':
       '<p class="muted">En sparad revision krävs för rendering.</p>')+
     '<h2 style="margin-top:20px">Renderingsjobb och bilder</h2>'+
-    (renders.length?'<ul class="history">'+renders.map(r=>'<li><div><p><strong>Revision '+r.source_revision+
-      ' · '+escapeHtml(r.engine==='CYCLES'?'Cycles':'Eevee')+'</strong></p>'+
-      '<p class="muted small">'+r.width+' × '+r.height+' · '+r.samples+
-      ' samples · '+escapeHtml(statusLabels[r.status]??'Okänd status')+'</p>'+(r.error_code?'<p class="danger small">'+escapeHtml(r.error_code)+'</p>':'')+'</div>'+
-      (r.status==='completed'?'<a href="/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+
-      '.png" target="_blank" rel="noopener">Visa PNG-bild</a>':'')+'</li>').join('')+'</ul>':
-      '<p class="muted">Inga renderingar ännu.</p>')+'</section>')+
+    projectRenderHistory(p.id,renders)+'</section>')+
   (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Hantera projektet</h2>'+
     (message==='renamed'?'<p role="status">Projektnamnet har uppdaterats.</p>':
      message==='invalid'?'<p role="alert" class="danger">Ange ett projektnamn med 1–200 tecken.</p>':
