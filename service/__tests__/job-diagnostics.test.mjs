@@ -21,6 +21,10 @@ test('only finite phase/code diagnostics survive, never raw provider text',()=>{
   assert.equal(safeOwnerJobError('Error: '+SECRET),null);
   assert.equal(parseRunnerDiagnostic('BW_DIAGNOSTIC phase=modal_start code='+SECRET),null);
   assert.equal(safeOwnerJobError('BW_JOB_ERROR phase=setup code='+SECRET),null);
+  assert.deepEqual(safeOwnerJobError('BW_JOB_ERROR phase=setup code=image_reference_invalid'),
+    {phase:'setup',code:'image_reference_invalid'});
+  assert.deepEqual(safeOwnerJobError('BW_JOB_ERROR phase=setup code=modal_sdk_unavailable'),
+    {phase:'setup',code:'modal_sdk_unavailable'});
 });
 
 test('bounded subprocess diagnostics ignore secret-bearing stderr/stdout',async t=>{
