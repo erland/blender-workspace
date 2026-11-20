@@ -16,6 +16,7 @@ const project={id:PROJECT,name:'Katt & <test>',description:'',current_revision:2
 test('owner-scoped web job monitor merges model and render history, escapes text, and refreshes while active',async t=>{
  const seen=[];
  const app=createApp({authMode:'google',google:{},publicOrigin:ORIGIN,host:'127.0.0.1',port:3000,accessToken:''},{
+  modalAccounts:{async status(){return {connected:true,needsRenewal:false};}},
   projects:{
    async list(owner){seen.push(['projects',owner]);return owner===OWNER?[project]:[];},
    async get(owner,id){return owner===OWNER&&id===PROJECT?project:null;},
