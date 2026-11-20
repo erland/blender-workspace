@@ -5,6 +5,9 @@ import {mkdtemp,writeFile,rm,readFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import pg from 'pg';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const exec=promisify(execFile);
 import {applyMigrations} from '../dist/db/migrations.js';
 import {ProjectRepository} from '../dist/db/projects.js';
 import {LocalArtifactStore} from '../dist/storage/artifact-store.js';
@@ -89,4 +92,30 @@ test('invalid archives and altered bytes cannot create visible projects',
     await assert.rejects(()=>service.import(owner,Buffer.alloc(0)));
     const after=await projects.list(owner);
     assert.equal(after.length,before.length);
+});
+
+
+test('strict ZIP reader rejects traversal paths, duplicate names and symlinks',async t=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'bw-zip-attack-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const attacks=['traversal','duplicate','symlink'];
+  for(const kind of attacks){
+    const file=path.join(root,kind+'.zip');
+    const script=[
+      'import sys,zipfile,stat',
+      'target=sys.argv[1]; kind=sys.argv[2]',
+      'with zipfile.ZipFile(target,"w") as z:',
+      ' z.writestr("project.json", "{}")',
+      ' if kind=="traversal": z.writestr("../escaped.txt", "attack")',
+      ' if kind=="duplicate": z.writestr("project.json", "{}")',
+      ' if kind=="symlink":',
+      '  i=zipfile.ZipInfo("revisions/00000001/scene.glb")',
+      '  i.create_system=3; i.external_attr=(stat.S_IFLNK|0o777)<<16',
+      '  z.writestr(i,"/outside")'
+    ].join('\n');
+    await exec('python3',['-c',script,file,kind]);
+    const dest=path.join(root,'out-'+kind);
+    await assert.rejects(()=>exec('python3',['archive_tool.py','import',file,dest,dest],
+      {cwd:process.cwd()}),kind);
+  }
 });
