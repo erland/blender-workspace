@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import struct
 import sys
+ROOT=Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0,str(ROOT))
 from modal_provider.runner import blender_image_reference
 
 PNG_SIGNATURE=b'\x89PNG\r\n\x1a\n'
