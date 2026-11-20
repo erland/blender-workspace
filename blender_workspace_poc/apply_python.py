@@ -5,12 +5,39 @@ no tokens, network or host directories are mounted into this Blender process.
 All artifacts are regenerated *after* user code returns successfully.
 """
 import sys
+import json
+import struct
 from pathlib import Path
 import bpy
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.object_identity import ensure_object_ids
 from blender_workspace_poc.common import ensure_output, export_glb, write_manifest
+
+def preview_is_structurally_usable(path):
+    # The GLB exporter can succeed while generating a preview without scene
+    # nodes (e.g. an all-curves scene). This is not a modeling failure.
+    data=Path(path).read_bytes()
+    if len(data)<20 or data[:4]!=b'glTF':
+        return False
+    version,total=struct.unpack_from('<II',data,4)
+    if version!=2 or total!=len(data):
+        return False
+    size,kind=struct.unpack_from('<I4s',data,12)
+    if kind!=b'JSON' or size==0 or size%4 or 20+size>len(data):
+        return False
+    document=json.loads(data[20:20+size])
+    if not isinstance(document,dict) or document.get('asset',{}).get('version')!='2.0':
+        return False
+    if not isinstance(document.get('nodes'),list) or not document['nodes']:
+        return False
+    if not isinstance(document.get('meshes',[]),list):
+        return False
+    for collection in ('buffers','images'):
+        for item in document.get(collection,[]):
+            if not isinstance(item,dict) or 'uri' in item:
+                return False
+    return True
 
 def main():
     if '--' not in sys.argv:
@@ -60,7 +87,7 @@ def main():
     files=[blend]
     try:
         export_glb(glb)
-        if not glb.is_file() or glb.stat().st_size==0:
+        if not glb.is_file() or not preview_is_structurally_usable(glb):
             raise RuntimeError('Empty GLB export')
         files.append(glb)
         # An exported GLB is a preview, not a proof of fidelity. Hair curves,
