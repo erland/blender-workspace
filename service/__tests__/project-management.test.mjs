@@ -57,7 +57,7 @@ function fixture(t){
 
 test('rename uses signed owner session, CSRF and validated form; no executable HTML',async t=>{
   const {app,state,post}=fixture(t);
-  const before=await app.inject({method:'GET',url:'/projects/'+ID,
+  const before=await app.inject({method:'GET',url:'/projects/'+ID+'?view=settings',
     headers:{cookie:'session=owner'}});
   assert.equal(before.statusCode,200);
   assert.match(before.body,/name="csrf"/);
@@ -78,7 +78,7 @@ test('rename uses signed owner session, CSRF and validated form; no executable H
   const safari=await post(target,{name:'New <script>alert(1)</script>'},
     {origin:'null',site:'same-origin'});
   assert.equal(safari.statusCode,303);
-  assert.equal(safari.headers.location,'/projects/'+ID+'?message=renamed');
+  assert.equal(safari.headers.location,'/projects/'+ID+'?view=settings&message=renamed');
   assert.equal(state.rename,1);
   const page=await app.inject({method:'GET',url:'/projects/'+ID,
     headers:{cookie:'session=owner'}});

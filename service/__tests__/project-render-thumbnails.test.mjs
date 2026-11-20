@@ -14,7 +14,7 @@ test('project page shows same click-to-open lazy images from project and GLB vie
   {...base,id:failedJob,source_revision:2,status:'failed',error_code:'render_failed'},
   {...base,id:queuedJob,source_revision:1,status:'pending'}
  ];
- const html=projectDetailPage(project,revisions,'csrf',undefined,renders);
+ const html=projectDetailPage(project,revisions,'csrf',undefined,renders,[],'images');
  for(const jobId of [projectJob,viewerJob]){
   const url='/renders/'+id+'/'+jobId+'.png';
   assert.ok(html.includes('src="'+url+'"'));
@@ -33,13 +33,13 @@ test('project page shows same click-to-open lazy images from project and GLB vie
 test('render status errors are escaped and failed jobs never receive image elements',()=>{
  const html=projectDetailPage(project,revisions,'csrf',undefined,[
   {...base,id:failedJob,source_revision:2,status:'failed',error_code:'<script>alert(1)</script>'}
- ]);
+ ],[],'images');
  assert.doesNotMatch(html,/<script>alert\(1\)<\/script>/);
  assert.match(html,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
  assert.doesNotMatch(html,/<img/);
 });
 test('empty render history retains a useful empty state',()=>{
- const html=projectDetailPage(project,revisions,'csrf',undefined,[]);
+ const html=projectDetailPage(project,revisions,'csrf',undefined,[],[],'images');
  assert.match(html,/Inga renderingar ännu/);
  assert.doesNotMatch(html,/class="render-tile"/);
 });
