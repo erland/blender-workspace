@@ -42,6 +42,13 @@ export class ProjectRepository {
       'UPDATE bw_projects SET name=$3,updated_at=now() WHERE id=$1 AND owner_key=$2 AND deleted_at IS NULL RETURNING *',
       [id,owner,name.trim()]);return r.rows[0]??null;
   }
+  async updateDescription(owner:string,id:string,description:string):Promise<Project|null> {
+    required(owner,200,'owner');optional(description,5000,'description');
+    const r=await this.pool.query<Project>(
+      'UPDATE bw_projects SET description=$3,updated_at=now() WHERE id=$1 AND owner_key=$2 AND deleted_at IS NULL RETURNING *',
+      [id,owner,description]);
+    return r.rows[0]??null;
+  }
   async softDelete(owner:string,id:string):Promise<boolean> {
     required(owner,200,'owner');
     const r=await this.pool.query(
