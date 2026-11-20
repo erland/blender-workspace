@@ -199,8 +199,10 @@ class ModalProviderTests(unittest.TestCase):
             for ref in ("", "ghcr.io/erland/blender-workspace-blender:latest"):
                 with self.subTest(ref=ref), patch.dict(os.environ,
                     {"MODAL_BLENDER_IMAGE": ref}):
-                    with self.assertRaisesRegex(ValueError, "pinned GHCR"):
+                    with self.assertRaises(RunnerDiagnostic) as raised:
                         run(sdk, Path(tmp) / "out", python_file=str(script))
+                    self.assertEqual((raised.exception.phase, raised.exception.code),
+                                     ("setup", "image_reference_invalid"))
             sdk.Image.from_registry.assert_not_called()
             sdk.Sandbox.create.assert_not_called()
             sdk.App.lookup.assert_not_called()
