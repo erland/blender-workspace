@@ -27,7 +27,8 @@ def render(source,output,engine,width,height,samples):
     scene.render.film_transparent=False
     if engine=='CYCLES':
         scene.cycles.samples=samples
-        scene.cycles.use_denoising=True
+        if hasattr(scene.cycles,'use_denoising'):
+            scene.cycles.use_denoising=True
         scene.render.threads_mode='FIXED'
         scene.render.threads=2
     else:
