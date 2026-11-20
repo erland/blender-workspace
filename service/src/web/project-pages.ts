@@ -152,6 +152,7 @@ export function projectImportPage(csrf:string):string {
    '<button class="button" type="submit">Importera projekt</button>'+
    '<p id="archive-result" role="status" aria-live="polite"></p></form></section>'+
    '<script src="/archive/assets/import.js" defer></script>');
+}
 
 /** All completed renders use the same owner-protected PNG endpoint, independent
  * of whether the job was requested from the project page or GLB viewer. */
