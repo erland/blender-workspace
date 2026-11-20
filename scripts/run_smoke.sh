@@ -48,3 +48,22 @@ assert image[:8]==b'\x89PNG\r\n\x1a\n'
 assert struct.unpack_from('>II',image,16)==(128,128)
 print('BW_RENDER_SMOKE PASS',flush=True)
 PY
+
+# Same-view Cycles regression using a non-square camera override. Never calls Modal.
+mv "$OUT/render.png" "$OUT/render-default.png"
+blender -b -t 2 --factory-startup --disable-autoexec \
+  --python blender_workspace_poc/render_saved.py -- \
+  --source /workspace/out/input.blend --output /workspace/out/render.png \
+  --engine CYCLES --width 341 --height 256 --samples 1 \
+  --camera-json '{"type":"perspective","position":[6,5,8],"target":[0,0,0],"up":[0,1,0],"verticalFovDegrees":45}'
+python3 - <<'PY'
+from pathlib import Path
+import struct
+original=Path('/workspace/out/render-default.png').read_bytes()
+viewer=Path('/workspace/out/render.png').read_bytes()
+assert viewer[:8]==b'\\x89PNG\\r\\n\\x1a\\n'
+assert struct.unpack_from('>II',viewer,16)==(341,256)
+assert original!=viewer
+assert Path('/workspace/out/scene.blend').is_file()
+print('BW_VIEWER_CAMERA_RENDER_SMOKE PASS',flush=True)
+PY
