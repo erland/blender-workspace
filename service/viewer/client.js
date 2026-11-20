@@ -9,6 +9,7 @@ if(!match)throw new Error('Invalid viewer URL');
 const [,projectId,revision]=match;
 const status=document.getElementById('status');
 const selected=document.getElementById('selected');
+const selectionBar=document.getElementById('selection-bar');
 const comparison=document.getElementById('comparison');
 const revisionPicker=document.getElementById('revision-picker');
 const comparePane=document.getElementById('compare-pane');
@@ -169,6 +170,7 @@ function selectedIdentity(hit){
 let chosen=null;
 function clearSelection(){
   chosen=null;
+  selectionBar.hidden=true;
   selected.textContent='Inget objekt markerat';
   copyButton.disabled=true;
   if(main.selectionHelper){
@@ -196,6 +198,7 @@ main.canvas.addEventListener('pointerup',event=>{
   if(!hits.length)return;
   const obj=hits[0].object;
   chosen=selectedIdentity(obj);
+  selectionBar.hidden=false;
   selected.textContent='Markerat objekt: '+chosen.name+
     (chosen.id?' (ID: '+chosen.id+')':' (äldre revision: saknar stabilt ID)');
   copyButton.disabled=false;
