@@ -33,7 +33,7 @@ test('project page shows same click-to-open lazy images from project and GLB vie
 test('render status errors are escaped and failed jobs never receive image elements',()=>{
  const html=projectDetailPage(project,revisions,'csrf',undefined,[
   {...base,id:failedJob,source_revision:2,status:'failed',error_code:'<script>alert(1)</script>'}
- ]);
+ ],[],'images');
  assert.doesNotMatch(html,/<script>alert\(1\)<\/script>/);
  assert.match(html,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
  assert.doesNotMatch(html,/<img/);
