@@ -180,7 +180,7 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
   assert.doesNotMatch(homeHtml,/<script>alert/);
   assert.match(homeHtml,/Beskrivning &amp; modeller/);
   assert.match(homeHtml,/Senaste revision 1/);
-  assert.match(homeHtml,new RegExp('/viewer/'+portalProject.id+'/revisions/1'));
+  assert.match(homeHtml,/Ingen GLB-förhandsvisning/);
   assert.match(homeHtml,new RegExp('/projects/'+portalProject.id));
   assert.equal(portalHome.headers.get('cache-control'),'no-store');
   assert.equal(portalHome.headers.get('vary'),'Cookie');
