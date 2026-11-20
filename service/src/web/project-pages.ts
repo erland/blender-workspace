@@ -1,6 +1,6 @@
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
-export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date}
+export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean}
 export function escapeHtml(v:string):string {
  return v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -51,10 +51,11 @@ function layout(title:string,body:string):string {
 export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[],message?:string,csrf?:string):string {
  const cards=items.map(({project:p,revisions})=>{
   const latest=revisions.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
+  const preview=latest?.glbAvailable!==false?latest:undefined;
   const description=p.description?'<p class="muted">'+escapeHtml(p.description)+'</p>':'';
   const tag='<span class="tag'+(latest?'':' empty')+'">'+
     (latest?'Senaste revision '+latest.revision:'Ingen sparad modell')+'</span>';
-  const viewer=latest?'<a href="'+viewerUrl(p.id,latest.revision)+'">Öppna 3D-vy</a>':'';
+  const viewer=preview?'<a href="'+viewerUrl(p.id,preview.revision)+'">Öppna GLB-förhandsvisning</a>':'<span class="muted small">Ingen GLB-förhandsvisning</span>';
   return '<article class="card"><div class="illustration" aria-hidden="true">⬡</div>'+
     '<div class="card-body"><h2><a href="'+projectUrl(p.id)+'">'+escapeHtml(p.name)+'</a></h2>'+
     description+'<p class="muted small">Ändrad '+when(p.updated_at)+'</p>'+tag+'</div>'+
@@ -79,7 +80,7 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
   const status=r.artifact_prefix?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
-  const open=r.artifact_prefix?'<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa i 3D</a>':'';
+  const open=r.artifact_prefix&&r.glbAvailable!==false?'<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa GLB</a>':'<span class="muted small">GLB saknas · Blender-original sparat</span>';
   return '<li><div><p><strong>Revision '+r.revision+'</strong> '+status+'</p><p class="muted small">'+
     escapeHtml(r.note||'Ingen beskrivning')+' · '+when(r.created_at)+'</p></div>'+open+'</li>';
  }).join('');
@@ -87,7 +88,7 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
  return layout(p.name,'<div class="breadcrumb"><a href="/">← Alla projekt</a></div><div class="intro">'+
   '<div><h1>'+escapeHtml(p.name)+'</h1><p class="muted">'+escapeHtml(p.description||'Ingen projektbeskrivning angiven.')+
   '</p><p class="muted small">Ändrad '+when(p.updated_at)+' · Aktuell revision '+p.current_revision+'</p></div>'+mainLink+
-  '</div><section class="panel"><h2>Revisionshistorik</h2>'+
+  '</div><p class="muted small">GLB är en förenklad förhandsvisning och kan sakna hår, procedurmaterial och andra Blender-detaljer. Originalmodellen sparas alltid som .blend.</p><section class="panel"><h2>Revisionshistorik</h2>'+
   (history?'<ul class="history">'+history+'</ul>':
     '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+'</section>'+
   (csrf===undefined?'':'<section class="panel" style="margin-top:18px"><h2>Hantera projektet</h2>'+
