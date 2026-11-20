@@ -160,7 +160,10 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            ?await services!.renderJobs.list(session.ownerKey,projectId):[];
          const modelJobs=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
          reply.header('content-security-policy',"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
-         return projectDetailPage(project,previews,session.csrf,message,renderJobs,modelJobs);
+         const requestedView=(request.query as {view?:string}).view;
+         const view=requestedView==='images'||requestedView==='history'||requestedView==='settings'
+           ?requestedView:'overview';
+         return projectDetailPage(project,previews,session.csrf,message,renderJobs,modelJobs,view);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
      // Render requests are explicitly billed. Never launch Modal in an HTTP request.
@@ -190,8 +193,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            width:Number(params.get('size')),height:Number(params.get('size')),
            samples:Number(params.get('samples'))});
          const queued=await services!.renderJobs.reserve(session.ownerKey,id,revision,options);
-         return reply.code(303).header('location','/projects/'+id+'?message=render_queued').send();
-       }catch{return reply.code(303).header('location','/projects/'+id+'?message=render_error').send();}
+         return reply.code(303).header('location','/projects/'+id+'?view=images&message=render_queued').send();
+       }catch{return reply.code(303).header('location','/projects/'+id+'?view=images&message=render_error').send();}
      });
      // Signed-cookie owner-only PNG retrieval; file bytes never contain an access token.
      app.get('/renders/:projectId/:jobId.png',async(request,reply)=>{
@@ -299,18 +302,18 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            if(action==='rename'){
              const name=form.get('name')??'';
              if(!name.trim()||name.length>200)
-               return reply.code(303).header('location','/projects/'+projectId+'?message=invalid').send();
+               return reply.code(303).header('location','/projects/'+projectId+'?view=settings&message=invalid').send();
              const renamed=await services!.projects.rename(session.ownerKey,projectId,name);
              if(!renamed)return reply.code(404).send('Projektet hittades inte');
-             return reply.code(303).header('location','/projects/'+projectId+'?message=renamed').send();
+             return reply.code(303).header('location','/projects/'+projectId+'?view=settings&message=renamed').send();
            }
            if(action==='description'){
              const description=form.get('description')??'';
              if(description.length>5000)
-               return reply.code(303).header('location','/projects/'+projectId+'?message=description_invalid').send();
+               return reply.code(303).header('location','/projects/'+projectId+'?view=settings&message=description_invalid').send();
              const updated=await services!.projects.updateDescription(session.ownerKey,projectId,description);
              if(!updated)return reply.code(404).send('Projektet hittades inte');
-             return reply.code(303).header('location','/projects/'+projectId+'?message=description_updated').send();
+             return reply.code(303).header('location','/projects/'+projectId+'?view=settings&message=description_updated').send();
            }
            // The separate confirmation form requires a checked confirmation.
            if(form.get('confirm')!=='yes')return reply.code(400).send('Bekräftelse saknas');
@@ -326,7 +329,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            // file cleanup. The project detail is then intentionally hidden.
            if(action==='delete')
              return reply.code(303).header('location','/?message=cleanup').send();
-           return reply.code(303).header('location','/projects/'+projectId+'?message=error').send();
+           return reply.code(303).header('location','/projects/'+projectId+'?view=settings&message=error').send();
          }
        });
      }
