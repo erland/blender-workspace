@@ -6,6 +6,7 @@ import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from '
 import {validateViewerCamera,viewerDimensions} from './jobs/viewer-camera.js';
 import type {RenderArtifactStore} from './storage/render-artifacts.js';
 import {importClientScript} from './web/import-client.js';
+import {liveStatusScript} from './web/live-status.js';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
 import type {ProjectDeletionService} from './jobs/project-deletion.js';
@@ -125,6 +126,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
              detail:(r.engine==='CYCLES'?'Cycles':'Eevee')+' · '+r.width+' × '+r.height+
                ' · '+r.samples+' samples',error:r.error_code}))
          ].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime());
+         reply.header('content-security-policy',
+           "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          return jobsOverviewPage(entries);
        }catch{return reply.code(503).send('Jobblistan kunde inte hämtas. Försök igen senare.');}
      });
@@ -159,7 +162,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const renderJobs=services!.renderJobs
            ?await services!.renderJobs.list(session.ownerKey,projectId):[];
          const modelJobs=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
-         reply.header('content-security-policy',"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+         reply.header('content-security-policy',"default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          const requestedView=(request.query as {view?:string}).view;
          const view=requestedView==='images'||requestedView==='history'||requestedView==='settings'
            ?requestedView:'overview';
@@ -213,6 +216,11 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const file=await services!.renderedImages.verifiedPath(projectId,jobId,job.sha256,job.size_bytes);
          return reply.type('image/png').send(createReadStream(file));
        }catch{return reply.code(404).send('Not found');}
+     });
+     // Live status JS has no secrets, session values or write capabilities.
+     app.get('/portal/assets/live-status.js',async(_request,reply)=>{
+       return secure(reply).header('content-security-policy',"default-src 'none'")
+         .type('application/javascript; charset=utf-8').send(liveStatusScript);
      });
      // Archive JS is static and contains no session state or credentials.
      app.get('/archive/assets/import.js',async(_request,reply)=>{
