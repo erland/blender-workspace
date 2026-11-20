@@ -75,7 +75,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const items=await Promise.all(projects.map(async project=>({
            project,revisions:await services!.projects.revisions(session.ownerKey,project.id)
          })));
-         return projectIndexPage(items);
+         const message=(request.query as {message?:string}).message;
+         return projectIndexPage(items,message);
        }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
      });
      app.get('/projects/:projectId',async(request,reply)=>{
@@ -148,8 +149,11 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
              return reply.code(303).header('location','/projects/'+projectId+'/delete?message=busy').send();
            return reply.code(303).header('location','/').send();
          }catch{
-           const dest='/projects/'+projectId+(action==='delete'?'/delete':'');
-           return reply.code(303).header('location',dest+'?message=error').send();
+           // A permanent deletion may have committed its tombstone but failed
+           // file cleanup. The project detail is then intentionally hidden.
+           if(action==='delete')
+             return reply.code(303).header('location','/?message=cleanup').send();
+           return reply.code(303).header('location','/projects/'+projectId+'?message=error').send();
          }
        });
      }
