@@ -248,10 +248,89 @@ revisionPicker.addEventListener('change',async()=>{
     revisionPicker.value='';
   }
 });
+const renderButton=document.getElementById('render-current-view');
+const renderMessage=document.getElementById('render-status');
+const renderGallery=document.getElementById('render-history');
+const showAllButton=document.getElementById('render-show-all');
+const renderApi='/viewer/api/projects/'+projectId+'/revisions/'+revision+'/renders';
+let renderCsrf=null, renderEntries=[],showAllRenders=false,renderRefresh=null;
+function showRenderHistory(){
+  renderGallery.replaceChildren();
+  const completed=renderEntries.filter(j=>j.status==='completed'&&j.imageUrl);
+  const activeJobs=renderEntries.filter(j=>j.status==='pending'||j.status==='running');
+  const recoverable=renderEntries.filter(j=>j.status==='needs_recovery');
+  renderMessage.textContent=activeJobs.length
+    ?activeJobs.length+' rendering(ar) i kö eller under körning. Status uppdateras automatiskt.'
+    :recoverable.length
+      ?'Ett renderjobb kräver åtgärd. Se Jobb för information.'
+      :completed.length?completed.length+' sparade bilder för revision '+revision:
+        'Inga färdiga renderingar för denna revision.';
+  for(const job of completed.slice(0,showAllRenders?50:3)){
+    // Render URLs are generated on our own server, never provided by the user.
+    if(!/^\/renders\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.png$/i.test(job.imageUrl))continue;
+    const item=document.createElement('div');
+    item.className='render-card';
+    const link=document.createElement('a');
+    link.href=job.imageUrl;link.target='_blank';link.rel='noopener';
+    const img=document.createElement('img');
+    img.src=job.imageUrl;img.alt='Rendering för revision '+revision;
+    img.loading='lazy';
+    link.append(img);item.append(link);
+    const details=document.createElement('small');
+    details.textContent=(job.engine==='CYCLES'?'Cycles':'Eevee')+' · '+
+      job.width+' × '+job.height+' · '+job.samples+' samples';
+    item.append(details);renderGallery.append(item);
+  }
+  showAllButton.hidden=completed.length<=3;
+  showAllButton.textContent=showAllRenders?'Visa färre bilder':'Visa alla '+completed.length+' bilder';
+  if(activeJobs.length&&!renderRefresh)
+    renderRefresh=setInterval(()=>{if(!document.hidden)void refreshRenderHistory();},10000);
+  if(!activeJobs.length&&renderRefresh){clearInterval(renderRefresh);renderRefresh=null;}
+}
+async function refreshRenderHistory(){
+  try{
+    const response=await fetch(renderApi,{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('Renderingshistorik kunde inte hämtas');
+    const data=await response.json();
+    if(typeof data.csrf!=='string'||!Array.isArray(data.renders))throw new Error('Invalid render history');
+    renderCsrf=data.csrf;renderEntries=data.renders;
+    showRenderHistory();
+  }catch{renderMessage.textContent='Renderingshistorik kunde inte hämtas. Försök ladda om sidan.';}
+}
+showAllButton.addEventListener('click',()=>{showAllRenders=!showAllRenders;showRenderHistory();});
+renderButton.addEventListener('click',async()=>{
+  if(!main.model||!renderCsrf||renderButton.disabled)return;
+  const rect=main.canvas.getBoundingClientRect();
+  if(!Number.isFinite(rect.width)||!Number.isFinite(rect.height)||rect.width<=0||
+     rect.height<=0||rect.width/rect.height>4||rect.width/rect.height<0.25){
+    renderMessage.textContent='Visarens bildförhållande kan inte renderas.';return;
+  }
+  if(!confirm('Starta Cycles-rendering från denna vy? Jobbet körs i ditt Modal-konto och kan kosta pengar.'))return;
+  const worldUp=new THREE.Vector3(0,1,0).applyQuaternion(main.camera.quaternion);
+  const camera={
+    type:'perspective',position:main.camera.position.toArray(),
+    target:main.controls.target.toArray(),up:worldUp.toArray(),
+    verticalFovDegrees:main.camera.fov
+  };
+  renderButton.disabled=true;
+  renderMessage.textContent='Beställer rendering…';
+  try{
+    const response=await fetch(renderApi,{method:'POST',credentials:'same-origin',
+      headers:{'content-type':'application/json','x-csrf-token':renderCsrf},
+      body:JSON.stringify({camera,viewportWidth:rect.width,viewportHeight:rect.height})});
+    if(!response.ok)throw new Error(response.status===409?'Anslut ditt Modal-konto i Inställningar.':
+      response.status===422?'Ogiltigt kameraläge eller ett annat renderjobb pågår.':
+      'Renderingen kunde inte beställas.');
+    await refreshRenderHistory();
+  }catch(error){renderMessage.textContent=error instanceof Error?error.message:'Kunde inte starta rendering';}
+  finally{renderButton.disabled=false;}
+});
 try{
   await load(revision,main);
   document.getElementById('reset').disabled=false;
   document.getElementById('snapshot').disabled=false;
+  renderButton.disabled=false;
+  void refreshRenderHistory();
   viewPicker.disabled=false;
   for(const toggle of [boundsToggle,axesToggle,wireframeToggle])toggle.disabled=false;
   status.textContent='Revision '+revision+' – klicka på ett objekt, dra för att rotera';
@@ -268,4 +347,4 @@ try{
     }
   }catch{comparison.textContent='Revisionslistan kunde inte hämtas';}
 }catch(err){status.textContent=err instanceof Error?err.message:'Modellen kunde inte öppnas';}
-window.addEventListener('pagehide',()=>{active=false;main.dispose();secondary.dispose();});
+window.addEventListener('pagehide',()=>{if(renderRefresh)clearInterval(renderRefresh);active=false;main.dispose();secondary.dispose();});
