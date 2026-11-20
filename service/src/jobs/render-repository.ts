@@ -19,7 +19,7 @@ export function validateRenderOptions(value:RenderOptions):RenderOptions {
       ![256,512,1024].includes(value.height))throw new RangeError('Invalid project render');
  }else if(value.requestedFrom==='viewer'){
    if(value.engine!=='CYCLES'||value.samples!==16||!value.camera||
-     Math.min(value.width,value.height)!==256||Math.max(value.width,value.height)>1024)
+     Math.min(value.width,value.height)!==512||Math.max(value.width,value.height)>2048)
      throw new RangeError('Invalid viewer render');
    validateViewerCamera(value.camera);
  }else throw new RangeError('Invalid render source');
