@@ -63,11 +63,12 @@ test('project and index PNG thumbnails are allowed by CSP and use shared signed 
  assert.equal((home.body.match(/class="project-thumbnails"/g)||[]).length,1);
  assert.equal((home.body.match(/loading="lazy"/g)||[]).length,3);
  assert.equal(listRequests(),1);
- const detail=await get('/projects/'+PROJECT);
+ const detail=await get('/projects/'+PROJECT+'?view=images');
  assert.equal(detail.statusCode,200);
  assert.match(detail.headers['content-security-policy'],/img-src 'self'/);
  assert.match(detail.body,/Renderingsjobb och bilder/);
- assert.match(detail.body,/Spara beskrivning/);
+ const settings=await get('/projects/'+PROJECT+'?view=settings');
+ assert.match(settings.body,/Spara beskrivning/);
  assert.match(detail.body,/Original &lt;description&gt;/);
  const foreign=await get('/','session=other');
  assert.doesNotMatch(foreign.body,/Projekt &amp; bilder|class="project-thumbnails"/);
@@ -93,7 +94,7 @@ test('description edit is owner-only, csrf and origin checked, bounded, escaped,
  assert.equal(saved.statusCode,303);
  assert.match(saved.headers.location,/description_updated/);
  assert.equal(updates(),1);
- const detail=await app.inject({method:'GET',url:'/projects/'+PROJECT,
+ const detail=await app.inject({method:'GET',url:'/projects/'+PROJECT+'?view=settings',
    headers:{cookie:'session=owner'}});
  assert.match(detail.body,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
  assert.doesNotMatch(detail.body,/<script>alert/);
