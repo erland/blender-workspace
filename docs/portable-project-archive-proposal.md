@@ -1,51 +1,60 @@
-# Portable Blender Workspace project archive — proposed next PR
+# Portable Blender Workspace project archive (format v1)
 
-## Recommendation
-Implement export and import together as a separate PR after permanent deletion is verified.
-UX: export -> download and verify -> optionally delete -> import as new project.
-An archive is not a substitute for an ordinary GLB download because a project
-also includes the native Blender files, all revisions and metadata.
+## User flow
+1. Sign in on the web portal and open the project.
+2. Choose **Exportera projekt (ZIP)**. The browser downloads
+   `blender-project.bwproject.zip`; keep this archive outside the service.
+3. On **Mina projekt**, choose a .bwproject.zip file and click **Importera**.
+   A new project is created with a new UUID and the revision list is restored.
+4. Verify each restored revision and GLB in the browser **before deleting**
+   the original project. Do not rely on the ZIP alone as a verified backup.
 
-## Proposed portable format
-Extension: .bwproject.zip (versioned ZIP).
-- project.json: schema version, name, description, original project ID and timestamps.
-- revisions/00000001/...: per-revision stored manifest with SHA-256 and all immutable
-  artifacts (scene.blend, scene.glb, scene.json, and supported auxiliary artifacts).
-- history.json: revision notes/timestamps and a sanitized job journal.
-  Exclude OAuth and Modal credentials, owner keys, filesystem paths and provider secrets.
-  Python source could contain user secrets: offer an explicit choice to include scripts
-  or leave them out, and document whether the archive is a full-fidelity snapshot.
+No Blender execution or Modal credentials are necessary for export/import.
 
-## Export
-Only signed-in owner may export. Stream files and verify artifact hashes during
-export rather than loading everything into RAM. Send a no-store attachment
-response with no embedded access token. No Modal execution.
+## Archive format
+The format is a strict ZIP with:
+- `project.json`: formatVersion=1, project originalId/name/description/currentRevision,
+  and ordered revision metadata (revision, note, createdAt, artifact manifest).
+- `revisions/00000001/scene.blend`, `scene.glb`, `scene.json` and other
+  stored artifact files for each revision. Exact bytes are preserved.
+- Each entry is validated against size and SHA-256 in project.json.
+- Reimport is independent: all revision manifest IDs and paths are
+  re-created for the newly allocated project.
 
-## Import
-- Validate the supported version, paths, file counts, per-file and expanded total
-  size limits, checksums, compression ratio and JSON schemas before publishing.
-- Reject traversal paths, absolute paths, symlinks, duplicate entries, unknown
-  entry types, encrypted archives and any checksum mismatch.
-- Allocate a NEW project UUID and owner key; remap artifact directory names,
-  manifest project IDs and database prefixes while preserving revision numbers,
-  names, notes and object identifiers embedded in model artifacts.
-- Stage and verify every revision before making the project visible. Roll back
-  failed partial imports or quarantine them for retryable cleanup.
-- Import cannot run Blender or incur Modal costs; reimporting the same archive
-  should produce a separate copy each time.
-- Do not copy session tokens, encrypted account records or raw credential data.
+**Scope note:** The archive contains all model revisions, original Blender
+project files, GLB exports, scene JSON and revision notes. It does **not**
+contain job execution history, past Python editing scripts, Google identity,
+OAuth sessions, Modal tokens, or execution logs. The source scripts could
+contain sensitive credentials or user-provided secrets; a future optional
+history export needs separate security review. The archive is therefore a
+portable **model project backup**, not a full operational audit backup.
 
-## Acceptance scenario
-Export Integrationstest 001 (revision 1 cube, revision 2 cube plus cylinder).
-Download and retain the archive, import it as a NEW project, and verify both
-revisions, geometry, original artifact hashes and viewer behavior. Then, with
-user approval, permanently delete the original. The imported version must
-remain editable to revision 3 with a valid Blender predecessor.
+## Guardrails
+- Import accepts at most **128 MiB** compressed archive input and
+  **128 MiB** total uncompressed artifact content, at most **64 MiB per file**,
+  at most 99 revisions, at most 12 files per revision, and at most 1,200 files.
+- Names must match the fixed revision and artifact-name vocabulary.
+- ZIP archive traversal, symlinks, unsupported compression, encrypted files,
+  duplicate and unexpected entries, ZIP bombs, invalid metadata and SHA-256
+  mismatch cause rejection.
+- The Google session and owner identity are checked for each export;
+  import also requires same-origin browser POST and per-session CSRF.
+- Imported projects are hidden during staging, and become visible only after
+  all revisions have been copied and published. Failed imports clean up their
+  files and hidden database records.
+- The archive is processed by static `archive_tool.py`, not by Blender.
+
+## Limitations
+The initial size limit excludes some large Blender scenes. Importing arbitrary
+ZIPs from unknown sources is not recommended even with structural validation;
+imported Blender files should be treated as untrusted when subsequently opened
+or executed. Import does not execute Python, Blender scripts, modifiers or
+drivers.
 
 ## Tests
-Cross-owner isolation, no credentials, CSRF/origin, archive path traversal,
-ZIP bombs, manifest mismatch, interrupted import, repeated import, restored
-revisions, storage checksums and no unnecessary Modal jobs.
+Round-trip export and import of two saved revisions; SHA-256 equivalence of
+artifacts, notes and version numbers; ability to add a third revision to the
+import; owner isolation, unauthenticated export rejection, CSRF/origin
+validation, truncated/malformed archive rejection, rollback of failed imports.
 
-This document is a design proposal; no export/import endpoints are included
-in the permanent-deletion PR.
+No Modal jobs are started by these tests.

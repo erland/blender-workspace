@@ -56,6 +56,44 @@ export class ProjectRepository {
   /** Durable tombstone. Locks the project row to serialize with job reservation.
    * Active/recoverable work must complete or be handled explicitly first.
    */
+  /** Stage an imported project in a hidden state until every artifact exists. */
+  async beginImport(owner:string,name:string,description:string):Promise<Project> {
+    required(owner,200,'owner');required(name,200,'name');optional(description,5000,'description');
+    const r=await this.pool.query<Project>(
+      'INSERT INTO bw_projects(id,owner_key,name,description,deleted_at) VALUES($1,$2,$3,$4,now()) RETURNING *',
+      [randomUUID(),owner,name.trim(),description]);
+    return r.rows[0];
+  }
+  /** Publish imported revisions atomically. The archive contains metadata only;
+   * no copied job can become a running job in the destination.
+   */
+  async finishImport(owner:string,id:string,entries:{revision:number;note:string;createdAt:string}[]):Promise<void> {
+    required(owner,200,'owner');
+    const c=await this.pool.connect();
+    try {
+      await c.query('BEGIN');
+      const p=await c.query(
+        'SELECT id FROM bw_projects WHERE id=$1 AND owner_key=$2 AND deleted_at IS NOT NULL AND deletion_requested_at IS NULL FOR UPDATE',[id,owner]);
+      if(!p.rowCount)throw new Error('Import project is not staged');
+      for(let i=0;i<entries.length;i++){
+        const r=entries[i];
+        if(r.revision!==i+1||r.note.length>5000||!Number.isFinite(Date.parse(r.createdAt)))
+          throw new RangeError('Invalid imported revision metadata');
+        await c.query(
+          'INSERT INTO bw_project_revisions(project_id,revision,note,artifact_prefix,created_at) VALUES($1,$2,$3,$4,$5)',
+          [id,r.revision,r.note,id+'/'+String(r.revision).padStart(8,'0'),r.createdAt]);
+      }
+      await c.query('UPDATE bw_projects SET current_revision=$2,deleted_at=NULL,updated_at=now() WHERE id=$1 AND owner_key=$3',
+        [id,entries.length,owner]);
+      await c.query('COMMIT');
+    }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+  }
+  /** Never leave a hidden failed import indefinitely. */
+  async cancelImport(owner:string,id:string):Promise<void> {
+    required(owner,200,'owner');
+    await this.pool.query(
+      'DELETE FROM bw_projects WHERE id=$1 AND owner_key=$2 AND deleted_at IS NOT NULL AND deletion_requested_at IS NULL',[id,owner]);
+  }
   async beginPermanentDelete(owner:string,id:string):Promise<'ready'|'busy'|'missing'> {
     required(owner,200,'owner');
     const c=await this.pool.connect();

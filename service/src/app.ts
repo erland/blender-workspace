@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
+import {rm} from 'node:fs/promises';
+import type {ProjectArchiveService} from './jobs/project-archive.js';
+import {importClientScript} from './web/import-client.js';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
 import type {ProjectDeletionService} from './jobs/project-deletion.js';
@@ -15,7 +18,8 @@ import {bearerChallenge,protectedResourceMetadata,remoteJwks,verifyOAuthAccessTo
 export function createApp(config:ServiceConfig,
  services?: {ownerKey?:string;projects:ProjectServices['projects'];jobs:ProjectServices['jobs'];
   modalAccounts?:ProjectServices['modalAccounts'];artifacts?:ProjectServices['artifacts'];
-  projectDeletion?:Pick<ProjectDeletionService,'delete'>},
+  projectDeletion?:Pick<ProjectDeletionService,'delete'>;
+  projectArchive?:Pick<ProjectArchiveService,'export'|'import'>},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
@@ -31,6 +35,8 @@ export function createApp(config:ServiceConfig,
      async()=>protectedResourceMetadata(config.oauth!));
  }
  if(options?.google){
+   app.addContentTypeParser('application/vnd.blender-workspace.project+zip',
+     {parseAs:'buffer',bodyLimit:128*1024*1024},(_request,body,done)=>done(null,body));
    app.addContentTypeParser('application/x-www-form-urlencoded',
      {parseAs:'string'},(_request,body,done)=>done(null,body));
    const google=options.google;
@@ -76,7 +82,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            project,revisions:await services!.projects.revisions(session.ownerKey,project.id)
          })));
          const message=(request.query as {message?:string}).message;
-         return projectIndexPage(items,message);
+         reply.header('content-security-policy',"default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+         return projectIndexPage(items,message,session.csrf);
        }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
      });
      app.get('/projects/:projectId',async(request,reply)=>{
@@ -93,6 +100,54 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const message=(request.query as {message?:string}).message;
          return projectDetailPage(project,revisions,session.csrf,message);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
+     });
+     // Archive JS is static and contains no session state or credentials.
+     app.get('/archive/assets/import.js',async(_request,reply)=>{
+       return secure(reply).header('content-security-policy',"default-src 'none'")
+         .type('application/javascript; charset=utf-8').send(importClientScript);
+     });
+     // Download requires the same signed Google session and owner scope as viewer.
+     app.get('/projects/:projectId/export',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie')
+         .header('content-security-policy',"default-src 'none'")
+         .header('x-frame-options','DENY');
+       if(!session)return reply.redirect('/settings/login');
+       const id=(request.params as {projectId:string}).projectId;
+       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))
+         return reply.code(404).send('Projektet hittades inte');
+       if(!services!.projectArchive)return reply.code(503).send('Export är inte konfigurerad');
+       try{
+         const {archive,directory}=await services!.projectArchive.export(session.ownerKey,id);
+         const stream=createReadStream(archive);
+         // Clean up even if the browser cancels the download.
+         reply.raw.once('close',()=>{void rm(directory,{recursive:true,force:true});});
+         return reply.header('content-disposition','attachment; filename="blender-project.bwproject.zip"')
+           .type('application/zip').send(stream);
+       }catch{
+         return reply.code(422).send('Projektet kunde inte exporteras. Kontrollera att revisionerna är kompletta.');
+       }
+     });
+     app.post('/projects/import',{bodyLimit:128*1024*1024},async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie')
+         .header('content-security-policy',"default-src 'none'");
+       if(!session)return reply.code(401).send({error:'unauthorized'});
+       const origin=request.headers.origin;
+       const sameOriginSafari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+       if(origin!==config.publicOrigin&&!sameOriginSafari)
+         return reply.code(403).send({error:'origin_not_allowed'});
+       if(!(request.headers['content-type']??'').startsWith('application/vnd.blender-workspace.project+zip'))
+         return reply.code(415).send({error:'unsupported_media_type'});
+       if(request.headers['x-csrf-token']!==session.csrf)
+         return reply.code(403).send({error:'csrf'});
+       if(!services!.projectArchive)return reply.code(503).send({error:'not_configured'});
+       try{
+         const id=await services!.projectArchive.import(session.ownerKey,request.body as Buffer);
+         return reply.code(201).send({projectId:id});
+       }catch{
+         return reply.code(422).send({error:'invalid_archive'});
+       }
      });
      const validProjectId=(id:string)=>
        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);

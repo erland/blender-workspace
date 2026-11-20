@@ -48,7 +48,7 @@ function layout(title:string,body:string):string {
  '<nav aria-label="Huvudnavigering"><a href="/" aria-current="page">Projekt</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
  '<main>'+body+'</main></body></html>';
 }
-export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[],message?:string):string {
+export function projectIndexPage(items:{project:PortalProject;revisions:PortalRevision[]}[],message?:string,csrf?:string):string {
  const cards=items.map(({project:p,revisions})=>{
   const latest=revisions.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
   const description=p.description?'<p class="muted">'+escapeHtml(p.description)+'</p>':'';
@@ -65,7 +65,15 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
  return layout('Mina projekt','<div class="intro"><div><h1>Mina projekt</h1>'+
   '<p class="muted">Granska dina sparade Blender-modeller och revisioner. Modellering sker i ChatGPT.</p></div>'+
   '<span class="tag">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</span></div>'+
-  (message==='cleanup'?'<p class="warning" role="status">Projektet har dolts medan den permanenta borttagningen slutförs. Filstädningen försöks automatiskt igen om något gick fel.</p>':'')+listing);
+  (message==='cleanup'?'<p class="warning" role="status">Projektet har dolts medan den permanenta borttagningen slutförs. Filstädningen försöks automatiskt igen om något gick fel.</p>':'')+
+  (csrf===undefined?'':'<section class="panel" style="margin-bottom:22px"><h2>Importera projekt</h2>'+
+    '<p class="muted">Återställ ett sparat .bwproject.zip-arkiv. Ett nytt projekt skapas utan att köra Blender.</p>'+
+    '<form id="import-project-form"><input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+    '<label for="archive-file">Projektarkiv (.bwproject.zip)</label> '+
+    '<input id="archive-file" name="archive" type="file" accept=".zip,.bwproject.zip" required> '+
+    '<button class="button" type="submit">Importera</button>'+
+    '<p id="archive-result" role="status" aria-live="polite"></p></form></section>')+listing+
+    (csrf===undefined?'':'<script src="/archive/assets/import.js" defer></script>'));
 }
 export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:string,message?:string):string {
  const latest=revs.filter(r=>r.artifact_prefix&&r.revision<=p.current_revision).at(-1);
@@ -91,6 +99,7 @@ export function projectDetailPage(p:PortalProject,revs:PortalRevision[],csrf?:st
     '<div class="form-row"><label for="project-name">Projektnamn'+
     '<input id="project-name" type="text" name="name" value="'+escapeHtml(p.name)+'" required maxlength="200"></label>'+
     '<button class="button" type="submit">Byt namn</button></div></form>'+
+    '<p style="margin-top:20px"><a class="button alt" href="'+projectUrl(p.id)+'/export">Exportera projekt (ZIP)</a></p>'+
     '<p style="margin-top:20px"><a class="danger" href="'+projectUrl(p.id)+'/delete">Ta bort projektet…</a></p>'+
     '</section>'));
 }
@@ -104,7 +113,7 @@ export function projectDeletePage(p:PortalProject,csrf:string,message?:string):s
  return layout('Bekräfta borttagning','<div class="breadcrumb"><a href="'+path+'">← Tillbaka till projektet</a></div>'+
   '<section class="panel"><h1>Ta bort projekt?</h1>'+
   warning+'<p>Du är på väg att permanent ta bort <strong>'+escapeHtml(p.name)+'</strong> från din projektlista.</p>'+
-  '<p class="muted">Projektet, alla revisioner, sparade modellfiler och jobbhistorik raderas permanent. Åtgärden kan inte ångras. Exportera först projektet om du vill kunna spara en kopia (exportfunktionen är ännu inte implementerad).</p>'+
+  '<p class="muted">Projektet, alla revisioner, sparade modellfiler och jobbhistorik raderas permanent. Åtgärden kan inte ångras. Exportera projektet och kontrollera att arkivet kan importeras innan du raderar originalet.</p>'+
   '<form method="post" action="'+path+'/delete">'+
   '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
   '<label><input name="confirm" type="checkbox" value="yes" required> Ja, ta bort detta projekt</label>'+

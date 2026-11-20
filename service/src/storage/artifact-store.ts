@@ -85,6 +85,8 @@ export class LocalArtifactStore {
     }
     await rm(directory, { recursive: true, force: true });
   }
+  /** Internal trusted caller only: validated source directory for archival. */
+  archiveDirectory(project: string): string {return this.directory(project);}
   async listRevisions(project: string): Promise<number[]> {
     const directory = this.directory(project);
     let names: string[];
