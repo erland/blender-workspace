@@ -33,15 +33,16 @@ function fixture(t){
       state.rename++;state.name=name;
       return this.get(owner,id);
     },
-    async softDelete(owner,id){
-      if(owner!==OWNER||id!==ID||state.deleted||state.busy)return false;
-      state.delete++;state.deleted=true;return true;
-    }
+    async softDelete(){throw Error('Legacy soft delete must not be called');}
   };
   const app=createApp({authMode:'google',google:{},publicOrigin:ORIGIN,
       host:'127.0.0.1',port:3000,accessToken:''},
     {modalAccounts:{async status(){return {connected:false,needsRenewal:false};}},
-      projects,jobs:{}},{google});
+      projects,jobs:{},projectDeletion:{async delete(owner,id){
+        if(owner!==OWNER||id!==ID||state.deleted)return 'missing';
+        if(state.busy)return 'busy';
+        state.delete++;state.deleted=true;return 'deleted';
+      }}},{google});
   t.after(()=>app.close());
   const post=(route,values={},opts={})=>app.inject({
     method:'POST',url:route,headers:{
@@ -93,6 +94,7 @@ test('delete requires confirmation page, checkbox, owner and csrf; missing and c
   assert.equal(confirmation.statusCode,200);
   assert.match(confirmation.body,/Cube &amp; Cylinder/);
   assert.match(confirmation.body,/name="confirm"/);
+  assert.match(confirmation.body,/raderas permanent/);
   assert.match(confirmation.body,/name="csrf"/);
   assert.equal(state.deleted,false);
   assert.equal((await app.inject({method:'GET',url:target,
