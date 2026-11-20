@@ -13,7 +13,8 @@ export class ProjectDeletionService {
     const state=await this.projects.beginPermanentDelete(owner,id);
     if(state!=='ready')return state;
     await this.artifacts.deleteProject(id);
-    await this.projects.finishPermanentDelete(owner,id);
+    if(!await this.projects.finishPermanentDelete(owner,id))
+      throw new Error('Project cleanup finalization could not be verified');
     return 'deleted';
   }
   /** Restart recovery. A failed pass is observable; no Blender work occurs. */
