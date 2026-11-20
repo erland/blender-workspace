@@ -104,7 +104,9 @@ export class ProjectRepository {
       if(!p.rowCount){await c.query('ROLLBACK');return 'missing';}
       const active=await c.query(
         "SELECT id FROM bw_jobs WHERE project_id=$1 AND status IN ('pending','running','needs_recovery') LIMIT 1",[id]);
-      if(active.rowCount){await c.query('ROLLBACK');return 'busy';}
+      const rendering=await c.query(
+        "SELECT id FROM bw_render_jobs WHERE project_id=$1 AND status IN ('pending','running','needs_recovery') LIMIT 1",[id]);
+      if(active.rowCount||rendering.rowCount){await c.query('ROLLBACK');return 'busy';}
       await c.query('UPDATE bw_projects SET deleted_at=COALESCE(deleted_at,now()),deletion_requested_at=COALESCE(deletion_requested_at,now()),updated_at=now() WHERE id=$1',[id]);
       await c.query('COMMIT');
       return 'ready';
@@ -121,7 +123,10 @@ export class ProjectRepository {
       if(!p.rowCount){await c.query('ROLLBACK');return false;}
       const active=await c.query(
         "SELECT id FROM bw_jobs WHERE project_id=$1 AND status IN ('pending','running','needs_recovery') LIMIT 1",[id]);
-      if(active.rowCount)throw new Error('Active job prevents project cleanup');
+      const rendering=await c.query(
+        "SELECT id FROM bw_render_jobs WHERE project_id=$1 AND status IN ('pending','running','needs_recovery') LIMIT 1",[id]);
+      if(active.rowCount||rendering.rowCount)throw new Error('Active job prevents project cleanup');
+      await c.query('DELETE FROM bw_render_jobs WHERE project_id=$1',[id]);
       await c.query('DELETE FROM bw_jobs WHERE project_id=$1',[id]);
       await c.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[id]);
       await c.query('DELETE FROM bw_projects WHERE id=$1 AND owner_key=$2',[id,owner]);
