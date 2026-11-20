@@ -18,7 +18,9 @@ export class RenderOrchestrator {
    try{
      const source=await this.native.verifiedArtifactPath(job.project_id,job.source_revision,'scene.blend');
      await this.executor.run(dir,job.owner_key,source,{
-       engine:job.engine,width:job.width,height:job.height,samples:job.samples});
+       engine:job.engine,width:job.width,height:job.height,samples:job.samples,
+       ...(job.requested_from==='viewer'&&job.camera_override?
+         {requestedFrom:'viewer' as const,camera:job.camera_override}:{})});
      const saved=await this.previews.publish(job.project_id,job.id,path.join(dir,'render.png'));
      published=true;
      await this.queue.complete(job.owner_key,job.id,saved.sha256,saved.sizeBytes);
