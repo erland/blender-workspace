@@ -105,23 +105,25 @@ const statusLabels:Record<string,string>={
  pending:'I kö',running:'Körs',completed:'Slutfört',failed:'Misslyckades',
  needs_recovery:'Kräver åtgärd'
 };
-function jobRow(job:PortalJobItem):string {
+function jobRow(job:PortalJobItem,linked=true):string {
  const status=statusLabels[job.status]??'Okänd status';
  const destination=projectUrl(job.project_id)+(job.type==='render'?'?view=images':'?view=history');
  const safeError=job.error?'<p class="danger small" role="status">'+escapeHtml(job.error)+'</p>':'';
  const category=job.type==='model'?'Modellering':'Rendering';
  const warning=job.status==='failed'||job.status==='needs_recovery';
  // The entire job entry is one accessible link, with no duplicate "Visa..." action.
- return '<li class="job-item"><a class="job-link" href="'+destination+
+ return '<li class="job-item">'+(linked?
+   '<a class="job-link" href="'+destination+
    '" aria-label="Visa '+category.toLowerCase()+' för '+escapeHtml(job.project_name)+
-   ', revision '+job.revision+', '+escapeHtml(status)+'">'+
+   ', revision '+job.revision+', '+escapeHtml(status)+'">':
+   '<div class="job-link job-static">')+
    '<span class="job-main"><strong>'+escapeHtml(job.project_name)+'</strong>'+
    '<span class="muted small">'+category+' · revision '+job.revision+'</span>'+
    '<span class="muted small job-detail">'+escapeHtml(job.detail)+' · '+when(job.created_at)+'</span>'+
    safeError+'</span>'+
    '<span class="job-end"><span class="tag'+(warning?' empty':'')+'">'+
      escapeHtml(status)+'</span><span class="job-arrow" aria-hidden="true">›</span></span>'+
-   '</a></li>';
+   (linked?'</a>':'</div>')+'</li>';
 }
 export function jobsOverviewPage(items:PortalJobItem[]):string {
  const active=items.filter(x=>activeStatus(x.status));
@@ -280,7 +282,7 @@ export function projectDetailPage(
      id:j.id,project_id:p.id,project_name:p.name,type:'model',revision:j.requested_revision,
      status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
      error:j.error_message
-   })).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>';
+   },false)).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</section>';
  const renderSection=csrf===undefined?'':'<details class="panel" style="margin-bottom:16px"'+
    (message==='render_error'?' open':'')+'><summary style="cursor:pointer;min-height:44px;font-weight:700">Skapa rendering (Modal)</summary>'+
    '<div style="margin-top:12px"><h2>Rendera bild från Blender</h2>'+
