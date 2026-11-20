@@ -50,7 +50,7 @@ test('browser only queues render after explicit signed-owner, origin and CSRF ch
    headers:{cookie:'session=owner',origin:ORIGIN,'content-type':'application/x-www-form-urlencoded',...overrides},
    payload:new URLSearchParams({csrf:CSRF,revision:'1',engine:'CYCLES',size:'256',samples:'8',...body}).toString()
  });
- assert.equal((await post({cookie:'session=other'})).statusCode,303); // Owner-scoped reserve handles this in production.
+ assert.equal((await post({cookie:'session=other'})).statusCode,404);
  assert.equal((await post({cookie:'session=other',origin:'https://evil.invalid'})).statusCode,403);
  assert.equal((await post({cookie:''})).statusCode,401);
  assert.equal((await post({origin:'https://evil.invalid'})).statusCode,403);
