@@ -6,6 +6,7 @@ All artifacts are regenerated *after* user code returns successfully.
 """
 import sys
 import json
+import signal
 import struct
 from pathlib import Path
 import bpy
@@ -87,10 +88,15 @@ def main():
     bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=False)
     preview={'format':'glb','status':'unavailable','reason':'export_failed'}
     files=[blend]
+    def preview_timeout(_signum,_frame):
+        raise TimeoutError('Optional preview export exceeded its time budget')
+    previous_handler=signal.getsignal(signal.SIGALRM)
     try:
+        signal.signal(signal.SIGALRM,preview_timeout)
+        signal.alarm(90)  # preview must not consume the whole paid sandbox budget
         export_glb(glb)
         if not glb.is_file() or not preview_is_structurally_usable(glb):
-            raise RuntimeError('Empty GLB export')
+            raise RuntimeError('Unusable GLB preview')
         files.append(glb)
         # An exported GLB is a preview, not a proof of fidelity. Hair curves,
         # procedural geometry and Blender-specific shader nodes may be absent.
@@ -98,6 +104,9 @@ def main():
     except Exception:
         # Preview failure must never erase a valid native Blender scene.
         glb.unlink(missing_ok=True)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM,previous_handler)
     write_manifest(report,'sandbox_python',files,preview=preview)
     print('BW_SANDBOX_PYTHON PASS',flush=True)
 
