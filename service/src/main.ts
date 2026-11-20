@@ -9,6 +9,7 @@ import {ModalAccountManager} from './modal/modal-accounts.js';
 import {ModalCliTokenVerifier} from './modal/modal-token-verifier.js';
 import {LocalArtifactStore} from './storage/artifact-store.js';
 import {ProjectDeletionService} from './jobs/project-deletion.js';
+import {ProjectArchiveService} from './jobs/project-archive.js';
 
 const config=loadConfig();
 const databaseConfig=databasePoolConfig();
@@ -22,9 +23,10 @@ const modalAccounts=pool && process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY
 const projects=pool?new ProjectRepository(pool):undefined;
 const artifacts=pool?new LocalArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'):undefined;
 const projectDeletion=projects&&artifacts?new ProjectDeletionService(projects,artifacts):undefined;
+const projectArchive=projects&&artifacts?new ProjectArchiveService(projects,artifacts):undefined;
 const app=createApp(config,pool?{
   ownerKey:config.ownerKey,projects:projects!,jobs:new JobRepository(pool),
-  artifacts:artifacts!,projectDeletion:projectDeletion!,
+  artifacts:artifacts!,projectDeletion:projectDeletion!,projectArchive:projectArchive!,
   ...(modalAccounts?{modalAccounts}:{})
 }:undefined,google?{google}:undefined);
 if(pool)app.addHook('onClose',async()=>{await pool.end();});
