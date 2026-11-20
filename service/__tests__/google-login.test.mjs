@@ -140,7 +140,7 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
     state:settingsGoogle.searchParams.get('state'),code:'alice'
   }),{headers:{cookie:loginCookie}});
   assert.equal(settingsCallback.status,302);
-  assert.equal(settingsCallback.headers.get('location'),'/settings');
+  assert.equal(settingsCallback.headers.get('location'),'/');
   const sessionSetCookie=settingsCallback.headers.get('set-cookie');
   const sessionValue=sessionSetCookie.match(/bw_modal_settings=([^;]+)/)?.[1];
   assert.ok(sessionValue,'missing signed Google settings session');
@@ -149,6 +149,53 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
   assert.equal(settingsPage.status,200);
   const html=await settingsPage.text();
   assert.match(html,/Ej ansluten/);
+  const portalUnauthenticated=await get('/');
+  assert.equal(portalUnauthenticated.status,200);
+  assert.match(await portalUnauthenticated.text(),/Logga in med Google/);
+  const portalBeforeProjects=await get('/',{headers:{cookie:sessionCookie}});
+  assert.equal(portalBeforeProjects.status,200);
+  assert.match(await portalBeforeProjects.text(),/Inga projekt ännu/);
+  const portalProject=await new ProjectRepository(pool).create(settingsOwner,
+    'Projekt <script>alert(1)</script>', 'Beskrivning & modeller');
+  projects.push(portalProject.id);
+  // Only the signed-in identity sees this project, never an OAuth bearer token.
+  const bobStart=await get('/settings/login');
+  const bobLoginUrl=new URL(bobStart.headers.get('location'));
+  const bobCallback=await get('/auth/google/callback?'+new URLSearchParams({
+    state:bobLoginUrl.searchParams.get('state'),code:'bob'
+  }),{headers:{cookie:bobStart.headers.get('set-cookie').split(';')[0]}});
+  const bobCookie='bw_modal_settings='+
+    bobCallback.headers.get('set-cookie').match(/bw_modal_settings=([^;]+)/)?.[1];
+  const bobHome=await get('/',{headers:{cookie:bobCookie}});
+  assert.doesNotMatch(await bobHome.text(),/Projekt &lt;script/);
+  assert.equal((await get('/projects/'+portalProject.id,
+    {headers:{cookie:bobCookie}})).status,404);
+  // Existing revision links are listed, but no new Blender execution is started.
+  await new ProjectRepository(pool).addRevision(settingsOwner,portalProject.id,
+    'Testrevision <tag>',portalProject.id+'/00000001');
+  const portalHome=await get('/',{headers:{cookie:sessionCookie}});
+  const homeHtml=await portalHome.text();
+  assert.equal(portalHome.status,200);
+  assert.match(homeHtml,/Projekt &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(homeHtml,/<script>alert/);
+  assert.match(homeHtml,/Beskrivning &amp; modeller/);
+  assert.match(homeHtml,/Senaste revision 1/);
+  assert.match(homeHtml,new RegExp('/viewer/'+portalProject.id+'/revisions/1'));
+  assert.match(homeHtml,new RegExp('/projects/'+portalProject.id));
+  assert.equal(portalHome.headers.get('cache-control'),'no-store');
+  assert.equal(portalHome.headers.get('vary'),'Cookie');
+  const projectPage=await get('/projects/'+portalProject.id,
+    {headers:{cookie:sessionCookie}});
+  assert.equal(projectPage.status,200);
+  const projectHtml=await projectPage.text();
+  assert.match(projectHtml,/Revisionshistorik/);
+  assert.match(projectHtml,/Testrevision &lt;tag&gt;/);
+  assert.doesNotMatch(projectHtml,/<tag>/);
+  assert.equal((await get('/projects/'+portalProject.id)).status,302);
+  assert.equal((await get('/projects/not-a-uuid',
+    {headers:{cookie:sessionCookie}})).status,404);
+  assert.equal((await get('/projects/'+randomBytes(16).toString('hex'),
+    {headers:{cookie:sessionCookie}})).status,404);
   const csrf=html.match(/name="csrf" value="([^"]+)"/)?.[1];
   assert.ok(csrf);
   const submit=async(action,form,headers={})=>get('/settings/'+action,{

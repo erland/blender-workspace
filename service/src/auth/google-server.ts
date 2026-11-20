@@ -210,7 +210,7 @@ export class GoogleOAuthServer {
       const session:SettingsSession={ownerKey,csrf:random(),expires:Date.now()+8*3600_000};
       const encoded=b64(JSON.stringify(session));
       return {status:302,body:'',headers:{
-        location:'/settings',
+        location:'/',
         'set-cookie':[this.cookie('',0),
           this.settingsCookie(encoded+'.'+this.signature(encoded),8*3600)],
         'cache-control':'no-store'

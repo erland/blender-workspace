@@ -32,7 +32,8 @@ footer{padding:5px 20px;font-size:.9rem}
 <nav class="actions" aria-label="Visningskontroller">
 <button id="reset" disabled>Återställ vy</button>
 <button id="snapshot" disabled>Exportera PNG</button>
-<a href="/settings">Kontoinställningar</a>
+<a href="/">Mina projekt</a>
+<a href="/settings">Modal-inställningar</a>
 </nav></header>
 <div class="selection-bar">
 <div class="viewer-options" role="group" aria-label="Kameravy och modellhjälpmedel">
