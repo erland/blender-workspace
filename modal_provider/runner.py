@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # necessarily the repository root. Preserve package imports in every failure path.
 if __package__ in (None, "") and str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-ARTIFACT_NAMES = ("scene.blend", "scene.glb", "scene.json")
+ARTIFACT_NAMES = ("scene.blend", "scene.json")  # required; GLB is optional
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
 
@@ -128,8 +128,9 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
             raise RuntimeError("Expected isolated Blender-Python success marker missing")
         executed = time.monotonic()
         phase = "artifact_transfer"
-        names = ARTIFACT_NAMES
-        for name in names:
+        # Always transfer the native project and inspection report first.
+        # Preview presence is determined by the report, not a mandatory GLB.
+        for name in ARTIFACT_NAMES:
             local = out / name
             sandbox.filesystem.copy_to_local("/workspace/out/" + name, str(local))
             if not local.is_file() or local.stat().st_size == 0:
@@ -137,6 +138,18 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
             report["artifacts"].append({
                 "name": name, "bytes": local.stat().st_size,
                 "sha256": hashlib.sha256(local.read_bytes()).hexdigest()})
+        metadata=json.loads((out / "scene.json").read_text(encoding="utf8"))
+        entries=metadata.get("artifacts",[])
+        if isinstance(entries,list) and any(
+                isinstance(item,dict) and item.get("path")=="scene.glb" for item in entries):
+            local=out / "scene.glb"
+            sandbox.filesystem.copy_to_local("/workspace/out/scene.glb",str(local))
+            if not local.is_file() or not local.stat().st_size:
+                raise RuntimeError("Optional preview declared but missing")
+            report["artifacts"].append({
+                "name":"scene.glb","bytes":local.stat().st_size,
+                "sha256":hashlib.sha256(local.read_bytes()).hexdigest()})
+        report["preview_status"]=metadata.get("preview",{}).get("status","unknown")
         phase = "artifact_validation"
         from modal_provider.artifact_validation import validate_python_outputs
         validate_python_outputs(out)
