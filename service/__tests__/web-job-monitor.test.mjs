@@ -50,7 +50,7 @@ test('owner-scoped web job monitor merges model and render history, escapes text
  assert.equal(response.statusCode,200);
  assert.match(response.headers['cache-control'],/no-store/);
  assert.doesNotMatch(response.body,/<meta http-equiv="refresh"/);
- assert.match(response.body,/portal\\/assets\\/live-status\\.js/);
+ assert.ok(response.body.includes('/portal/assets/live-status.js'));
  assert.match(response.headers['content-security-policy'],/connect-src 'self'/);
  assert.match(response.body,/Modellering/);
  assert.match(response.body,/Rendering/);
@@ -69,7 +69,7 @@ test('owner-scoped web job monitor merges model and render history, escapes text
  assert.match(history.body,/Modelleringsjobb/);
  assert.ok(history.body.includes('href="/jobs"'));
  assert.doesNotMatch(history.body,/<meta http-equiv="refresh"/);
- assert.match(history.body,/portal\\/assets\\/live-status\\.js/);
+ assert.ok(history.body.includes('/portal/assets/live-status.js'));
  const images=await get('/projects/'+PROJECT+'?view=images','session=owner');
  assert.equal(images.statusCode,200);
  assert.match(images.body,/Renderingsjobb och bilder/);
