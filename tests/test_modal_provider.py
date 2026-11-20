@@ -16,7 +16,7 @@ class ModalProviderTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
-    def sdk(self, exit_code=0, marker="BW_SANDBOX_PYTHON PASS", copy_error=None):
+    def sdk(self, exit_code=0, marker="BW_SANDBOX_PYTHON PASS", copy_error=None, preview=False):
         sdk = MagicMock()
         sandbox = sdk.Sandbox.create.return_value
         proc = sandbox.exec.return_value
@@ -27,7 +27,12 @@ class ModalProviderTests(unittest.TestCase):
         def copy(remote, local):
             if copy_error:
                 raise copy_error
-            Path(local).write_bytes(("artifact:" + Path(remote).name).encode())
+            if Path(remote).name == "scene.json":
+                paths=["scene.blend"]+(["scene.glb"] if preview else [])
+                Path(local).write_text(json.dumps({"artifacts":[{"path":p} for p in paths],
+                    "preview":{"status":"available" if preview else "unavailable"}}))
+            else:
+                Path(local).write_bytes(("artifact:" + Path(remote).name).encode())
 
         sandbox.filesystem.copy_to_local.side_effect = copy
         return sdk
@@ -94,7 +99,18 @@ class ModalProviderTests(unittest.TestCase):
             self.assertEqual(calls[1].args, (str(prior.resolve()), "/workspace/out/input.blend"))
             args = sdk.Sandbox.create.return_value.exec.call_args.args
             self.assertIn("/workspace/out/input.blend", args)
-            self.assertEqual(len(report["artifacts"]), 3)
+            self.assertEqual(len(report["artifacts"]), 2)
+
+    def test_glb_is_transferred_if_report_declares_optional_preview(self):
+        sdk=self.sdk(preview=True)
+        with TemporaryDirectory() as tmp, patch(
+            "modal_provider.artifact_validation.validate_python_outputs"
+        ):
+            script,_=self.files(tmp)
+            result=run(sdk,Path(tmp)/"out",python_file=str(script))
+            self.assertEqual({a["name"] for a in result["artifacts"]},
+                             {"scene.blend","scene.json","scene.glb"})
+            self.assertEqual(result["preview_status"],"available")
 
     def test_missing_or_invalid_script_is_rejected_before_billing(self):
         sdk = self.sdk()
@@ -209,7 +225,7 @@ class ModalProviderTests(unittest.TestCase):
 
     def test_cost_estimate_and_artifact_contract(self):
         self.assertEqual(estimate_usd(60, 2, 8192), 0.007932)
-        self.assertEqual(ARTIFACT_NAMES, ("scene.blend", "scene.glb", "scene.json"))
+        self.assertEqual(ARTIFACT_NAMES, ("scene.blend", "scene.json"))
 
 
 if __name__ == "__main__":
