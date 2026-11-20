@@ -9,11 +9,11 @@ export function viewerPage(projectId:string,revision:number):string{
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#eef2f7;color:#172033;font:16px system-ui,sans-serif;line-height:1.45}
-button,select{font:inherit}
+button,select,input{font:inherit}
 button{border:1px solid #64748b;background:#fff;border-radius:9px;padding:10px 14px;min-height:44px;cursor:pointer}
 button:disabled{cursor:default;opacity:.45}
 a{color:#2054b8}
-a:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
 header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;background:#fff;border-bottom:1px solid #cbd5e1}
 h1{font-size:1rem;margin:0;line-height:1.2}
 .back-link{display:inline-flex;align-items:center;min-height:44px;gap:5px;white-space:nowrap;text-decoration:none;font-weight:650}
@@ -33,6 +33,14 @@ canvas{display:block;width:100%;height:100%;border-radius:12px;touch-action:none
 .viewer-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:white;border-bottom:1px solid #cbd5e1}
 .viewer-toolbar .primary{flex:1;background:#2054b8;color:white;border-color:#2054b8;font-weight:650}
 .viewer-toolbar .icon-button{flex:0 0 44px;padding:8px}
+/* Only animated GLBs reveal this toolbar; static models retain the compact layout. */
+.animation-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;padding:8px 12px;border-bottom:1px solid #cbd5e1}
+.animation-bar[hidden]{display:none}
+.animation-bar select{max-width:min(100%,230px)}
+.animation-bar input[type=range]{flex:1 1 130px;min-width:80px;accent-color:#2054b8;min-height:44px}
+.animation-bar label{display:inline-flex;gap:6px;align-items:center}
+.animation-bar input[type=checkbox]{width:20px;height:20px;accent-color:#2054b8}
+.animation-bar output{font-variant-numeric:tabular-nums;white-space:nowrap;color:#475569;font-size:.84rem}
 .viewer-settings{background:#fff;border-bottom:1px solid #cbd5e1;padding:0 12px}
 .viewer-settings summary{display:flex;align-items:center;cursor:pointer;min-height:44px;font-weight:600}
 .viewer-options{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
@@ -68,6 +76,9 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
  main{padding:6px 8px 0}
  .viewport{height:clamp(280px,56dvh,560px);min-height:0}
  .viewer-toolbar{padding:8px}
+ .animation-bar{gap:6px;padding:8px}
+ .animation-bar select{flex:1 1 120px;min-width:0}
+ .animation-bar input[type=range]{order:5;flex-basis:100%}
  .render-card{width:calc((100% - 20px)/3);min-width:95px}
  .render-card img{height:92px}
 }
@@ -96,6 +107,14 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
  <button id="render-current-view" class="primary" disabled>Rendera vy (Modal)</button>
  <button id="snapshot" class="icon-button" disabled title="Exportera PNG" aria-label="Exportera PNG">📷</button>
  <button id="reset" class="icon-button" disabled title="Återställ vy" aria-label="Återställ vy">↺</button>
+</div>
+<div id="animation-bar" class="animation-bar" role="group" aria-label="Animationskontroller" hidden>
+ <label for="animation-clip">Animation</label>
+ <select id="animation-clip" aria-label="Välj animation"></select>
+ <button id="animation-play" aria-label="Spela animation">Spela</button>
+ <input id="animation-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Animationsposition">
+ <output id="animation-clock" for="animation-seek">0.0 s / 0.0 s</output>
+ <label><input id="animation-loop" type="checkbox" checked> Upprepa</label>
 </div>
 <details class="viewer-settings" id="viewer-settings">
  <summary>Visningsinställningar</summary>
