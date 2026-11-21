@@ -116,7 +116,7 @@ class ModalProviderTests(unittest.TestCase):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp:
             script, _ = self.files(tmp)
-            for source in ("", "  ", "x" * 16385, "print(1)\x00"):
+            for source in ("", "  ", "x" * 65537, "print(1)\x00"):
                 script.write_text(source)
                 with self.assertRaises(ValueError):
                     run(sdk, Path(tmp) / "out", python_file=str(script))
