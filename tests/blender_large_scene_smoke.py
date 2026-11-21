@@ -3,6 +3,9 @@ import json
 from pathlib import Path
 import bpy
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.apply_python import main as apply_model
 
 # Use only one real bpy mesh, shared by many instances: count limits, not a

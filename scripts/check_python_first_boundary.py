@@ -23,9 +23,9 @@ def audit(root=ROOT):
     mcp = (root / MCP.relative_to(ROOT)).read_text(encoding='utf-8')
     python_schema = (root / SCHEMA.relative_to(ROOT)).read_text(encoding='utf-8')
     tools = re.findall(r"server\.registerTool\(\s*['\"]([^'\"]+)['\"]", mcp)
-    # Render requests are derived-image jobs, never scene-editing writers.
+    # Render and GLB refresh requests create derived assets, never scene-editing writers.
     writers = [name for name in tools if name.startswith('workspace_queue_')
-               and name != 'workspace_queue_render']
+               and name not in ('workspace_queue_render', 'workspace_queue_glb_preview_refresh')]
     if 'workspace_queue_render' in tools and 'workspace_queue_python_script' not in tools:
         errors.append('Rendering must not replace Python scene authoring')
     if writers != [EXPECTED]:

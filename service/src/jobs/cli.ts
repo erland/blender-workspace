@@ -9,6 +9,10 @@ import {ModalRenderExecutor} from './modal-render.js';
 import {RenderJobRepository} from './render-repository.js';
 import {RenderArtifactStore} from '../storage/render-artifacts.js';
 import {RenderOrchestrator} from './render-orchestrator.js';
+import {GlbPreviewRepository} from './glb-preview-repository.js';
+import {GlbPreviewArtifactStore} from '../storage/glb-preview-artifacts.js';
+import {GlbPreviewOrchestrator} from './glb-preview-orchestrator.js';
+import {ModalGlbPreviewExecutor} from './modal-glb-preview.js';
 import {ModalAccountManager} from '../modal/modal-accounts.js';
 import {ModalCliTokenVerifier} from '../modal/modal-token-verifier.js';
 
@@ -27,6 +31,9 @@ const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),
 const renderQueue=new RenderJobRepository(pool);
 const renderWorkflow=new RenderOrchestrator(renderQueue,new LocalArtifactStore(root),
   new RenderArtifactStore(root),new ModalRenderExecutor(worker,accounts));
+const previewQueue=new GlbPreviewRepository(pool);
+const previewWorkflow=new GlbPreviewOrchestrator(previewQueue,new LocalArtifactStore(root),
+  new GlbPreviewArtifactStore(root),new ModalGlbPreviewExecutor(worker,accounts));
 const [command,owner,argument]=process.argv.slice(2);
 if(command!=='dispatch' &&
   (!owner || (!argument&&!['modal-status','modal-test','modal-disconnect','modal-connect'].includes(command))))
@@ -37,7 +44,8 @@ try {
     if(!accounts)throw new Error('Dispatcher requires personal Modal accounts');
     const pollMs=Number(process.env.MODAL_DISPATCH_POLL_MS??'2000');
     const graceMinutes=Number(process.env.MODAL_STALE_JOB_MINUTES??'30');
-    const dispatcher=new JobDispatcher(jobs,workflow,{pollMs,graceMinutes},renderQueue,renderWorkflow);
+    const dispatcher=new JobDispatcher(jobs,workflow,{pollMs,graceMinutes},renderQueue,renderWorkflow,
+      previewQueue,previewWorkflow);
     const controller=new AbortController();
     process.once('SIGTERM',()=>controller.abort());
     process.once('SIGINT',()=>controller.abort());
@@ -50,6 +58,8 @@ try {
     console.log(JSON.stringify({jobId:job.id,status:job.status}));
   } else if(command==='render-recover'){
     console.log(JSON.stringify({recovered:await renderWorkflow.recover(owner,argument)}));
+  } else if(command==='preview-recover'){
+    console.log(JSON.stringify({recovered:await previewWorkflow.recover(owner,argument)}));
   } else if(command==='modal-status'){
     if(!accounts)throw new Error('Modal account store not configured');
     console.log(JSON.stringify(await accounts.status(owner)));

@@ -5,6 +5,9 @@ import tempfile
 from pathlib import Path
 
 import bpy
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.common import export_glb
 
 bpy.ops.object.select_all(action='SELECT')

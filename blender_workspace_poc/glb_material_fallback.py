@@ -9,8 +9,11 @@ from contextlib import contextmanager
 import bpy
 
 
-def _near_white(rgb):
-    return all(float(v) >= 0.95 for v in rgb[:3])
+def _default_preview_color(rgb):
+    # New Blender materials default to neutral 0.8 grey, not white. This
+    # should not override a meaningful procedural skin ColorRamp.
+    return (all(float(v) >= 0.95 for v in rgb[:3]) or
+            all(abs(float(v)-0.8) < 0.005 for v in rgb[:3]))
 
 
 def _surface_bsdf(material):
@@ -50,7 +53,7 @@ def needs_pbr_fallback(material):
 def _representative_rgb(material, bsdf):
     # Prefer an explicitly set material preview color if meaningful.
     diffuse = tuple(float(v) for v in material.diffuse_color[:3])
-    if not _near_white(diffuse):
+    if not _default_preview_color(diffuse):
         return diffuse
     # Most procedural skin shaders drive Principled Base Color with a
     # ColorRamp. Use ramp colors to keep recognizable skin tones in GLB.
