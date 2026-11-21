@@ -140,6 +140,10 @@ jobs:
           chmod 777 model001-out
           docker run --rm -v "$PWD/model001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
             -b --factory-startup --python /workspace/tests/blender_large_scene_smoke.py
+      - name: Verify procedural shader materials remain colored in GLB
+        run: |
+          docker run --rm --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/tests/blender_glb_material_smoke.py
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -14,33 +14,50 @@ import bpy
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.object_identity import ensure_object_ids
 from blender_workspace_poc.common import ensure_output, export_glb, write_manifest
+from blender_workspace_poc.glb_material_fallback import glb_material_fallback, source_material_stats
 
-def preview_is_structurally_usable(path):
+def preview_document(path):
     # The GLB exporter can succeed while generating a preview without scene
     # nodes (e.g. an all-curves scene). This is not a modeling failure.
     if Path(path).stat().st_size > 128 * 1024 * 1024:
-        return False
+        return None
     data=Path(path).read_bytes()
     if len(data)<20 or data[:4]!=b'glTF':
-        return False
+        return None
     version,total=struct.unpack_from('<II',data,4)
     if version!=2 or total!=len(data):
-        return False
+        return None
     size,kind=struct.unpack_from('<I4s',data,12)
     if kind!=b'JSON' or size==0 or size%4 or 20+size>len(data):
-        return False
+        return None
     document=json.loads(data[20:20+size])
     if not isinstance(document,dict) or document.get('asset',{}).get('version')!='2.0':
-        return False
+        return None
     if not isinstance(document.get('nodes'),list) or not document['nodes']:
-        return False
+        return None
     if not isinstance(document.get('meshes',[]),list):
-        return False
+        return None
     for collection in ('buffers','images'):
         for item in document.get(collection,[]):
             if not isinstance(item,dict) or 'uri' in item:
-                return False
-    return True
+                return None
+    return document
+
+
+def preview_is_structurally_usable(path):
+    return preview_document(path) is not None
+
+
+def material_check(document, source, fallbacks):
+    materials=document.get('materials', [])
+    primitives=sum('material' in item for mesh in document.get('meshes', [])
+                   for item in mesh.get('primitives', []))
+    count=len(materials) if isinstance(materials,list) else 0
+    return {**source, 'exportedMaterials':count,
+            'assignedPrimitives':primitives,
+            'fallbackMaterials':fallbacks,
+            'status':('not_applicable' if source['sourceMaterialSlots']==0 else
+                      'lost' if count==0 or primitives==0 else 'ok')}
 
 def main():
     if '--' not in sys.argv:
@@ -89,13 +106,18 @@ def main():
     try:
         signal.signal(signal.SIGALRM,preview_timeout)
         signal.alarm(90)  # preview must not consume the whole paid sandbox budget
-        export_glb(glb)
-        if not glb.is_file() or not preview_is_structurally_usable(glb):
+        source_stats=source_material_stats()
+        with glb_material_fallback() as fallback_stats:
+            export_glb(glb)
+        document=preview_document(glb) if glb.is_file() else None
+        if document is None:
             raise RuntimeError('Unusable GLB preview')
+        check=material_check(document,source_stats,fallback_stats['fallbackMaterials'])
         files.append(glb)
         # An exported GLB is a preview, not a proof of fidelity. Hair curves,
         # procedural geometry and Blender-specific shader nodes may be absent.
-        preview={'format':'glb','status':'available','fidelity':'unverified'}
+        preview={'format':'glb','status':'available','fidelity':'unverified',
+                 'materialCheck':check}
     except Exception:
         # Preview failure must never erase a valid native Blender scene.
         glb.unlink(missing_ok=True)
