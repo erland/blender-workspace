@@ -1,16 +1,6 @@
-name: Verify and publish release GHCR images
+name: Release - GHCR
 
 on:
-  pull_request:
-    paths:
-      - 'service/**'
-      - 'job-worker/**'
-      - 'modal_provider/**'
-      - 'blender_workspace_poc/**'
-      - 'Dockerfile'
-      - 'scripts/**'
-      - 'tests/**'
-      - '.github/workflows/ghcr-dev036.yml'
   release:
     types: [published]
   workflow_dispatch:

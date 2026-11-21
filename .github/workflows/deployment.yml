@@ -1,52 +1,34 @@
-name: DEV-037 Coolify Compose / external PostgreSQL
-
+name: CI - Deployment
 on:
   pull_request:
-    paths:
-      - 'deploy/coolify.compose.yaml'
-      - 'docs/dev-037-coolify-compose.md'
-      - 'service/src/db/pool-config.ts'
-      - 'service/src/db/migrate-cli.ts'
-      - 'service/src/jobs/cli.ts'
-      - 'service/src/main.ts'
-      - 'service/__tests__/db-pool-config.test.mjs'
-      - '.github/workflows/coolify-dev037.yml'
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
+concurrency:
+  group: ci-deployment-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  verify:
+  deployment:
+    name: Docker images and Coolify Compose
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: blender_test
-          POSTGRES_PASSWORD: ci-only-password
-          POSTGRES_DB: blender_workspace_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgres://blender_test:ci-only-password@127.0.0.1:5432/blender_workspace_test
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: TypeScript build, OAuth/MCP/PG integration and discrete config tests
-        working-directory: service
+      - name: Build three images once
         run: |
-          npm install --no-audit --no-fund
-          npm run check
+          docker build -f service/Dockerfile -t bw-mcp:ci service
+          docker build -f job-worker/Dockerfile \
+            --build-arg MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:v0.0.0 \
+            -t bw-worker:ci .
+          docker build -f Dockerfile -t bw-blender:ci .
+      - name: Validate service, preflight, worker image pin and Blender
+        run: |
+          docker run --rm --entrypoint python3 bw-mcp:ci -I -c "compile('import bpy', '<ci>', 'exec')"
+          docker run --rm --entrypoint node bw-mcp:ci -e "import('node:fs').then(fs=>{if(!fs.existsSync('/app/dist/db/migrate-cli.js')||!fs.existsSync('/app/migrations'))process.exit(1)})"
+          docker run --rm --entrypoint python3 bw-worker:ci -c "import os; assert os.environ['MODAL_BLENDER_IMAGE']=='ghcr.io/erland/blender-workspace-blender:v0.0.0'"
+          docker run --rm bw-blender:ci
       - name: Render Coolify Compose with dummy variables
         env:
           BW_IMAGE_TAG: v1.2.3
@@ -90,11 +72,6 @@ jobs:
           assert volume(services['mcp'])==volume(services['job-worker'])
           print('DEV-037 Compose external PG, env secret, migrations and shared volume: PASS')
           PY
-      - name: Build service image containing migration runner
-        run: |
-          docker build -f service/Dockerfile -t bw-mcp:dev037 service
-          docker run --rm --entrypoint node bw-mcp:dev037 -e \
-            "import('node:fs').then(fs => {if (!fs.existsSync('/app/dist/db/migrate-cli.js') || !fs.existsSync('/app/migrations')) process.exit(1)})"
       - name: Validate Compose fails closed on missing PostgreSQL password
         env:
           BW_IMAGE_TAG: v1.2.3

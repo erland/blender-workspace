@@ -1,27 +1,19 @@
-name: DEV-011 Saved Blender revisions
+name: CI - Service
 on:
   pull_request:
-    paths:
-      - 'service/**'
-      - 'modal_provider/**'
-      - 'tests/**'
-      - 'blender_workspace_poc/**'
-      - '.github/workflows/revisions-dev011.yml'
   push:
     branches: [main]
-    paths:
-      - 'service/**'
-      - 'modal_provider/**'
-      - 'tests/**'
-      - 'blender_workspace_poc/**'
-      - '.github/workflows/revisions-dev011.yml'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ci-service-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  revision-contract:
+  service:
+    name: Service and PostgreSQL
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
@@ -29,7 +21,7 @@ jobs:
           POSTGRES_USER: blender_test
           POSTGRES_PASSWORD: ci-only-password
           POSTGRES_DB: blender_workspace_test
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U blender_test -d blender_workspace_test"
           --health-interval 5s
@@ -42,12 +34,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Python unit tests with mocked Modal SDK
-        run: python3 -m unittest discover -s tests -p 'test_*.py'
-      - name: Compile and test PostgreSQL revisions
+      - name: Build and run all Node/MCP/OAuth/PG/GLB viewer tests
         working-directory: service
         run: |
           npm install --no-audit --no-fund
           npm run check
-      - name: Build Modal worker
-        run: docker build -f job-worker/Dockerfile -t blender-workspace-worker:dev011 .
+      - name: Verify migration idempotence
+        working-directory: service
+        run: |
+          DATABASE_URL="$TEST_DATABASE_URL" npm run db:migrate
+          DATABASE_URL="$TEST_DATABASE_URL" npm run db:migrate
+      - name: Enforce Python-first authoring boundary
+        run: python3 scripts/check_python_first_boundary.py
