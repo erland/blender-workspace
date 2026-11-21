@@ -144,6 +144,18 @@ jobs:
         run: |
           docker run --rm --entrypoint blender blender-workspace:ci \
             -b --factory-startup --python /workspace/tests/blender_glb_material_smoke.py
+      - name: Re-export immutable BLEND preview with procedural PBR skin
+        run: |
+          set -eu
+          mkdir -p preview001-out
+          chmod 777 preview001-out
+          docker run --rm -v "$PWD/preview001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/tests/blender_preview_source.py
+          sha256sum preview001-out/input.blend | cut -d' ' -f1 > preview001-out/before.sha256
+          docker run --rm -v "$PWD/preview001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/blender_workspace_poc/refresh_glb.py \
+            -- /workspace/out/input.blend /workspace/out/preview.glb
+          python3 tests/check_preview_refresh.py
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4
