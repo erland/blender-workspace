@@ -1,4 +1,4 @@
-import {copyFile,lstat,mkdir,open,rename,rm} from 'node:fs/promises';
+import {copyFile,lstat,mkdir,open,link,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {fileSha256,validUuid} from './render-artifacts.js';
 
@@ -33,7 +33,8 @@ export class GlbPreviewArtifactStore {
         await fileSha256(temporary)!==await fileSha256(source))
        throw new Error('GLB changed during publication');
      const sha256=await fileSha256(temporary);
-     await rename(temporary,destination);
+     // Atomic no-replace link prevents a second job from changing an immutable preview.
+     await link(temporary,destination);
      return {sha256,sizeBytes:copy.size};
    }finally{
      await lock.close();
