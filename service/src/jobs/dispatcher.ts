@@ -45,7 +45,7 @@ export class JobDispatcher {
           code:'preview_failed'}));return {state:'failed',jobId:preview.id};}
       }
       try{
-        await this.renderWorkflow.executeClaimed(render);
+        await this.renderWorkflow!.executeClaimed(render);
         return {state:'completed',jobId:render.id};
       }catch{
         console.error(JSON.stringify({event:'render_job_failed',jobId:render.id,
