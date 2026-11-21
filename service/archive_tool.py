@@ -9,9 +9,10 @@ import stat
 import sys
 import zipfile
 
-MAX_TOTAL = 128 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
+MAX_TOTAL = 512 * 1024 * 1024  # expanded project size, separate from ZIP transfer
 MAX_FILES = 1200
-MAX_FILE = 64 * 1024 * 1024
+MAX_FILE = 256 * 1024 * 1024
 PATTERN = re.compile(r"^revisions/([0-9]{8})/([a-zA-Z0-9][a-zA-Z0-9_-]{0,80}\.(?:blend|glb|json))$")
 UUID = re.compile(r"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
 SHA = re.compile(r"^[0-9a-f]{64}$")
@@ -97,7 +98,7 @@ def export_zip(meta_path, project_dir, output_zip):
 
 def import_zip(input_zip, output_dir):
     archive = Path(input_zip)
-    if archive.stat().st_size > MAX_TOTAL:
+    if archive.stat().st_size > MAX_ARCHIVE_BYTES:
         raise ValueError("Compressed archive is too large")
     with zipfile.ZipFile(archive, "r") as inp:
         entries = inp.infolist()

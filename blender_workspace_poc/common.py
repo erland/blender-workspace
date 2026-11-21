@@ -51,7 +51,11 @@ def inspect_scene():
         'render_engine':bpy.context.scene.render.engine}
 def artifact_record(path):
     p=Path(path)
-    return {'path':p.name,'size_bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+    digest=hashlib.sha256()
+    with p.open('rb') as source:
+        for chunk in iter(lambda: source.read(1024*1024), b''):
+            digest.update(chunk)
+    return {'path':p.name,'size_bytes':p.stat().st_size,'sha256':digest.hexdigest()}
 def write_manifest(path,stage,artifacts,preview=None):
     report={'schema_version':1,'stage':stage,'scene':inspect_scene(),
             'artifacts':[artifact_record(p) for p in artifacts]}

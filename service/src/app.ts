@@ -42,7 +42,7 @@ export function createApp(config:ServiceConfig,
  }
  if(options?.google){
    app.addContentTypeParser('application/vnd.blender-workspace.project+zip',
-     {parseAs:'buffer',bodyLimit:128*1024*1024},(_request,body,done)=>done(null,body));
+     {parseAs:'buffer',bodyLimit:256*1024*1024},(_request,body,done)=>done(null,body));
    app.addContentTypeParser('application/x-www-form-urlencoded',
      {parseAs:'string'},(_request,body,done)=>done(null,body));
    const google=options.google;
@@ -249,7 +249,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          return reply.code(422).send('Projektet kunde inte exporteras. Kontrollera att revisionerna är kompletta.');
        }
      });
-     app.post('/projects/import',{bodyLimit:128*1024*1024},async(request,reply)=>{
+     app.post('/projects/import',{bodyLimit:256*1024*1024},async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
        secure(reply).header('vary','Cookie')
          .header('content-security-policy',"default-src 'none'");

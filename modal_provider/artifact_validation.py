@@ -10,8 +10,9 @@ from pathlib import Path
 import struct
 from uuid import UUID
 
-MAX_MODEL_BYTES=128*1024*1024
-MAX_REPORT_BYTES=2*1024*1024
+MAX_BLEND_BYTES=256*1024*1024
+MAX_GLB_BYTES=128*1024*1024
+MAX_REPORT_BYTES=16*1024*1024
 
 def _file(folder,name,max_bytes):
     file=Path(folder)/name
@@ -20,7 +21,7 @@ def _file(folder,name,max_bytes):
     return file.read_bytes()
 
 def _validate_python_outputs(folder):
-    blend=_file(folder,'scene.blend',MAX_MODEL_BYTES)
+    blend=_file(folder,'scene.blend',MAX_BLEND_BYTES)
     glb=None
     raw_report=_file(folder,'scene.json',MAX_REPORT_BYTES)
     if not blend.startswith(b'BLENDER') or len(blend)<12:
@@ -28,7 +29,7 @@ def _validate_python_outputs(folder):
     node_count=0
     mesh_count=0
     if (Path(folder)/'scene.glb').exists():
-        glb=_file(folder,'scene.glb',MAX_MODEL_BYTES)
+        glb=_file(folder,'scene.glb',MAX_GLB_BYTES)
         if len(glb)<20 or glb[:4]!=b'glTF':
             raise ValueError('Sandbox returned invalid GLB header')
         version,total=struct.unpack_from('<II',glb,4)
@@ -54,7 +55,7 @@ def _validate_python_outputs(folder):
     if not isinstance(report,dict) or report.get('schema_version')!=1 or report.get('stage')!='sandbox_python':
         raise ValueError('Sandbox report has invalid provenance')
     scene=report.get('scene')
-    if not isinstance(scene,dict) or not isinstance(scene.get('objects'),list) or not 1<=len(scene['objects'])<=512:
+    if not isinstance(scene,dict) or not isinstance(scene.get('objects'),list) or len(scene['objects'])<1:
         raise ValueError('Sandbox report has invalid objects')
     seen=set()
     for obj in scene['objects']:

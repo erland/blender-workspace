@@ -9,9 +9,9 @@ import {parsePythonScript} from './python-script.js';
 const CHECKER = `
 import json, sys
 try:
-    source = sys.stdin.buffer.read(16385)
-    if len(source) > 16384:
-        raise ValueError("Python source exceeds 16384 bytes")
+    source = sys.stdin.buffer.read(65537)
+    if len(source) > 65536:
+        raise ValueError("Python source exceeds 65536 bytes")
     text = source.decode("utf-8", errors="strict")
     compile(text, "<blender-script>", "exec", dont_inherit=True)
 except (SyntaxError, IndentationError, TabError) as error:
