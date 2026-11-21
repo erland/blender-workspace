@@ -42,8 +42,8 @@ Cycles CPU render under the signed-in owner's connected Modal account.
 
 - Uses the same saved source `.blend`, render job journal, PNG artifact store
   and project-page image history as renders started on the project page.
-- Uses 16 Cycles samples with denoising. The **shortest image edge is 256 px**;
-  the longer edge follows the canvas aspect ratio, up to 1024 px (4:1 limit).
+- Uses 16 Cycles samples with denoising. The **shortest image edge is 512 px**;
+  the longer edge follows the canvas aspect ratio, up to 2048 px (4:1 limit).
 - The viewer sends a bounded perspective camera position, orbit target,
   camera up direction and vertical field of view. Its glTF/Three.js Y-up
   world coordinates are transformed to Blender's Z-up coordinates. The

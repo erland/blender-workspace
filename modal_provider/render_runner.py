@@ -26,9 +26,13 @@ def validate_png(path, width, height):
         raise ValueError('invalid_png_dimensions')
 
 def render(sdk, out_dir, input_blend, engine, width, height, samples, camera_json=None):
-    if engine not in ('CYCLES','BLENDER_EEVEE_NEXT') or width<128 or height<128 or width>1024 or height>1024:
+    if engine not in ('CYCLES','BLENDER_EEVEE_NEXT') or width<128 or height<128:
         raise ValueError('Invalid render options')
-    if camera_json is not None and (engine!='CYCLES' or samples!=16 or min(width,height)!=256 or len(camera_json)>1024):
+    if camera_json is None:
+        if width>1024 or height>1024:
+            raise ValueError('Invalid render options')
+    elif (engine!='CYCLES' or samples!=16 or min(width,height)!=512
+          or max(width,height)>2048 or len(camera_json)>1024):
         raise ValueError('Invalid viewer render')
     if samples not in (8,16,32) or engine=='CYCLES' and samples>32:
         raise ValueError('Invalid samples')

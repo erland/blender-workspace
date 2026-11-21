@@ -51,8 +51,14 @@ def render(source,output,engine,width,height,samples,camera_json=None):
         raise ValueError('Invalid fixed sandbox paths')
     if engine not in ('BLENDER_EEVEE_NEXT','CYCLES'):
         raise ValueError('Unsupported render engine')
-    if not (128<=width<=1024 and 128<=height<=1024 and 1<=samples<=64):
+    if not (128<=width and 128<=height and 1<=samples<=64):
         raise ValueError('Render limits exceeded')
+    if camera_json is None:
+        if width>1024 or height>1024:
+            raise ValueError('Render limits exceeded')
+    elif (engine!='CYCLES' or samples!=16 or min(width,height)!=512
+          or max(width,height)>2048 or len(camera_json)>1024):
+        raise ValueError('Invalid viewer render')
     if engine=='CYCLES' and samples>32:
         raise ValueError('Cycles samples limit exceeded')
     bpy.ops.wm.open_mainfile(filepath=source,load_ui=False,use_scripts=False)
