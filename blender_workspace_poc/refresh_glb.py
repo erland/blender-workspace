@@ -3,6 +3,10 @@ import json
 import sys
 from pathlib import Path
 import bpy
+
+# Blender's --python entrypoint can omit /workspace from sys.path; do not
+# rely on Blender inheriting PYTHONPATH for the trusted re-export.
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.common import export_glb
 from blender_workspace_poc.apply_python import preview_document,material_check
 from blender_workspace_poc.glb_material_fallback import glb_material_fallback,source_material_stats
