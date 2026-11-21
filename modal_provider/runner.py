@@ -156,7 +156,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
                 raise RuntimeError("Optional preview declared but missing")
             report["artifacts"].append({
                 "name":"scene.glb","bytes":local.stat().st_size,
-                "sha256":hashlib.sha256(local.read_bytes()).hexdigest()})
+                "sha256":_sha256_file(local)})
         report["preview_status"]=metadata.get("preview",{}).get("status","unknown")
         phase = "artifact_validation"
         from modal_provider.artifact_validation import validate_python_outputs
