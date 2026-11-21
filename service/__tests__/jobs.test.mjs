@@ -96,8 +96,8 @@ test('Python scripts reject injection fields, NUL, oversized and non-UTF8-bound 
     {kind:'python_script',code:''},
     {kind:'python_script',code:'   '},
     {kind:'python_script',code:'print(1)\0'},
-    {kind:'python_script',code:'x'.repeat(16385)},
-    {kind:'python_script',code:'å'.repeat(9000)},
+    {kind:'python_script',code:'x'.repeat(65537)},
+    {kind:'python_script',code:'å'.repeat(33000)},
     {kind:'python_script',code:'print(1)',path:'/etc/passwd'},
     {kind:'batch',operations:[spec]}
   ])assert.throws(()=>parsePythonScript(value));
