@@ -43,8 +43,11 @@ jobs:
             -- /workspace/out/input.blend /workspace/out/model.py 2
       - name: Verify animation is preserved by the Blender GLB exporter
         run: |
+          set -o pipefail
           docker run --rm --entrypoint blender blender-workspace:ci \
-            -b --factory-startup --python /workspace/tests/blender_animation_smoke.py
+            -b --factory-startup --python /workspace/tests/blender_animation_smoke.py \
+            | tee blender-animation.log
+          grep -q 'BW_ANIMATED_GLB_EXPORT PASS' blender-animation.log
       - name: Verify Python-created immutable scene artifacts and object IDs
         run: |
           python3 - <<'PY'
@@ -136,14 +139,20 @@ jobs:
           PY
       - name: Verify scene with more than 512 objects and 256 meshes
         run: |
+          set -o pipefail
           mkdir -p model001-out
           chmod 777 model001-out
           docker run --rm -v "$PWD/model001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
-            -b --factory-startup --python /workspace/tests/blender_large_scene_smoke.py
+            -b --factory-startup --python /workspace/tests/blender_large_scene_smoke.py \
+            | tee blender-large-scene.log
+          grep -q 'BW_MODEL001_LARGE_SCENE PASS' blender-large-scene.log
       - name: Verify procedural shader materials remain colored in GLB
         run: |
+          set -o pipefail
           docker run --rm --entrypoint blender blender-workspace:ci \
-            -b --factory-startup --python /workspace/tests/blender_glb_material_smoke.py
+            -b --factory-startup --python /workspace/tests/blender_glb_material_smoke.py \
+            | tee blender-material.log
+          grep -q 'BW_MAT001_MATERIAL_FALLBACK PASS' blender-material.log
       - name: Re-export immutable BLEND preview with procedural PBR skin
         run: |
           set -eu
