@@ -1,39 +1,86 @@
-name: Modal Function vs Sandbox benchmark
-
+name: Live - Modal tests (manual, billable)
 on:
-  pull_request:
-    paths:
-      - "experiments/**"
-      - "tests/blender_modal_benchmark.py"
-      - ".github/workflows/modal-runtime-comparison-check.yml"
   workflow_dispatch:
     inputs:
-      run_modal:
-        description: 'Start billable Modal Function and Sandbox jobs?'
-        type: boolean
+      mode:
+        description: 'Select billable run'
         required: true
-        default: false
-      iterations:
-        description: 'Measured runs per mode (plus one warm-up each)'
         type: choice
-        required: true
+        options: [modal-sandbox, benchmark]
+      release_tag:
+        description: 'Published stable GHCR tag required for modal-sandbox'
+        type: string
+        required: false
+      iterations:
+        description: 'Benchmark iterations'
+        type: choice
         default: '3'
-        options:
-          - '1'
-          - '2'
-          - '3'
-          - '4'
-          - '5'
-
+        required: true
+        options: ['1', '2', '3', '4', '5']
 permissions:
   contents: read
-
 concurrency:
-  group: modal-benchmark-${{ github.ref }}
+  group: ci-modal-live-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
+  provider-unit-tests:
+    if: inputs.mode == 'modal-sandbox'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate stable release tag before billable work
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || exit 1
+      - name: Test provider without billable calls
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Compile
+        run: python3 -m compileall -q modal_provider tests blender_workspace_poc
+  modal-live:
+    if: inputs.mode == 'modal-sandbox'
+    needs: provider-unit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      MODAL_BLENDER_IMAGE: ghcr.io/erland/blender-workspace-blender:${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require credentials
+        run: |
+          test -n "$MODAL_TOKEN_ID" && test -n "$MODAL_TOKEN_SECRET" || { echo 'Modal credentials missing'; exit 1; }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Modal Python SDK
+        run: python -m pip install 'modal==1.4.1'
+      - name: Execute real Blender Sandbox from published GHCR image
+        run: python -m modal_provider.runner --out out-modal --timeout 900 --python-file tests/sandbox_python_example.py
+      - name: Validate Python-only Sandbox results
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from modal_provider.artifact_validation import validate_python_outputs
+          folder=Path('out-modal')
+          assert validate_python_outputs(folder)['object_count']==2
+          result=json.loads((folder/'modal_run_report.json').read_text())
+          assert result['status']=='PASS' and result['sandbox_terminated']
+          assert {v['name'] for v in result['artifacts']}=={'scene.blend','scene.glb','scene.json'}
+          print('Modal Python-only creation and artifacts: PASS')
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-modal-dev002
+          path: out-modal/
+          if-no-files-found: warn
+          retention-days: 7
   validate-benchmark:
+    if: inputs.mode == 'benchmark'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -75,7 +122,7 @@ jobs:
 
   run-modal-benchmark:
     # Never run paid Modal work for pull requests or unconfirmed dispatches.
-    if: github.event_name == 'workflow_dispatch' && inputs.run_modal == true
+    if: inputs.mode == 'benchmark'
     needs: validate-benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 35

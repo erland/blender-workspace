@@ -1,0 +1,146 @@
+name: CI - Blender
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-blender-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  blender:
+    name: Blender, Python, geometry, materials and animation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax and all provider/sandbox tests
+        run: |
+          python3 -m compileall -q blender_workspace_poc modal_provider tests
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Build Blender once
+        run: docker build --progress plain -t blender-workspace:ci .
+      - name: Create Python model and edit saved revision inside Blender
+        run: |
+          set -eu
+          mkdir -p out/first out/second
+          chmod 777 out/first out/second
+          cp tests/sandbox_python_example.py out/first/model.py
+          docker run --rm -v "$PWD/out/first:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- NEW /workspace/out/model.py 1
+          cp out/first/scene.blend out/second/input.blend
+          cat > out/second/model.py <<'PY'
+          import bpy
+          bpy.data.objects['Python Cube'].location.x = 1.5
+          bpy.ops.mesh.primitive_cylinder_add(radius=0.5,depth=2,location=(4,0,0))
+          bpy.context.object.name = 'Python Cylinder'
+          PY
+          docker run --rm -v "$PWD/out/second:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- /workspace/out/input.blend /workspace/out/model.py 2
+      - name: Verify animation is preserved by the Blender GLB exporter
+        run: |
+          docker run --rm --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/tests/blender_animation_smoke.py
+      - name: Verify Python-created immutable scene artifacts and object IDs
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from modal_provider.artifact_validation import validate_python_outputs
+          first,second=Path('out/first'),Path('out/second')
+          assert validate_python_outputs(first)['object_count']==2
+          assert validate_python_outputs(second)['object_count']==3
+          older=json.loads((first/'scene.json').read_text())['scene']['objects']
+          newer=json.loads((second/'scene.json').read_text())['scene']['objects']
+          old={o['name']:o['objectId'] for o in older}
+          new={o['name']:o['objectId'] for o in newer}
+          assert new['Python Cube']==old['Python Cube']
+          assert new['Python Sphere']==old['Python Sphere']
+          assert new['Python Cylinder'] not in set(old.values())
+          assert (first/'scene.blend').read_bytes()!=(second/'scene.blend').read_bytes()
+          print('BW_PYTHON_FIRST_SMOKE PASS')
+          PY
+      - name: Real Blender geometry verification
+        run: |
+          docker run --rm --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/tests/geometry_inspection_smoke.py \
+            | tee blender-geometry-test.log
+          grep -q 'BW_DEV030_GEOMETRY PASS' blender-geometry-test.log
+      - name: Create and reuse a named PBR material over two Python revisions
+        run: |
+          set -eu
+          mkdir -p dev032-out/first dev032-out/second
+          chmod 777 dev032-out/first dev032-out/second
+          cat > dev032-out/first/model.py <<'PY'
+          import bpy
+          from blender_workspace_poc.material_library import create_library_material, assign_library_material
+          create_library_material({
+              'materialName':'Brushed Aluminium','baseColor':[0.6,0.6,0.65],
+              'metallic':0.9,'roughness':0.3,'opacity':1.0,
+              'emissionColor':[0,0,0],'emissionStrength':0.0})
+          for name,x in [('Desk',0),('Leg',2)]:
+              bpy.ops.mesh.primitive_cube_add(location=(x,0,0))
+              bpy.context.object.name=name
+              assign_library_material(bpy.context.object,'Brushed Aluminium')
+          PY
+          docker run --rm -v "$PWD/dev032-out/first:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- NEW /workspace/out/model.py 1
+          cp dev032-out/first/scene.blend dev032-out/second/input.blend
+          cat > dev032-out/second/model.py <<'PY'
+          import bpy
+          from blender_workspace_poc.material_library import assign_library_material
+          bpy.ops.mesh.primitive_cube_add(location=(4,0,0))
+          bpy.context.object.name='New Panel'
+          assign_library_material(bpy.context.object,'Brushed Aluminium')
+          PY
+          docker run --rm -v "$PWD/dev032-out/second:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/blender_workspace_poc/apply_python.py \
+            -- /workspace/out/input.blend /workspace/out/model.py 2
+          python3 - <<'PY'
+          import json,struct
+          from pathlib import Path
+          from modal_provider.artifact_validation import validate_python_outputs
+          def gltf(path):
+              data=path.read_bytes()
+              assert data[:4]==b'glTF'
+              length,marker=struct.unpack_from('<I4s',data,12)
+              assert marker==b'JSON'
+              return json.loads(data[20:20+length].decode('utf8'))
+          ids=[]
+          for rev,names in [('first',{'Desk','Leg'}),('second',{'Desk','Leg','New Panel'})]:
+              folder=Path('dev032-out')/rev
+              assert validate_python_outputs(folder)['object_count']==len(names)
+              report=json.loads((folder/'scene.json').read_text())
+              assets=report['scene']['materialLibrary']
+              assert len(assets)==1,assets
+              mat=assets[0]
+              assert mat['name']=='Brushed Aluminium'
+              assert set(mat['usedBy'])==names
+              assert abs(mat['metallic']-0.9)<1e-5
+              assert abs(mat['roughness']-0.3)<1e-5
+              assert all(mat['name'] in obj['materials'] for obj in report['scene']['objects'])
+              ids.append({obj['name']:obj['objectId'] for obj in report['scene']['objects']})
+              scene=gltf(folder/'scene.glb')
+              assert any(m.get('name')=='Brushed Aluminium' for m in scene['materials'])
+              assert len(scene['nodes'])>=len(names)
+              assert (folder/'scene.blend').stat().st_size>100
+          assert ids[0]['Desk']==ids[1]['Desk']
+          assert ids[0]['Leg']==ids[1]['Leg']
+          assert ids[1]['New Panel'] not in set(ids[0].values())
+          print('BW_DEV032_PYTHON_MATERIAL_LIBRARY PASS')
+          PY
+      - name: Upload Blender evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-regression-artifacts
+          path: |
+            out/
+            dev032-out/
+          if-no-files-found: warn
+          retention-days: 7
