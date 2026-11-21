@@ -43,8 +43,11 @@ jobs:
             -- /workspace/out/input.blend /workspace/out/model.py 2
       - name: Verify animation is preserved by the Blender GLB exporter
         run: |
+          set -o pipefail
           docker run --rm --entrypoint blender blender-workspace:ci \
-            -b --factory-startup --python /workspace/tests/blender_animation_smoke.py
+            -b --factory-startup --python /workspace/tests/blender_animation_smoke.py \
+            | tee blender-animation.log
+          grep -q 'BW_ANIMATED_GLB_EXPORT PASS' blender-animation.log
       - name: Verify Python-created immutable scene artifacts and object IDs
         run: |
           python3 - <<'PY'
@@ -136,14 +139,32 @@ jobs:
           PY
       - name: Verify scene with more than 512 objects and 256 meshes
         run: |
+          set -o pipefail
           mkdir -p model001-out
           chmod 777 model001-out
           docker run --rm -v "$PWD/model001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
-            -b --factory-startup --python /workspace/tests/blender_large_scene_smoke.py
+            -b --factory-startup --python /workspace/tests/blender_large_scene_smoke.py \
+            | tee blender-large-scene.log
+          grep -q 'BW_MODEL001_LARGE_SCENE PASS' blender-large-scene.log
       - name: Verify procedural shader materials remain colored in GLB
         run: |
+          set -o pipefail
           docker run --rm --entrypoint blender blender-workspace:ci \
-            -b --factory-startup --python /workspace/tests/blender_glb_material_smoke.py
+            -b --factory-startup --python /workspace/tests/blender_glb_material_smoke.py \
+            | tee blender-material.log
+          grep -q 'BW_MAT001_MATERIAL_FALLBACK PASS' blender-material.log
+      - name: Re-export immutable BLEND preview with procedural PBR skin
+        run: |
+          set -eu
+          mkdir -p preview001-out
+          chmod 777 preview001-out
+          docker run --rm -v "$PWD/preview001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/tests/blender_preview_source.py
+          sha256sum preview001-out/input.blend | cut -d' ' -f1 > preview001-out/before.sha256
+          docker run --rm -v "$PWD/preview001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/blender_workspace_poc/refresh_glb.py \
+            -- /workspace/out/input.blend /workspace/out/preview.glb
+          python3 tests/check_preview_refresh.py
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4

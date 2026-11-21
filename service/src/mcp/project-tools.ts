@@ -8,6 +8,8 @@ import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
+import type {GlbPreviewRepository} from '../jobs/glb-preview-repository.js';
+import type {GlbPreviewArtifactStore} from '../storage/glb-preview-artifacts.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from '../jobs/render-repository.js';
 import {inspectSavedScene,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
 
@@ -19,6 +21,8 @@ export interface ProjectServices {
   artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'>;
   viewerOrigin?:string;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'get'|'list'>;
+  glbPreviews?:Pick<GlbPreviewRepository,'reserve'|'get'|'latest'>;
+  glbPreviewFiles?:Pick<GlbPreviewArtifactStore,'verifiedPath'>;
 }
 const uuid = z.string().uuid();
 const cleanName = z.string().trim().min(1).max(200);
@@ -43,7 +47,8 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
-  const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin,renderJobs}=deps;
+  const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin,renderJobs,
+    glbPreviews,glbPreviewFiles}=deps;
   const viewerLink=(projectId:string,revision:number)=>
     viewerOrigin+'/viewer/'+encodeURIComponent(projectId)+'/revisions/'+revision;
   async function ownedViewerRevision(projectId:string,revision:number):Promise<boolean>{
@@ -52,8 +57,14 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     if(!project)return false;
     const revisions=await projects.revisions(ownerKey,projectId);
     if(!revisions.some(v=>v.revision===revision&&v.artifact_prefix))return false;
-    try{await artifacts.verifiedArtifactPath(projectId,revision,'scene.glb');return true;}
-    catch{return false;}
+    try{
+      const latest=await glbPreviews?.latest(ownerKey,projectId,revision);
+      if(latest&&latest.sha256&&latest.size_bytes&&glbPreviewFiles){
+        await glbPreviewFiles.verifiedPath(projectId,latest.id,latest.sha256,latest.size_bytes);
+        return true;
+      }
+      await artifacts.verifiedArtifactPath(projectId,revision,'scene.glb');return true;
+    }catch{return false;}
   }
   const allowed=permissions??new Set([READ_SCOPE,WRITE_SCOPE]);
   const denied=(scope:string)=>allowed.has(scope)?null:{
@@ -235,6 +246,46 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
              ?{pngUrl:viewerOrigin+'/renders/'+job.project_id+'/'+job.id+'.png',
                requiresGoogleLogin:true}:{})});
       }catch{return failure(new JobConflict('Render status unavailable'));}
+    });
+  }
+  if(glbPreviews&&glbPreviewFiles){
+    server.registerTool('workspace_queue_glb_preview_refresh',{
+      description:'Explicitly queue a paid Modal re-export of the GLB preview for an EXISTING immutable Blender revision. Uses saved native BLEND and latest material fallback. No modeling Python and no new scene revision. Only call when the user explicitly requests a preview refresh.',
+      inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999)},
+      ...schemes(WRITE_SCOPE)
+    },async({projectId,revision})=>{
+      const deniedResult=denied(WRITE_SCOPE);if(deniedResult)return deniedResult;
+      try{
+        if(!modalAccounts||!(await modalAccounts.status(ownerKey)).connected)
+          return failure(new JobConflict('Connect Modal before refreshing the preview'));
+        if(!artifacts)return failure(new JobConflict('Saved source unavailable'));
+        const project=await projects.get(ownerKey,projectId);
+        if(!project)return failure(new JobConflict('Project not found'));
+        const revisions=await projects.revisions(ownerKey,projectId);
+        if(!revisions.some(v=>v.revision===revision&&v.artifact_prefix))
+          return failure(new JobConflict('Saved revision not found'));
+        await artifacts.verifiedArtifactPath(projectId,revision,'scene.blend');
+        const job=await glbPreviews.reserve(ownerKey,projectId,revision);
+        return result({previewJobId:job.id,projectId,revision,status:job.status,
+          additionalModalExecution:true,modelRevisionUnchanged:true});
+      }catch{return failure(new JobConflict('Preview refresh could not be queued'));}
+    });
+    server.registerTool('workspace_get_glb_preview_refresh',{
+      description:'Read status of a previously requested GLB preview refresh. Does not start a Modal job.',
+      inputSchema:{previewJobId:uuid},
+      annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+    },async({previewJobId})=>{
+      const deniedResult=denied(READ_SCOPE);if(deniedResult)return deniedResult;
+      try{
+        const job=await glbPreviews.get(ownerKey,previewJobId);
+        if(!job)return failure(new JobConflict('Preview job not found'));
+        return result({previewJobId:job.id,projectId:job.project_id,
+          revision:job.source_revision,status:job.status,
+          ...(job.status==='failed'?{failure:job.error_code}:{}),
+          ...(job.status==='completed'&&viewerOrigin
+            ?{viewerUrl:viewerLink(job.project_id,job.source_revision),
+              requiresGoogleLogin:true}:{})});
+      }catch{return failure(new JobConflict('Preview job unavailable'));}
     });
   }
   server.registerTool('workspace_queue_python_script',{
