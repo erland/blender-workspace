@@ -37,7 +37,7 @@ def audit(root=ROOT):
         errors.append('Python write tool must validate with PythonScriptSchema')
     if 'verifiedArtifactPath(projectId,expectedRevision' not in mcp:
         errors.append('Python edit must verify the saved predecessor')
-    if "Buffer.byteLength(x,'utf8')<=16_384" not in python_schema:
+    if "Buffer.byteLength(x,'utf8')<=65_536" not in python_schema:
         errors.append('Expected UTF-8 byte limit on Python source')
     return errors
 
