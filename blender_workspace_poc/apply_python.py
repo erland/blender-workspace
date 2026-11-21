@@ -23,24 +23,24 @@ def preview_document(path):
         return None
     data=Path(path).read_bytes()
     if len(data)<20 or data[:4]!=b'glTF':
-        return False
+        return None
     version,total=struct.unpack_from('<II',data,4)
     if version!=2 or total!=len(data):
-        return False
+        return None
     size,kind=struct.unpack_from('<I4s',data,12)
     if kind!=b'JSON' or size==0 or size%4 or 20+size>len(data):
-        return False
+        return None
     document=json.loads(data[20:20+size])
     if not isinstance(document,dict) or document.get('asset',{}).get('version')!='2.0':
-        return False
+        return None
     if not isinstance(document.get('nodes'),list) or not document['nodes']:
-        return False
+        return None
     if not isinstance(document.get('meshes',[]),list):
-        return False
+        return None
     for collection in ('buffers','images'):
         for item in document.get(collection,[]):
             if not isinstance(item,dict) or 'uri' in item:
-                return False
+                return None
     return document
 
 
