@@ -5,6 +5,8 @@ import type {ProjectArchiveService} from './jobs/project-archive.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from './jobs/render-repository.js';
 import {validateViewerCamera,viewerDimensions} from './jobs/viewer-camera.js';
 import type {RenderArtifactStore} from './storage/render-artifacts.js';
+import type {GlbPreviewRepository} from './jobs/glb-preview-repository.js';
+import type {GlbPreviewArtifactStore} from './storage/glb-preview-artifacts.js';
 import {importClientScript} from './web/import-client.js';
 import {liveStatusScript} from './web/live-status.js';
 import {fileURLToPath} from 'node:url';
@@ -25,12 +27,24 @@ export function createApp(config:ServiceConfig,
   projectDeletion?:Pick<ProjectDeletionService,'delete'>;
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
-  renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>},
+  renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
+  glbPreviews?:Pick<GlbPreviewRepository,'latest'|'get'|'reserve'>;
+  glbPreviewFiles?:Pick<GlbPreviewArtifactStore,'verifiedPath'>},
  options?: {keys?:Jwks;google?:GoogleOAuthServer}) {
  if(config.authMode!=='internal'&&!services)throw new Error('OAuth requires project services');
  if(config.authMode==='internal'&&services&&(!config.ownerKey||services.ownerKey!==config.ownerKey))
    throw new Error('Internal owner identity mismatch');
  const app=Fastify({logger:{level:'info'},disableRequestLogging:true,bodyLimit:256*1024,trustProxy:false});
+ async function activeGlb(owner:string,projectId:string,revision:number):Promise<string>{
+   const latest=await services?.glbPreviews?.latest(owner,projectId,revision);
+   if(latest&&latest.sha256&&latest.size_bytes&&services?.glbPreviewFiles){
+     // Never silently fall back to a stale GLB when latest derived bytes are corrupt.
+     return services.glbPreviewFiles.verifiedPath(projectId,latest.id,latest.sha256,latest.size_bytes);
+   }
+   if(!services?.artifacts)throw new Error('GLB unavailable');
+   return services.artifacts.verifiedArtifactPath(projectId,revision,'scene.glb');
+ }
+
  const principals=new WeakMap<object,Principal>();
  const keys=config.oauth?(options?.keys??options?.google?.verifierKeys??remoteJwks(config.oauth)):undefined;
  if(config.google&&!options?.google)throw new Error('Google OAuth mode requires an authorization server');
@@ -564,7 +578,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      try{
        if(!await ownedRevision(session.ownerKey,projectId,Number(revision)))
          return reply.code(404).send({error:'not_found'});
-       const file=await services.artifacts!.verifiedArtifactPath(projectId,Number(revision),'scene.glb');
+       const file=await activeGlb(session.ownerKey,projectId,Number(revision));
        return reply.type('model/gltf-binary').send(createReadStream(file));
      }catch{return reply.code(404).send({error:'not_found'});}
    });
@@ -626,7 +640,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      if(!revisions.some(v=>v.revision===revisionNo&&v.artifact_prefix))
        return reply.code(404).send({error:'not_found'});
      // This checks the manifest and actual file SHA-256 before streaming.
-     const file=await services.artifacts.verifiedArtifactPath(projectId,revisionNo,'scene.glb');
+     const file=await activeGlb(principal.ownerKey,projectId,revisionNo);
      return reply.type('model/gltf-binary').send(createReadStream(file));
    }catch{
      // Do not disclose whether a foreign, corrupt or missing revision exists.
@@ -655,6 +669,8 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        ...(services.artifacts?{artifacts:services.artifacts}:{}),
        ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{}),
        ...(services.renderJobs?{renderJobs:services.renderJobs}:{}),
+       ...(services.glbPreviews?{glbPreviews:services.glbPreviews}:{}),
+       ...(services.glbPreviewFiles?{glbPreviewFiles:services.glbPreviewFiles}:{}),
        ...(options?.google?{viewerOrigin:config.publicOrigin}:{})},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
    }
    const transport=new NodeStreamableHTTPServerTransport({sessionIdGenerator:undefined});
