@@ -7,8 +7,8 @@ if(form){
     const file=document.getElementById('archive-file').files[0];
     const status=document.getElementById('archive-result');
     if(!file)return;
-    if(file.size>128*1024*1024){
-      status.textContent='Arkivet får inte vara större än 128 MiB.';return;
+    if(file.size>256*1024*1024){
+      status.textContent='Arkivet får inte vara större än 256 MiB.';return;
     }
     const button=form.querySelector('button');
     button.disabled=true;

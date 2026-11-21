@@ -8,6 +8,14 @@ import sys
 from pathlib import Path
 import time
 
+
+def _sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as source:
+        for chunk in iter(lambda: source.read(1024*1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 ROOT = Path(__file__).resolve().parents[1]
 # Executing runner.py directly sets sys.path[0] to modal_provider/, not
 # necessarily the repository root. Preserve package imports in every failure path.
@@ -83,7 +91,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
     if not python_source.is_file() or python_source.is_symlink():
         raise ValueError('Python source file missing or unsafe')
     raw = python_source.read_bytes()
-    if not 1 <= len(raw) <= 16384 or b'\x00' in raw or not raw.strip():
+    if not 1 <= len(raw) <= 65536 or b'\x00' in raw or not raw.strip():
         raise ValueError('Invalid Python source length or content')
     try:
         raw.decode('utf8')
@@ -137,7 +145,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
                 raise RuntimeError(f"Artifact missing or empty: {name}")
             report["artifacts"].append({
                 "name": name, "bytes": local.stat().st_size,
-                "sha256": hashlib.sha256(local.read_bytes()).hexdigest()})
+                "sha256": _sha256_file(local)})
         metadata=json.loads((out / "scene.json").read_text(encoding="utf8"))
         entries=metadata.get("artifacts",[])
         if isinstance(entries,list) and any(
@@ -148,7 +156,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
                 raise RuntimeError("Optional preview declared but missing")
             report["artifacts"].append({
                 "name":"scene.glb","bytes":local.stat().st_size,
-                "sha256":hashlib.sha256(local.read_bytes()).hexdigest()})
+                "sha256":_sha256_file(local)})
         report["preview_status"]=metadata.get("preview",{}).get("status","unknown")
         phase = "artifact_validation"
         from modal_provider.artifact_validation import validate_python_outputs

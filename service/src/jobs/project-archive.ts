@@ -7,7 +7,7 @@ import type {ProjectRepository} from '../db/projects.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 
 const exec=promisify(execFile);
-const MAX_ARCHIVE_BYTES=128*1024*1024;
+const MAX_ARCHIVE_BYTES=256*1024*1024;
 export interface ArchiveData {
   formatVersion:1;
   project:{originalId:string;name:string;description:string;currentRevision:number};

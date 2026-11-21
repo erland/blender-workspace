@@ -5,7 +5,7 @@ import {z} from 'zod';
  */
 export const PythonScriptSchema=z.object({
   kind:z.literal('python_script'),
-  code:z.string().min(1).max(16_384).refine(x=>x.trim().length>0&&!x.includes('\0')&&Buffer.byteLength(x,'utf8')<=16_384,
+  code:z.string().min(1).max(65_536).refine(x=>x.trim().length>0&&!x.includes('\0')&&Buffer.byteLength(x,'utf8')<=65_536,
     'Python source must be nonempty and contain no null bytes')
 }).strict();
 export type PythonScriptSpec=z.infer<typeof PythonScriptSchema>;

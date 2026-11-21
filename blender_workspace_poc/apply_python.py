@@ -56,7 +56,7 @@ def main():
     if script.resolve()!=Path('/workspace/out/model.py'):
         raise ValueError('Script location is fixed by the trusted controller')
     data=script.read_bytes()
-    if not 1<=len(data)<=16384 or b'\x00' in data or not data.strip():
+    if not 1<=len(data)<=65536 or b'\x00' in data or not data.strip():
         raise ValueError('Invalid Python source length or content')
     code=compile(data,'<blender-workspace-user-code>','exec')
     if source=='NEW':
@@ -72,15 +72,10 @@ def main():
     # Intentional unrestricted bpy/Python API *inside* the isolated Sandbox.
     exec(code,{'__name__':'__main__','bpy':bpy})
     ensure_object_ids(bpy.data.objects)
-    objects=list(bpy.data.objects)
-    meshes=[obj for obj in objects if obj.type=='MESH']
-    if len(objects)<1 or len(objects)>512 or len(meshes)>256:
-        raise ValueError('Scene object count outside bounded output limits')
-    # Safety ceiling, not a GLB polygon budget. Higher-detail meshes and
-    # Blender hair/curves remain part of the authoritative .blend.
-    if sum(len(obj.data.vertices) for obj in meshes)>2_000_000 or sum(
-        len(obj.data.polygons) for obj in meshes)>1_000_000:
-        raise ValueError('Scene topology exceeds bounded processing limits')
+    # Scene detail is bounded by Sandbox memory/time and artifact size, not
+    # arbitrary counts of objects, meshes, vertices or polygons.
+    if not bpy.data.objects:
+        raise ValueError('Scene must contain at least one object')
     out=ensure_output()
     blend,glb,report=(out/'scene.blend',out/'scene.glb',out/'scene.json')
     # An uncompressed BLEND allows the trusted controller to verify its

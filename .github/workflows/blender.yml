@@ -134,6 +134,12 @@ jobs:
           assert ids[1]['New Panel'] not in set(ids[0].values())
           print('BW_DEV032_PYTHON_MATERIAL_LIBRARY PASS')
           PY
+      - name: Verify scene with more than 512 objects and 256 meshes
+        run: |
+          mkdir -p model001-out
+          chmod 777 model001-out
+          docker run --rm -v "$PWD/model001-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/tests/blender_large_scene_smoke.py
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4
