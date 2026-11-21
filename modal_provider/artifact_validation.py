@@ -14,14 +14,25 @@ MAX_BLEND_BYTES=256*1024*1024
 MAX_GLB_BYTES=128*1024*1024
 MAX_REPORT_BYTES=16*1024*1024
 
-def _file(folder,name,max_bytes):
+def _file(folder,name,max_bytes,header_only=False):
     file=Path(folder)/name
     if file.is_symlink() or not file.is_file() or not 0<file.stat().st_size<=max_bytes:
         raise ValueError('Missing, oversized or irregular sandbox artifact: '+name)
+    if header_only:
+        with file.open('rb') as source:
+            return source.read(12)
     return file.read_bytes()
 
+
+def _digest(file):
+    hasher=hashlib.sha256()
+    with Path(file).open('rb') as source:
+        for chunk in iter(lambda: source.read(1024*1024), b''):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
 def _validate_python_outputs(folder):
-    blend=_file(folder,'scene.blend',MAX_BLEND_BYTES)
+    blend=_file(folder,'scene.blend',MAX_BLEND_BYTES,header_only=True)
     glb=None
     raw_report=_file(folder,'scene.json',MAX_REPORT_BYTES)
     if not blend.startswith(b'BLENDER') or len(blend)<12:
@@ -79,7 +90,7 @@ def _validate_python_outputs(folder):
         raise ValueError('Unexpected sandbox artifact list')
     for item in artifacts:
         payload=checks[item['path']]
-        if item.get('size_bytes')!=len(payload) or item.get('sha256')!=hashlib.sha256(payload).hexdigest():
+        if item.get('size_bytes')!=Path(folder,item['path']).stat().st_size or item.get('sha256')!=_digest(Path(folder,item['path'])):
             raise ValueError('Sandbox artifact checksum mismatch')
     preview=report.get('preview')
     if preview is not None:
