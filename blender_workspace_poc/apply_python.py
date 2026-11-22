@@ -15,7 +15,7 @@ import bpy
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.object_identity import ensure_object_ids
-from blender_workspace_poc.common import ensure_output, export_glb, write_manifest
+from blender_workspace_poc.common import ensure_output, export_glb, write_manifest, artifact_record
 from blender_workspace_poc.glb_material_fallback import glb_material_fallback, source_material_stats
 from blender_workspace_poc.compose_sources import compose_sources
 from blender_workspace_poc.inline_render import render_inline
@@ -152,6 +152,8 @@ def main():
         signal.alarm(0)
         signal.signal(signal.SIGALRM,previous_handler)
     export_seconds=round(time.monotonic()-export_start,3)
+    # Capture the authoritative saved scene BEFORE temporary preview camera/light.
+    write_manifest(report,'sandbox_python',files,preview=preview)
     render_status=None
     render_seconds=None
     if inline_requested:
@@ -171,8 +173,9 @@ def main():
             signal.alarm(0)
             signal.signal(signal.SIGALRM,previous_handler)
             render_seconds=round(time.monotonic()-render_start,3)
-    write_manifest(report,'sandbox_python',files,preview=preview)
     report_data=json.loads(report.read_text())
+    if render_status is not None and render_status['status']=='available':
+        report_data['artifacts'].append(artifact_record(out/'scene.png'))
     report_data['timings']={'modelingSeconds':modeling_seconds,
                             'blendSaveSeconds':save_seconds,
                             'glbExportSeconds':export_seconds,
