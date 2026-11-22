@@ -11,6 +11,9 @@ from unittest.mock import patch
 
 import bpy
 
+# Blender launches --python scripts with their directory as sys.path[0].
+# The repository root must be explicit for importing the trusted worker.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc import apply_python
 
 OUT = Path("/workspace/out")
