@@ -165,6 +165,15 @@ jobs:
             -b --factory-startup --disable-autoexec --python /workspace/blender_workspace_poc/refresh_glb.py \
             -- /workspace/out/input.blend /workspace/out/preview.glb
           python3 tests/check_preview_refresh.py
+      - name: Compose saved native models with armatures and materials
+        run: |
+          set -o pipefail
+          mkdir -p dev040-out
+          chmod 777 dev040-out
+          docker run --rm -v "$PWD/dev040-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/tests/blender_compose_sources.py \
+            | tee blender-dev040.log
+          grep -q 'BW_DEV040_COMPOSITION PASS' blender-dev040.log
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4
