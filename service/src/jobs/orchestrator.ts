@@ -5,10 +5,12 @@ import type { Job, JobRepository } from './job-repository.js';
 import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-store.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {JobExecutionError} from './job-diagnostics.js';
-import {parseAssetSources,type AssetSource} from './asset-sources.js';
+import {parseAssetSources} from './asset-sources.js';
+import type {UploadedAssets} from './uploaded-assets.js';
 
 export interface BlenderAssetInput {
   path:string;
+  format:'blend'|'glb';
   offset:[number,number,number];
 }
 export interface BlenderExecutor {
@@ -20,7 +22,8 @@ const SCENE_ARTIFACTS=['scene.blend','scene.json'] as const;
 export class JobOrchestrator {
   constructor(private readonly jobs:JobRepository,
               private readonly files:LocalArtifactStore,
-              private readonly executor:BlenderExecutor) {}
+              private readonly executor:BlenderExecutor,
+              private readonly uploads?:Pick<UploadedAssets,'verifiedPath'>) {}
   async execute(owner:string,jobId:string):Promise<Job> {
     const job=await this.jobs.claim(owner,jobId);
     return this.executeClaimed(job);
@@ -50,9 +53,16 @@ export class JobOrchestrator {
         // rather than using orphaned stored files.
         const verified=await this.jobs.validateAssetSources(owner,requestedAssets);
         for(const item of verified){
-          assets.push({path:await this.files.verifiedArtifactPath(
-            item.projectId,item.revision,'scene.blend'),
-            offset:item.offset as [number,number,number]});
+          if('uploadId' in item){
+            if(!this.uploads)throw new Error('Uploaded asset service unavailable');
+            const source=await this.uploads.verifiedPath(owner,item.uploadId);
+            assets.push({path:source.path,format:source.format,
+              offset:item.offset as [number,number,number]});
+          }else{
+            assets.push({path:await this.files.verifiedArtifactPath(
+              item.projectId,item.revision,'scene.blend'),format:'blend',
+              offset:item.offset as [number,number,number]});
+          }
         }
       }
       await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets);

@@ -13,6 +13,8 @@ import {GlbPreviewRepository} from './glb-preview-repository.js';
 import {GlbPreviewArtifactStore} from '../storage/glb-preview-artifacts.js';
 import {GlbPreviewOrchestrator} from './glb-preview-orchestrator.js';
 import {ModalGlbPreviewExecutor} from './modal-glb-preview.js';
+import {UploadedAssetStore} from '../storage/uploaded-assets.js';
+import {UploadedAssets} from './uploaded-assets.js';
 import {ModalAccountManager} from '../modal/modal-accounts.js';
 import {ModalCliTokenVerifier} from '../modal/modal-token-verifier.js';
 
@@ -26,8 +28,9 @@ const jobs=new JobRepository(pool);
 const key=process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY;
 const accounts=key?ModalAccountManager.fromBase64(pool,key,new ModalCliTokenVerifier()):undefined;
 if(!accounts)throw new Error('Personal Modal credentials required');
+const uploads=new UploadedAssets(pool,new UploadedAssetStore(root));
 const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),
-  new ModalPythonExecutor(worker,18*60_000,accounts));
+  new ModalPythonExecutor(worker,18*60_000,accounts),uploads);
 const renderQueue=new RenderJobRepository(pool);
 const renderWorkflow=new RenderOrchestrator(renderQueue,new LocalArtifactStore(root),
   new RenderArtifactStore(root),new ModalRenderExecutor(worker,accounts));

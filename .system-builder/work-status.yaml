@@ -1,8 +1,8 @@
 schema_version: 1
 project: blender-workspace
-status: change_in_progress
+status: code_complete_live_acceptance_deferred
 mode: CHANGE
-selected_step: DEV-041
+selected_step: VERIFY_DEV041_LIVE
 in_progress: null
 completed_steps:
   - DEV-001
@@ -19,6 +19,7 @@ completed_steps:
   - DEV-038
   - DEV-039
   - DEV-040
+  - DEV-041
 verification:
   dev008:
     status: DEFERRED
@@ -305,7 +306,7 @@ dev038:
   live_acceptance: DEFERRED
   next: "DEV-039 New project from an owned saved revision"
 
-next_development_step: DEV-041
+next_development_step: VERIFY_DEV041_LIVE
 
 dev039:
   status: COMPLETE
@@ -332,3 +333,20 @@ dev040:
     deployment_run: https://github.com/erland/blender-workspace/actions/runs/44993465400
   live_acceptance: DEFERRED
   next: "DEV-041 Secure owner-scoped external BLEND and GLB upload and import; OBJ excluded"
+
+dev041:
+  status: COMPLETE
+  scope: "Owner-scoped external BLEND/GLB upload, persistent verified asset storage and explicit Modal import into a new or existing scene; OBJ excluded"
+  source_pr: https://github.com/erland/blender-workspace/pull/84
+  implementation_sha: b564249e57ccf113d8bf9ab894b78367611063b1
+  code_ci:
+    status: PASS
+    service_run: https://github.com/erland/blender-workspace/actions/runs/44994706038
+    blender_run: https://github.com/erland/blender-workspace/actions/runs/44994706097
+    deployment_run: https://github.com/erland/blender-workspace/actions/runs/44994706087
+  live_acceptance: DEFERRED
+  next: "Verify upload from iPad, owner-isolated model import and resulting BLEND/GLB in deployed Modal environment; do not auto-start a paid job"
+
+next_later_improvements:
+  - "Owner-visible uploaded model library deletion and cleanup lifecycle"
+  - "Larger source files via resumable streaming uploads where needed"

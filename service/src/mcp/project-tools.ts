@@ -8,6 +8,7 @@ import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import {AssetSourcesSchema,parseAssetSources} from '../jobs/asset-sources.js';
+import type {UploadedAssets} from '../jobs/uploaded-assets.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import type {GlbPreviewRepository} from '../jobs/glb-preview-repository.js';
 import type {ProjectCloneService} from '../jobs/project-clone.js';
@@ -22,6 +23,7 @@ export interface ProjectServices {
   modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
   artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'>;
   projectClone?:Pick<ProjectCloneService,'clone'>;
+  uploads?:Pick<UploadedAssets,'list'|'get'|'verifiedPath'>;
   viewerOrigin?:string;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'get'|'list'>;
   glbPreviews?:Pick<GlbPreviewRepository,'reserve'|'get'|'latest'>;
@@ -51,7 +53,7 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
   const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin,renderJobs,
-    glbPreviews,glbPreviewFiles,projectClone}=deps;
+    glbPreviews,glbPreviewFiles,projectClone,uploads}=deps;
   const viewerLink=(projectId:string,revision:number)=>
     viewerOrigin+'/viewer/'+encodeURIComponent(projectId)+'/revisions/'+revision;
   async function ownedViewerRevision(projectId:string,revision:number):Promise<boolean>{
@@ -79,6 +81,20 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
   };
   const schemes=(scope:string)=>oauth?{_meta:{securitySchemes:[{type:'oauth2' as const,scopes:[scope]}]}}:{};
 
+  if(uploads){
+    server.registerTool('workspace_list_uploaded_models',{
+      description:'List verified BLEND/GLB files uploaded by your account; can be used as assetSources uploadId inputs in workspace_queue_python_script.',
+      inputSchema:{limit:z.number().int().min(1).max(100).optional()},
+      annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+    },async({limit})=>{
+      const block=denied(READ_SCOPE);if(block)return block;
+      try{
+        const files=await uploads.list(ownerKey,limit??40);
+        return result({uploads:files.map(f=>({id:f.id,filename:f.filename,
+          format:f.format,sizeBytes:f.size_bytes,createdAt:f.created_at}))});
+      }catch(e){return failure(e);}
+    });
+  }
   server.registerTool('workspace_list_projects', {
     description: 'List Blender Workspace projects owned by this configured workspace identity.',
     inputSchema: {limit: z.number().int().min(1).max(100).optional()},
@@ -340,12 +356,17 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       }
       const inputs=parseAssetSources(assetSources);
       for(const asset of inputs){
-        const sourceProject=await projects.get(ownerKey,asset.projectId);
-        if(!sourceProject)return failure(new JobConflict('Model source unavailable'));
-        const versions=await projects.revisions(ownerKey,asset.projectId);
-        if(!versions.some(v=>v.revision===asset.revision&&v.artifact_prefix))
-          return failure(new JobConflict('Model source revision unavailable'));
-        await artifacts.verifiedArtifactPath(asset.projectId,asset.revision,'scene.blend');
+        if('uploadId' in asset){
+          if(!uploads)return failure(new JobConflict('File import unavailable'));
+          await uploads.verifiedPath(ownerKey,asset.uploadId);
+        }else{
+          const sourceProject=await projects.get(ownerKey,asset.projectId);
+          if(!sourceProject)return failure(new JobConflict('Model source unavailable'));
+          const versions=await projects.revisions(ownerKey,asset.projectId);
+          if(!versions.some(v=>v.revision===asset.revision&&v.artifact_prefix))
+            return failure(new JobConflict('Model source revision unavailable'));
+          await artifacts.verifiedArtifactPath(asset.projectId,asset.revision,'scene.blend');
+        }
       }
       const spec=PythonScriptSchema.parse({kind:'python_script',code});
       const job=await jobs.reserve(ownerKey,projectId,expectedRevision,

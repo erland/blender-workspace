@@ -78,7 +78,7 @@ def estimate_usd(seconds, cpu=2, memory_mib=8192):
 
 def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         revision=1, input_blend=None, python_file=None,
-        assets_manifest=None, asset_blends=None):
+        assets_manifest=None, asset_files=None):
     """Run only a validated Python script inside an owner-billed isolated Sandbox."""
     if not 1 <= revision <= 99999999:
         raise ValueError('Invalid Python scene revision')
@@ -98,22 +98,24 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         raw.decode('utf8')
     except UnicodeDecodeError as exc:
         raise ValueError('Python source must be UTF-8') from exc
-    asset_blends = list(asset_blends or [])
-    if len(asset_blends)>4 or bool(asset_blends)!=bool(assets_manifest):
+    asset_files = list(asset_files or [])
+    if len(asset_files)>4 or bool(asset_files)!=bool(assets_manifest):
         raise ValueError('Invalid model sources')
-    if asset_blends:
+    if asset_files:
         manifest_path=Path(assets_manifest)
         if manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size>4096:
             raise ValueError('Invalid source manifest')
         manifest=json.loads(manifest_path.read_text(encoding='utf8'))
-        if not isinstance(manifest,list) or len(manifest)!=len(asset_blends):
+        if not isinstance(manifest,list) or len(manifest)!=len(asset_files):
             raise ValueError('Invalid source manifest entries')
-        for i,(entry,filename) in enumerate(zip(manifest,asset_blends)):
+        for i,(entry,filename) in enumerate(zip(manifest,asset_files)):
             source=Path(filename)
             if (not source.is_file() or source.is_symlink() or
-                source.stat().st_size<8 or source.stat().st_size>256*1024*1024 or
-                source.open('rb').read(7)!=b'BLENDER' or
-                not isinstance(entry,dict) or set(entry)!={'index','offset'} or
+                source.stat().st_size<20 or source.stat().st_size>256*1024*1024 or
+                not isinstance(entry,dict) or set(entry)!={'index','offset','format'} or
+                entry['format'] not in ('blend','glb') or
+                (entry['format']=='blend' and source.open('rb').read(7)!=b'BLENDER') or
+                (entry['format']=='glb' and source.open('rb').read(4)!=b'glTF') or
                 entry['index']!=i or not isinstance(entry['offset'],list) or
                 len(entry['offset'])!=3 or
                 any(type(x) not in (int,float) or not -100000<=x<=100000 for x in entry['offset'])):
@@ -143,12 +145,12 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         if revision >= 2:
             sandbox.filesystem.copy_from_local(str(Path(input_blend).resolve()),
                 "/workspace/out/input.blend")
-        if asset_blends:
+        if asset_files:
             sandbox.filesystem.copy_from_local(str(Path(assets_manifest).resolve()),
                 '/workspace/out/asset-sources.json')
-            for i,filename in enumerate(asset_blends):
+            for i,(filename,entry) in enumerate(zip(asset_files,manifest)):
                 sandbox.filesystem.copy_from_local(str(Path(filename).resolve()),
-                    '/workspace/out/source-%02d.blend' % i)
+                    '/workspace/out/source-%02d.%s' % (i,entry['format']))
         phase = "blender_execution"
         process = sandbox.exec("blender", "-b", "--factory-startup", "--python",
             "/workspace/blender_workspace_poc/apply_python.py", "--",
@@ -229,7 +231,7 @@ def main():
     p.add_argument("--input-blend")
     p.add_argument("--python-file", required=True)
     p.add_argument("--assets-manifest")
-    p.add_argument("--asset-blend", action="append", default=[])
+    p.add_argument("--asset-file", action="append", default=[])
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--cpu", type=float, default=2)
     p.add_argument("--memory-mib", type=int, default=8192)
@@ -246,7 +248,7 @@ def main():
         report = run(modal, args.out, cpu=args.cpu, memory_mib=args.memory_mib,
                      timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
                      python_file=args.python_file,
-                     assets_manifest=args.assets_manifest,asset_blends=args.asset_blend)
+                     assets_manifest=args.assets_manifest,asset_files=args.asset_file)
         if report["status"] != "PASS" or not report["sandbox_terminated"]:
             raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
     except RunnerDiagnostic as exc:

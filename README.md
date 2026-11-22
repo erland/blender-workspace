@@ -11,10 +11,29 @@ credentials power short-lived, network-blocked Blender Sandboxes.
 `workspace_queue_python_script`.** Supply an owned project ID, the expected
 current revision and a bounded Blender Python script. The script runs inside
 Blender with `bpy`, not inside the MCP server or the credentialed Modal
-controller. New models start at revision 1; edits open only the checksum-
-verified previous `scene.blend`, with script auto-execution disabled.
-Each successful job creates a new immutable `scene.blend`, `scene.glb`
-and `scene.json`.
+controller. New models start at revision 1. Existing projects can create the next revision
+from any owned, checksum-verified historical `scene.blend`. Blender script
+auto-execution is disabled on source loading. Each successful job publishes
+immutable `scene.blend` and `scene.json`; `scene.glb` is an optional
+browser preview.
+
+### Reuse and import
+
+- `workspace_clone_project_from_revision` creates an independent project
+  from a saved native BLEND revision without running Modal.
+- Modeling jobs accept `assetSources` to compose up to four verified source
+  models in a scene, either from saved project revisions or private uploaded
+  BLEND/GLB models; a new revision is created for the destination project.
+- The signed-in browser portal provides **Importera 3D-modell** for uploading
+  external BLEND/GLB files (32 MiB per file), then explicitly approving an
+  owner-billed Modal import into a new or existing project. Upload alone is not
+  a paid job. The asset library is limited to 50 files / 512 MiB per account.
+  External OBJ imports and asset-library deletion UI are not provided.
+- `workspace_list_uploaded_models` lists the owner's uploaded asset IDs for
+  reuse through `workspace_queue_python_script`.
+
+See [External BLEND/GLB import](docs/dev-041-external-blend-glb.md) and
+[cross-project scene composition](docs/dev-040-scene-composition.md).
 
 ### Preflight before paid Blender execution (DEV-035)
 

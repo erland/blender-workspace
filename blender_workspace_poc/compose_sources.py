@@ -20,7 +20,7 @@ def compose_sources():
         raise ValueError('Invalid asset source manifest')
     provenance=[]
     for index,entry in enumerate(spec):
-        if not isinstance(entry,dict) or set(entry)!={'index','offset'}:
+        if not isinstance(entry,dict) or set(entry)!={'index','offset','format'}:
             raise ValueError('Invalid source specification')
         if entry['index']!=index:
             raise ValueError('Nonsequential asset index')
@@ -28,22 +28,42 @@ def compose_sources():
         if (not isinstance(offset,list) or len(offset)!=3 or
                 any(type(v) not in (int,float) or not -100000<=v<=100000 for v in offset)):
             raise ValueError('Invalid source offset')
-        filename=SOURCE_DIR/('source-%02d.blend' % index)
+        fmt=entry['format']
+        if fmt not in ('blend','glb'):
+            raise ValueError('Unsupported model format')
+        filename=SOURCE_DIR/('source-%02d.%s' % (index,fmt))
         if not filename.is_file() or filename.is_symlink():
-            raise ValueError('Missing staged BLEND')
+            raise ValueError('Missing staged model')
         # Link object datablocks from the immutable source, not the source
         # scene's cameras, lights or world. Meshes, armatures, actions and
         # materials are pulled by Blender as referenced datablocks.
-        with bpy.data.libraries.load(str(filename),link=False) as (src,dst):
-            dst.objects=list(src.objects)
-        objects=[obj for obj in dst.objects if obj is not None and
-                 obj.type not in {'CAMERA','LIGHT','SPEAKER'}]
+        if fmt=='blend':
+            with bpy.data.libraries.load(str(filename),link=False) as (src,dst):
+                dst.objects=list(src.objects)
+            objects=[obj for obj in dst.objects if obj is not None and
+                     obj.type not in {'CAMERA','LIGHT','SPEAKER'}]
+        else:
+            before=set(bpy.data.objects)
+            bpy.ops.import_scene.gltf(filepath=str(filename))
+            loaded=[obj for obj in bpy.data.objects if obj not in before]
+            objects=[obj for obj in loaded
+                     if obj.type not in {'CAMERA','LIGHT','SPEAKER'}]
+            # GLB importer links every source object into the active scene.
+            # Excluded cameras, lights and speakers must be removed, not only
+            # omitted from the new collection.
+            for unwanted in loaded:
+                if unwanted not in objects:
+                    bpy.data.objects.remove(unwanted,do_unlink=True)
+            # Move remaining GLB objects to their dedicated collection.
         if not objects:
             raise ValueError('Source contains no importable objects')
         group=bpy.data.collections.new('Imported model %02d' % (index+1))
         bpy.context.scene.collection.children.link(group)
         imported=set(objects)
         for obj in objects:
+            if fmt=='glb':
+                for existing in list(obj.users_collection):
+                    existing.objects.unlink(obj)
             group.objects.link(obj)
             assign_new_object_id(obj)
         # Move only independent roots; children retain their local parent

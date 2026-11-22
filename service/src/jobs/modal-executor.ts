@@ -30,7 +30,8 @@ export class ModalPythonExecutor implements BlenderExecutor {
     if(inputBlend&&!path.isAbsolute(inputBlend))
       throw new RangeError('Invalid source path');
     if(!Array.isArray(assets)||assets.length>4||assets.some(a=>
-      !path.isAbsolute(a.path)||!Array.isArray(a.offset)||a.offset.length!==3||
+      !path.isAbsolute(a.path)||!['blend','glb'].includes(a.format)||
+      !Array.isArray(a.offset)||a.offset.length!==3||
       a.offset.some(n=>!Number.isFinite(n)||Math.abs(n)>100000)))
       throw new RangeError('Invalid model asset inputs');
     const safe=parsePythonScript(spec);
@@ -43,7 +44,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
       const filename=path.join(folder,'model.py');
       await writeFile(filename,safe.code,{mode:0o600,flag:'wx'});
       if(assets.length)await writeFile(path.join(folder,'asset-sources.json'),
-        JSON.stringify(assets.map((a,i)=>({index:i,offset:a.offset}))),
+        JSON.stringify(assets.map((a,i)=>({index:i,offset:a.offset,format:a.format}))),
         {mode:0o600,flag:'wx'});
       const script=path.join(this.repoRoot,'modal_provider','runner.py');
       await new Promise<void>((resolve,reject)=>{
@@ -52,7 +53,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
         if(inputBlend)args.push('--input-blend',inputBlend);
         if(assets.length){
           args.push('--assets-manifest',path.join(folder,'asset-sources.json'));
-          for(const asset of assets)args.push('--asset-blend',asset.path);
+          for(const asset of assets)args.push('--asset-file',asset.path);
         }
         const proc=spawn('python3',args,{cwd:this.repoRoot,stdio:['ignore','pipe','pipe'],env});
         let ended=false,timedOut=false;

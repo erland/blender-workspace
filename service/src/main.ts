@@ -15,6 +15,8 @@ import {RenderJobRepository} from './jobs/render-repository.js';
 import {RenderArtifactStore} from './storage/render-artifacts.js';
 import {GlbPreviewRepository} from './jobs/glb-preview-repository.js';
 import {GlbPreviewArtifactStore} from './storage/glb-preview-artifacts.js';
+import {UploadedAssetStore} from './storage/uploaded-assets.js';
+import {UploadedAssets} from './jobs/uploaded-assets.js';
 
 const config=loadConfig();
 const databaseConfig=databasePoolConfig();
@@ -34,11 +36,14 @@ const renderJobs=pool?new RenderJobRepository(pool):undefined;
 const renderedImages=pool?new RenderArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'):undefined;
 const glbPreviews=pool?new GlbPreviewRepository(pool):undefined;
 const glbPreviewFiles=pool?new GlbPreviewArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'):undefined;
+const uploads=pool?new UploadedAssets(pool,new UploadedAssetStore(
+  process.env.ARTIFACT_ROOT??'/data/blender-workspace')):undefined;
 const app=createApp(config,pool?{
   ownerKey:config.ownerKey,projects:projects!,jobs:new JobRepository(pool),
   artifacts:artifacts!,projectDeletion:projectDeletion!,projectArchive:projectArchive!,projectClone:projectClone!,
   renderJobs:renderJobs!,renderedImages:renderedImages!,
   glbPreviews:glbPreviews!,glbPreviewFiles:glbPreviewFiles!,
+  uploads:uploads!,
   ...(modalAccounts?{modalAccounts}:{})
 }:undefined,google?{google}:undefined);
 if(pool)app.addHook('onClose',async()=>{await pool.end();});

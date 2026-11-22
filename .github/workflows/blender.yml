@@ -174,6 +174,15 @@ jobs:
             -b --factory-startup --disable-autoexec --python /workspace/tests/blender_compose_sources.py \
             | tee blender-dev040.log
           grep -q 'BW_DEV040_COMPOSITION PASS' blender-dev040.log
+      - name: Verify native BLEND and GLB import in real Blender
+        run: |
+          set -o pipefail
+          mkdir -p dev041-out
+          chmod 777 dev041-out
+          docker run --rm -v "$PWD/dev041-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/tests/blender_external_import_smoke.py \
+            | tee blender-dev041.log
+          grep -q 'BW_DEV041_EXTERNAL_IMPORT PASS' blender-dev041.log
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4
