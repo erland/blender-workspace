@@ -26,7 +26,23 @@ if(form){
    headers:{'content-type':'application/vnd.blender-workspace.model',
     'x-model-filename':encodeURIComponent(file.name),
     'x-csrf-token':form.querySelector('input[name=csrf]').value},body:file});
-  if(!response.ok)throw new Error('Filen kunde inte sparas. Kontrollera formatet och försök igen.');
+  if(!response.ok){
+   let code='invalid_model';
+   try{const body=await response.json();code=body.error||code;}catch{}
+   const messages={
+    invalid_blend_format:'BLEND-filen känns inte igen. Komprimerade BLEND-filer från Blender stöds.',
+    invalid_filename:'Filnamnet måste sluta på .blend eller .glb och får inte innehålla sökvägar.',
+    invalid_size:'Filen måste vara mellan 20 byte och 32 MiB.',
+    library_full:'Ditt filbibliotek är fullt (max 50 filer eller 512 MiB).',
+    invalid_model:'Filen kunde inte valideras. Kontrollera att det är en riktig BLEND- eller GLB-fil.',
+    forbidden:'Inloggningen behöver förnyas. Ladda om sidan och försök igen.',
+    unauthorized:'Du behöver logga in på nytt.',
+    uploads_unavailable:'Uppladdningstjänsten är inte tillgänglig just nu.'
+   };
+   throw new Error(messages[code]||
+     (response.status===413?'Filen är för stor (max 32 MiB).':
+     'Uppladdningen misslyckades. Försök igen.'));
+  }
   const result=await response.json();
   if(!result.uploadId)throw new Error('Ogiltigt svar från servern.');
   window.location.assign('/models/import');
