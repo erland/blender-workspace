@@ -204,7 +204,19 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          const filename=decodeURIComponent(raw);
          const uploaded=await services!.uploads.upload(session.ownerKey,filename,request.body as Buffer);
          return reply.code(201).send({uploadId:uploaded.id,format:uploaded.format});
-       }catch{return reply.code(422).send({error:'invalid_model'});}
+       }catch(error){
+         // Give actionable client feedback without exposing internal paths or
+         // SQL/provider errors. Never trust or echo arbitrary exception text.
+         if(error instanceof RangeError){
+           const reason=error.message;
+           const code=reason==='Unrecognized BLEND header'?'invalid_blend_format':
+             reason==='Upload library limit reached'?'library_full':
+             reason==='Invalid upload filename'?'invalid_filename':
+             reason==='Upload must be 20 bytes to 32 MiB'?'invalid_size':'invalid_model';
+           return reply.code(422).send({error:code});
+         }
+         return reply.code(422).send({error:'invalid_model'});
+       }
      });
      // Uploading never starts a job. A separate, confirmed request reserves
      // one owner-paid Modal import job and creates the next immutable revision.

@@ -26,6 +26,19 @@ function glb(){
  return bytes;
 }
 const blend=Buffer.concat([Buffer.from('BLENDER-v360'),Buffer.alloc(32)]);
+test('Compressed native BLEND upload accepts Blender Zstandard envelope without service decompression',()=>{
+ const compressed=Buffer.concat([Buffer.from([0x28,0xb5,0x2f,0xfd]),Buffer.alloc(40,0x02)]);
+ const accepted=validateUpload(compressed,'hair_nodes-animal_fur_examples(1).blend');
+ assert.equal(accepted.format,'blend');
+ assert.equal(accepted.sizeBytes,compressed.length);
+ assert.match(accepted.sha256,/^[0-9a-f]{64}$/);
+ // A signature does not prove that an archive contains readable Blender data;
+ // the trusted isolated Blender import is the final semantic validation.
+ assert.throws(()=>validateUpload(
+   Buffer.concat([Buffer.from([0x29,0xb5,0x2f,0xfd]),Buffer.alloc(40)]),
+   'corrupt.blend'),/Unrecognized BLEND header/);
+ assert.throws(()=>validateUpload(compressed,'fake.glb'),/Invalid binary GLB/);
+});
 test('DEV-041 reject fake files, remote GLB references and traversal filenames',()=>{
  assert.equal(validateUpload(glb(),'mesh.glb').format,'glb');
  assert.equal(validateUpload(blend,'scene.blend').format,'blend');

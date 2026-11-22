@@ -44,6 +44,31 @@ class ModalProviderTests(unittest.TestCase):
         prior.write_bytes(b"BLENDER previous")
         return script, prior
 
+    def test_zstandard_compressed_blend_is_recognized_as_native_source(self):
+        from modal_provider.runner import _is_native_blend_magic
+        with TemporaryDirectory() as tmp:
+            zstd=Path(tmp)/'compressed.blend'
+            zstd.write_bytes(bytes.fromhex('28b52ffd')+b'example-compressed-frame')
+            raw=Path(tmp)/'raw.blend'
+            raw.write_bytes(b'BLENDER-v350'+bytes(16))
+            invalid=Path(tmp)/'invalid.blend'
+            invalid.write_bytes(b'not blender'+bytes(16))
+            self.assertTrue(_is_native_blend_magic(zstd))
+            self.assertTrue(_is_native_blend_magic(raw))
+            self.assertFalse(_is_native_blend_magic(invalid))
+            source_script=Path(tmp)/'model.py'
+            source_script.write_text('import bpy\\n')
+            manifest=Path(tmp)/'manifest.json'
+            manifest.write_text(json.dumps([
+                {'index':0,'offset':[0,0,0],'format':'blend'}]))
+            sdk=self.sdk()
+            with patch("modal_provider.artifact_validation.validate_python_outputs"):
+                result=run(sdk,Path(tmp)/'out',python_file=str(source_script),
+                    assets_manifest=str(manifest),asset_files=[str(zstd)])
+            self.assertEqual(result['status'],'PASS')
+            sdk.Sandbox.create.return_value.filesystem.copy_from_local.assert_any_call(
+                str(zstd.resolve()),'/workspace/out/source-00.blend')
+
     def test_success_is_isolated_and_terminates_sandbox(self):
         sdk = self.sdk()
         with TemporaryDirectory() as tmp, patch(
