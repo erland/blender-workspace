@@ -170,7 +170,7 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
   '<div class="empty-state"><h2>Inga projekt ännu</h2><p class="muted">Skapa en modell med Blender Workspace i ChatGPT. Den visas sedan här.</p></div>';
  return layout('Mina projekt','<div class="intro"><div><h1>Mina projekt</h1>'+
   '<p class="muted small">'+items.length+' projekt'+(items.length===100?' (högst 100 visas)':'')+'</p></div>'+
-  (csrf===undefined?'':'<a class="button alt" href="/projects/import">Importera projekt</a>')+
+  (csrf===undefined?'':'<div class="actions"><a class="button alt" href="/models/import">Importera 3D-modell</a><a class="button alt" href="/projects/import">Importera projekt</a></div>')+
   '</div>'+
   (message==='cleanup'?'<p class="warning" role="status">Projektet har dolts medan den permanenta borttagningen slutförs. Filstädningen försöks automatiskt igen om något gick fel.</p>':'')+
   listing);

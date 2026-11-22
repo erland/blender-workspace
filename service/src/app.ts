@@ -3,6 +3,9 @@ import {createReadStream} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import type {ProjectArchiveService} from './jobs/project-archive.js';
 import type {ProjectCloneService} from './jobs/project-clone.js';
+import type {UploadedAssets} from './jobs/uploaded-assets.js';
+import {MAX_UPLOAD_BYTES} from './storage/uploaded-assets.js';
+import {modelUploadScript} from './web/model-upload-client.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from './jobs/render-repository.js';
 import {validateViewerCamera,viewerDimensions} from './jobs/viewer-camera.js';
 import type {RenderArtifactStore} from './storage/render-artifacts.js';
@@ -13,7 +16,7 @@ import {liveStatusScript} from './web/live-status.js';
 import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
 import type {ProjectDeletionService} from './jobs/project-deletion.js';
-import {projectIndexPage,projectImportPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
+import {projectIndexPage,projectImportPage,modelImportPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -28,6 +31,7 @@ export function createApp(config:ServiceConfig,
   projectDeletion?:Pick<ProjectDeletionService,'delete'>;
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
    projectClone?:Pick<ProjectCloneService,'clone'>;
+  uploads?:Pick<UploadedAssets,'upload'|'list'|'get'|'verifiedPath'>;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
   glbPreviews?:Pick<GlbPreviewRepository,'latest'|'get'|'reserve'>;
@@ -59,6 +63,8 @@ export function createApp(config:ServiceConfig,
  if(options?.google){
    app.addContentTypeParser('application/vnd.blender-workspace.project+zip',
      {parseAs:'buffer',bodyLimit:256*1024*1024},(_request,body,done)=>done(null,body));
+   app.addContentTypeParser('application/vnd.blender-workspace.model',
+     {parseAs:'buffer',bodyLimit:MAX_UPLOAD_BYTES},(_request,body,done)=>done(null,body));
    app.addContentTypeParser('application/x-www-form-urlencoded',
      {parseAs:'string'},(_request,body,done)=>done(null,body));
    const google=options.google;
@@ -670,6 +676,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        projects:services.projects,jobs:services.jobs,
        ...(services.artifacts?{artifacts:services.artifacts}:{}),
         ...(services.projectClone?{projectClone:services.projectClone}:{}),
+        ...(services.uploads?{uploads:services.uploads}:{}),
        ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{}),
        ...(services.renderJobs?{renderJobs:services.renderJobs}:{}),
        ...(services.glbPreviews?{glbPreviews:services.glbPreviews}:{}),
