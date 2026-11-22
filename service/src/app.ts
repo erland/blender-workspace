@@ -9,6 +9,7 @@ import {modelUploadScript} from './web/model-upload-client.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from './jobs/render-repository.js';
 import {validateViewerCamera,viewerDimensions} from './jobs/viewer-camera.js';
 import type {RenderArtifactStore} from './storage/render-artifacts.js';
+import {MODAL_MEMORY_CHOICES_MIB} from './modal/modal-accounts.js';
 import type {GlbPreviewRepository} from './jobs/glb-preview-repository.js';
 import type {GlbPreviewArtifactStore} from './storage/glb-preview-artifacts.js';
 import {importClientScript} from './web/import-client.js';
@@ -82,7 +83,7 @@ export function createApp(config:ServiceConfig,
      };
      const escape=(v:string)=>v.replace(/&/g,'&amp;').replace(/</g,'&lt;')
        .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-     const page=(csrf:string,status:string,message:string)=>`<!doctype html>
+     const page=(csrf:string,status:string,message:string,memoryMiB:number)=>`<!doctype html>
 <html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Blender Workspace – Modal</title>
 <style>body{font-family:system-ui,sans-serif;max-width:660px;margin:48px auto;padding:0 20px}
@@ -91,6 +92,17 @@ label{display:block;margin-top:12px}input{box-sizing:border-box;width:100%;paddi
 button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
 <section><p><a href="/">← Mina projekt</a></p><h1>Modal – Blender Workspace</h1><p>Kontostatus: ${escape(status)}</p>
 <p>${escape(message)}</p><p>Dina Modal-uppgifter lagras krypterat och visas aldrig i ChatGPT.</p>
+<section style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px">
+<h2>Reserverat minne per Sandbox</h2>
+<p>Gäller dina framtida modellerings-, renderings- och GLB-jobb i Modal. Standard: 2 GiB. Högre värden kan öka kostnaden; välj mer vid stora scener. Modal kan använda mer än reservationen när kapacitet finns, men det är inte garanterat.</p>
+<form method="post" action="/settings/modal/memory">
+<input type="hidden" name="csrf" value="${escape(csrf)}">
+<label for="memoryMiB">Reserverat minne
+<select id="memoryMiB" name="memoryMiB">
+${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selected':'')+'>'+(n/1024)+' GiB</option>').join('')}
+</select></label>
+<button type="submit">Spara minnesval</button>
+</form></section>
 <form method="post" action="/settings/modal/save">
 <input type="hidden" name="csrf" value="${escape(csrf)}">
 <label>Modal Token ID<input name="tokenId" autocomplete="off" required maxlength="500"></label>
@@ -457,15 +469,18 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
        const session=google.settingsSession(request.headers.cookie);
        if(!session)return secure(reply).redirect('/settings/login');
        const status=await accounts.status(session.ownerKey);
+       const memoryMiB=await accounts.memoryMiB(session.ownerKey);
        const msg=(request.query as {message?:string}).message;
        const safeMessage=msg==='connected'?'Modal-kontot är anslutet.':
          msg==='verified'?'Modal-anslutningen fungerar.':
          msg==='disconnected'?'Modal-kontot har kopplats bort.':
+         msg==='memory_saved'?'Minnesreservationen har sparats.':
+         msg==='memory_invalid'?'Välj ett giltigt minnesvärde.':
          msg==='error'?'Åtgärden kunde inte genomföras.':'';
        secure(reply).type('text/html; charset=utf-8');
-       return page(session.csrf,status.connected?'Ansluten':status.needsRenewal?'Behöver förnyas':'Ej ansluten',safeMessage);
+       return page(session.csrf,status.connected?'Ansluten':status.needsRenewal?'Behöver förnyas':'Ej ansluten',safeMessage,memoryMiB);
      });
-     for(const action of ['save','test','disconnect','logout'] as const){
+     for(const action of ['save','test','disconnect','logout','memory'] as const){
        app.post('/settings/'+(action==='logout'?'logout':'modal/'+action),
          {bodyLimit:4096},async(request,reply)=>{
          const session=google.settingsSession(request.headers.cookie);
@@ -490,7 +505,15 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          }
          let message='error';
          try{
-           if(action==='save'){
+           if(action==='memory'){
+             const raw=form.get('memoryMiB')??'';
+             if(!['2048','4096','8192','16384'].includes(raw)){
+               message='memory_invalid';
+             }else{
+               await accounts.setMemoryMiB(session.ownerKey,Number(raw));
+               message='memory_saved';
+             }
+           }else if(action==='save'){
              await accounts.saveAndTest(session.ownerKey,form.get('tokenId')??'',form.get('tokenSecret')??'');
              message='connected';
            }else if(action==='test'){
