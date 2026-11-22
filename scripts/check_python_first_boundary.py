@@ -35,8 +35,10 @@ def audit(root=ROOT):
             errors.append(f'Retired MCP writer was registered: {name}')
     if "PythonScriptSchema.shape.code" not in mcp:
         errors.append('Python write tool must validate with PythonScriptSchema')
-    if 'verifiedArtifactPath(projectId,expectedRevision' not in mcp:
-        errors.append('Python edit must verify the saved predecessor')
+    if ('verifiedArtifactPath(projectId,selectedSource' not in mcp or
+        'project.current_revision!==expectedRevision' not in mcp or
+        'history.some(v=>v.revision===selectedSource&&v.artifact_prefix)' not in mcp):
+        errors.append('Python edit must verify the selected owned predecessor and latest write revision')
     if "Buffer.byteLength(x,'utf8')<=65_536" not in python_schema:
         errors.append('Expected UTF-8 byte limit on Python source')
     return errors
