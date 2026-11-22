@@ -206,6 +206,17 @@ jobs:
           set -e
           test "$status" -ne 0
           grep -q 'BW_USER_PYTHON_ERROR type=AttributeError line=2' blender-dev042-failure.log
+      - name: DEV-043 Verify native hair and GLB export fallback without Modal
+        run: |
+          set -o pipefail
+          mkdir -p dev043-out
+          chmod 777 dev043-out
+          docker run --rm -v "$PWD/dev043-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/tests/blender_hair_export_regression.py \
+            | tee blender-dev043.log
+          grep -q 'BW_DEV043_NATIVE_RELOAD PASS' blender-dev043.log
+          grep -q 'BW_DEV043_EXPORT_FALLBACK PASS' blender-dev043.log
+          grep -q 'BW_DEV043_HAIR_EXPORT PASS' blender-dev043.log
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4
