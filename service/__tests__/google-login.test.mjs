@@ -145,6 +145,27 @@ test('Google login completes DCR, PKCE, bearer MCP, refresh rotation, scope and 
   const sessionValue=sessionSetCookie.match(/bw_modal_settings=([^;]+)/)?.[1];
   assert.ok(sessionValue,'missing signed Google settings session');
   const sessionCookie='bw_modal_settings='+sessionValue;
+  // DEV-050: direct render tabs resume the exact owner-scoped PNG after Google
+  // login; arbitrary external URLs, queries and path traversal are rejected.
+  const renderPath='/renders/11111111-1111-4111-8111-111111111111/'+
+    '22222222-2222-4222-8222-222222222222.png';
+  for(const invalidPath of [
+    'https://evil.example/', '//evil.example/', '/settings',
+    renderPath+'?next=https://evil.example/', '/renders/../x.png'
+  ]){
+    const rejected=await get('/settings/login?next='+encodeURIComponent(invalidPath));
+    assert.equal(rejected.status,400,invalidPath);
+  }
+  const returnStart=await get('/settings/login?next='+encodeURIComponent(renderPath));
+  assert.equal(returnStart.status,302);
+  const returnGoogle=new URL(returnStart.headers.get('location'));
+  const returnCookie=returnStart.headers.get('set-cookie').split(';')[0];
+  const returnCallback=await get('/auth/google/callback?'+new URLSearchParams({
+    state:returnGoogle.searchParams.get('state'),code:'alice'
+  }),{headers:{cookie:returnCookie}});
+  assert.equal(returnCallback.status,302);
+  assert.equal(returnCallback.headers.get('location'),renderPath);
+  assert.ok(returnCallback.headers.get('set-cookie').includes('bw_modal_settings='));
   const settingsPage=await get('/settings',{headers:{cookie:sessionCookie}});
   assert.equal(settingsPage.status,200);
   const html=await settingsPage.text();
