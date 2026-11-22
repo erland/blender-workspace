@@ -14,6 +14,20 @@ function checkName(name:string){
    throw new RangeError('Invalid upload filename');
  return name;
 }
+/** Blender can save native .blend files as Zstandard (since Blender 3.0).
+ * The compressed header is 28 B5 2F FD instead of the literal BLENDER header.
+ * Compression is decoded only by Blender inside the isolated Sandbox, never
+ * by the authenticated service, to avoid decompression bombs on upload.
+ */
+const BLEND_ZSTD_MAGIC=Buffer.from([0x28,0xb5,0x2f,0xfd]);
+function isNativeBlend(bytes:Buffer):boolean{
+  if(bytes.subarray(0,4).equals(BLEND_ZSTD_MAGIC))return true;
+  return bytes.toString('ascii',0,7)==='BLENDER'&&
+    [45,95].includes(bytes[7])&&[118,86].includes(bytes[8])&&
+    ['280','290','300','310','320','330','340','350','360',
+     '400','410','420','430','440','450','460','470','480','490','500','510']
+      .includes(bytes.toString('ascii',9,12));
+}
 function checkGltfDocument(bytes:Buffer){
  if(bytes.length<28||bytes.toString('ascii',0,4)!=='glTF'||
     bytes.readUInt32LE(4)!==2||bytes.readUInt32LE(8)!==bytes.length)
@@ -38,8 +52,7 @@ export function validateUpload(bytes:Buffer,filename:string):ValidatedUpload{
    throw new RangeError('Upload must be 20 bytes to 32 MiB');
  const format=name.toLowerCase().endsWith('.blend')?'blend':'glb';
  if(format==='blend'){
-   if(bytes.toString('ascii',0,7)!=='BLENDER'||![45,95].includes(bytes[7])||
-       ![118,86].includes(bytes[8])||!['280','290','300','310','320','330','340','350','360','400','410','420','430','440','450','460','470','480','490','500','510'].includes(bytes.toString('ascii',9,12)))
+   if(!isNativeBlend(bytes))
       throw new RangeError('Unrecognized BLEND header');
  }else checkGltfDocument(bytes);
  return {format,sizeBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
