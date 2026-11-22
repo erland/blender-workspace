@@ -1,11 +1,21 @@
 /** Same-origin upload; session cookie is handled by the browser. */
 export const modelUploadScript=String.raw`
 const form=document.getElementById('upload-model-form');
-if(form)form.addEventListener('submit',async event=>{
+if(form){
+ const picker=document.getElementById('model-file');
+ const status=document.getElementById('model-upload-result');
+ picker.addEventListener('change',()=>{
+  const file=picker.files&&picker.files[0];
+  status.textContent=file?'Vald fil: '+file.name:'Ingen fil vald.';
+ });
+ form.addEventListener('submit',async event=>{
  event.preventDefault();
  const file=document.getElementById('model-file').files[0];
  const status=document.getElementById('model-upload-result');
- if(!file)return;
+ if(!file){status.textContent='Välj en BLEND- eller GLB-fil först.';return;}
+ if(!/\.(?:blend|glb)$/i.test(file.name)){
+   status.textContent='Filen måste ha ändelsen .blend eller .glb.';return;
+ }
  if(file.size<20||file.size>32*1024*1024){
    status.textContent='Välj en fil mellan 20 byte och 32 MiB.';return;
  }
@@ -22,5 +32,6 @@ if(form)form.addEventListener('submit',async event=>{
   window.location.assign('/models/import');
  }catch(error){status.textContent=error.message||'Uppladdningen misslyckades.';
   submit.disabled=false;}
-});
+ });
+}
 `;

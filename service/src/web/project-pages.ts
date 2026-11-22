@@ -374,7 +374,8 @@ export function modelImportPage(csrf:string,
   notification+
   '<section class="panel" style="padding:20px;margin-top:20px"><h2>1. Ladda upp fil</h2>'+
   '<form id="upload-model-form"><input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
-  '<label for="model-file">BLEND eller GLB</label> <input id="model-file" type="file" accept=".blend,.glb" required>'+
+  '<label for="model-file">BLEND eller GLB</label> <input id="model-file" name="model" type="file" required aria-describedby="model-file-help">' +
+  '<p id="model-file-help" class="muted small">Välj en .blend- eller .glb-fil via Filer. Filtypen kontrolleras efter valet för att även fungera på iPad och iPhone.</p>' +
   '<button class="button" type="submit">Ladda upp</button>'+
   '<p id="model-upload-result" role="status" aria-live="polite"></p></form></section>'+
   '<section class="panel" style="padding:20px;margin-top:20px"><h2>2. Importera till en scen</h2>'+
