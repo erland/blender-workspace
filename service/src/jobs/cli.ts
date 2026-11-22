@@ -53,6 +53,15 @@ try {
     const controller=new AbortController();
     process.once('SIGTERM',()=>controller.abort());
     process.once('SIGINT',()=>controller.abort());
+    // Backfill older DEV-045 images into the ordinary gallery without starting
+    // a new paid Modal Sandbox. Registration is idempotent per modeling job.
+    try{
+      const legacy=await jobs.listUnregisteredInlineRenders(100);
+      for(const completed of legacy)
+        await workflow.registerSavedInlineRender(completed);
+    }catch{
+      console.error(JSON.stringify({event:'inline_render_reconcile_failed'}));
+    }
     await dispatcher.run(controller.signal);
   } else if(command==='run'){
     const job=await workflow.execute(owner,argument);
