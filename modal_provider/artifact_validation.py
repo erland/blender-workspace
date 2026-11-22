@@ -23,7 +23,7 @@ def validate_png_preview(path):
         raise ValueError('Invalid inline PNG size')
     with p.open('rb') as stream:
         header=stream.read(33)
-    if header[:8]!=b'\\x89PNG\\r\\n\\x1a\\n' or header[12:16]!=b'IHDR':
+    if header[:8]!=b'\x89PNG\r\n\x1a\n' or header[12:16]!=b'IHDR':
         raise ValueError('Invalid inline PNG signature')
     width,height=struct.unpack_from('>II',header,16)
     if (width,height)!=(512,512) or header[24]!=8 or header[25] not in (2,6):
