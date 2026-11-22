@@ -5,7 +5,7 @@ import type { ProjectRepository } from '../db/projects.js';
 import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
 import {safeOwnerJobError} from '../jobs/job-diagnostics.js';
 import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
-import type {ModalAccountManager} from '../modal/modal-accounts.js';
+import {MODAL_MEMORY_CHOICES_MIB,type ModalAccountManager} from '../modal/modal-accounts.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import {AssetSourcesSchema,parseAssetSources} from '../jobs/asset-sources.js';
@@ -22,7 +22,7 @@ export interface ProjectServices {
   ownerKey: string;
   projects: ProjectRepository;
   jobs: JobRepository;
-  modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
+  modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'|'memoryMiB'|'setMemoryMiB'>;
   artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'>;
   projectClone?:Pick<ProjectCloneService,'clone'>;
   uploads?:Pick<UploadedAssets,'list'|'get'|'verifiedPath'>;
@@ -428,6 +428,26 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     }
   });
   if(modalAccounts){
+    server.registerTool('workspace_get_modal_memory',{
+      description:'Read your own reserved memory for future paid Modal Sandbox jobs (2, 4, 8 or 16 GiB). No Modal job or charge.',
+      inputSchema:{},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+    },async()=>{
+      const blocked=denied(READ_SCOPE);if(blocked)return blocked;
+      try{return result({memoryMiB:await modalAccounts.memoryMiB(ownerKey),
+        choicesMiB:[...MODAL_MEMORY_CHOICES_MIB],appliesTo:'future-jobs',modalExecution:false});}
+      catch{return failure(new Error('Modal memory settings unavailable'));}
+    });
+    server.registerTool('workspace_set_modal_memory',{
+      description:'Set your own future Modal Sandbox memory reservation to 2, 4, 8 or 16 GiB. Does not start a Modal job. Higher reservations can cost more.',
+      inputSchema:{memoryMiB:z.union([z.literal(2048),z.literal(4096),z.literal(8192),z.literal(16384)])},
+      ...schemes(WRITE_SCOPE)
+    },async({memoryMiB})=>{
+      const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
+      try{
+        await modalAccounts.setMemoryMiB(ownerKey,memoryMiB);
+        return result({memoryMiB,appliesTo:'future-jobs',modalExecution:false});
+      }catch{return failure(new Error('Modal memory setting could not be updated'));}
+    });
     server.registerTool('workspace_modal_status',{
       description:'Read whether your own Modal account is connected; never returns credentials.',
       inputSchema:{},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)

@@ -2,6 +2,14 @@ import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import type {Pool} from 'pg';
 
 export interface ModalCredentials {tokenId:string;tokenSecret:string;}
+export const DEFAULT_MODAL_MEMORY_MIB=2048;
+export const MODAL_MEMORY_CHOICES_MIB=[2048,4096,8192,16384] as const;
+export function validateModalMemoryMiB(value:number):number{
+  if(!MODAL_MEMORY_CHOICES_MIB.some(v=>v===value))
+    throw new ModalAccountError('Invalid Modal memory reservation');
+  return value;
+}
+
 export type ModalAccountStatus={connected:boolean;needsRenewal:boolean;updatedAt?:string};
 export interface ModalTokenVerifier {verify(credentials:ModalCredentials):Promise<void>;}
 export class ModalAccountError extends Error {
@@ -35,6 +43,19 @@ export class ModalAccountManager {
     const row=await this.row(owner);
     return row?{connected:row.status==='connected',needsRenewal:row.status==='revoked',
       updatedAt:row.updated_at.toISOString()}:{connected:false,needsRenewal:false};
+  }
+  /** Per-user reserved memory for future Modal Sandboxes, not an upper usage limit. */
+  async memoryMiB(owner:string):Promise<number>{
+    const result=await this.pool.query<{memory_mib:number}>(
+      'SELECT memory_mib FROM bw_modal_memory_settings WHERE owner_key=$1',[principal(owner)]);
+    return validateModalMemoryMiB(result.rows[0]?.memory_mib??DEFAULT_MODAL_MEMORY_MIB);
+  }
+  async setMemoryMiB(owner:string,memoryMiB:number):Promise<void>{
+    const safe=validateModalMemoryMiB(memoryMiB);
+    await this.pool.query(`INSERT INTO bw_modal_memory_settings(owner_key,memory_mib,updated_at)
+      VALUES($1,$2,now()) ON CONFLICT(owner_key) DO UPDATE
+      SET memory_mib=EXCLUDED.memory_mib,updated_at=now()`,
+      [principal(owner),safe]);
   }
   async saveAndTest(owner:string,id:string,secret:string):Promise<void>{
     const who=principal(owner),token=credentials(id,secret);
