@@ -764,6 +764,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
         ...(services.uploads?{uploads:services.uploads}:{}),
        ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{}),
        ...(services.renderJobs?{renderJobs:services.renderJobs}:{}),
+       ...(services.renderedImages?{renderedImages:services.renderedImages}:{}),
        ...(services.glbPreviews?{glbPreviews:services.glbPreviews}:{}),
        ...(services.glbPreviewFiles?{glbPreviewFiles:services.glbPreviewFiles}:{}),
        ...(options?.google?{viewerOrigin:config.publicOrigin}:{})},principal.scopes,Boolean(config.oauth),config.oauth?.resource);
