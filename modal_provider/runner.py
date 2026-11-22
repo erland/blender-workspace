@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if __package__ in (None, "") and str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from modal_provider.app_config import modal_app_name
+from modal_provider.memory_config import DEFAULT_MEMORY_MIB,validate_memory_mib
 ARTIFACT_NAMES = ("scene.blend", "scene.json")  # required; GLB is optional
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
@@ -111,10 +112,11 @@ def estimate_usd(seconds, cpu=2, memory_mib=8192):
     return round(seconds * (cpu * CPU_RATE + memory_mib / 1024 * RAM_RATE), 6)
 
 
-def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
+def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
         revision=1, input_blend=None, python_file=None,
         assets_manifest=None, asset_files=None, inline_render=False):
     """Run only a validated Python script inside an owner-billed isolated Sandbox."""
+    validate_memory_mib(memory_mib)
     if not 1 <= revision <= 99999999:
         raise ValueError('Invalid Python scene revision')
     if revision == 1 and input_blend is not None:
@@ -303,11 +305,11 @@ def main():
     p.add_argument("--inline-render", action="store_true")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--cpu", type=float, default=2)
-    p.add_argument("--memory-mib", type=int, default=8192)
+    p.add_argument("--memory-mib", type=int, default=DEFAULT_MEMORY_MIB)
     args = p.parse_args()
     if not 30 <= args.timeout <= 1800:
         p.error("timeout must be 30-1800 seconds")
-    if not 0.125 <= args.cpu <= 4 or not 512 <= args.memory_mib <= 16384:
+    if not 0.125 <= args.cpu <= 4 or args.memory_mib not in (2048,4096,8192,16384):
         p.error("resource limit exceeded")
     try:
         try:
