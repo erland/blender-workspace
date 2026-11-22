@@ -15,7 +15,7 @@ def _is_native_blend_magic(path):
     """
     with Path(path).open('rb') as handle:
         magic=handle.read(7)
-    return magic.startswith(b'BLENDER') or magic.startswith(b'\\x28\\xb5\\x2f\\xfd')
+    return magic.startswith(b'BLENDER') or magic.startswith(bytes.fromhex('28b52ffd'))
 
 
 def _sha256_file(path):
