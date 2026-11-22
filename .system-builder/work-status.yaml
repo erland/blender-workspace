@@ -2,7 +2,7 @@ schema_version: 1
 project: blender-workspace
 status: code_complete_live_acceptance_deferred
 mode: CHANGE
-selected_step: VERIFY_DEV045_LIVE
+selected_step: VERIFY_DEV047_LIVE
 in_progress: null
 completed_steps:
   - DEV-001
@@ -24,6 +24,8 @@ completed_steps:
   - DEV-043
   - DEV-044
   - DEV-045
+  - DEV-046
+  - DEV-047
 verification:
   dev008:
     status: DEFERRED
@@ -310,7 +312,7 @@ dev038:
   live_acceptance: DEFERRED
   next: "DEV-039 New project from an owned saved revision"
 
-next_development_step: VERIFY_DEV045_LIVE
+next_development_step: VERIFY_DEV047_LIVE
 
 dev039:
   status: COMPLETE
@@ -398,3 +400,22 @@ dev045:
     deployment_run: https://github.com/erland/blender-workspace/actions/runs/45005853224
   live_acceptance: DEFERRED
   next: "Explicitly authorize one owner-paid Modal job with inlineRender true to compare cost and timings; no automatic billable test"
+
+dev046:
+  status: COMPLETE
+  scope: "Unified inline and on-demand Cycles render persistence in the standard render gallery"
+  source_pr: https://github.com/erland/blender-workspace/pull/89
+  live_acceptance: DEFERRED
+
+dev047:
+  status: COMPLETE
+  scope: "Owner-scoped, checksum-verified finished PNG returned as actual image/png MCP image content for visual analysis"
+  source_pr: https://github.com/erland/blender-workspace/pull/90
+  code_ci:
+    status: PASS
+    source_sha: a60f4434186a4dc05ebadc93120e5d4ebb94c6a6
+    service_run: https://github.com/erland/blender-workspace/actions/runs/45015051374
+    blender_run: https://github.com/erland/blender-workspace/actions/runs/45015051383
+    deployment_run: https://github.com/erland/blender-workspace/actions/runs/45015051381
+  live_acceptance: DEFERRED
+  next: "After deployment call workspace_get_render_image on an existing render and verify that ChatGPT can visually inspect actual pixels; no Modal job"

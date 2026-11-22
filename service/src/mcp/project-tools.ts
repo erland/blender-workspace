@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {readFile,stat} from 'node:fs/promises';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ProjectRepository } from '../db/projects.js';
 import {JobConflict,type JobRepository} from '../jobs/job-repository.js';
@@ -10,6 +11,7 @@ import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import {AssetSourcesSchema,parseAssetSources} from '../jobs/asset-sources.js';
 import type {UploadedAssets} from '../jobs/uploaded-assets.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
+import type {RenderArtifactStore} from '../storage/render-artifacts.js';
 import type {GlbPreviewRepository} from '../jobs/glb-preview-repository.js';
 import type {ProjectCloneService} from '../jobs/project-clone.js';
 import type {GlbPreviewArtifactStore} from '../storage/glb-preview-artifacts.js';
@@ -26,6 +28,7 @@ export interface ProjectServices {
   uploads?:Pick<UploadedAssets,'list'|'get'|'verifiedPath'>;
   viewerOrigin?:string;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'get'|'list'>;
+  renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
   glbPreviews?:Pick<GlbPreviewRepository,'reserve'|'get'|'latest'>;
   glbPreviewFiles?:Pick<GlbPreviewArtifactStore,'verifiedPath'>;
 }
@@ -52,7 +55,7 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
-  const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin,renderJobs,
+  const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin,renderJobs,renderedImages,
     glbPreviews,glbPreviewFiles,projectClone,uploads}=deps;
   const viewerLink=(projectId:string,revision:number)=>
     viewerOrigin+'/viewer/'+encodeURIComponent(projectId)+'/revisions/'+revision;
@@ -284,6 +287,44 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
              ?{pngUrl:viewerOrigin+'/renders/'+job.project_id+'/'+job.id+'.png',
                requiresGoogleLogin:true}:{})});
       }catch{return failure(new JobConflict('Render status unavailable'));}
+    });
+  }
+  if(renderJobs&&renderedImages){
+    server.registerTool('workspace_get_render_image',{
+      description:'Return the actual PNG pixels of one completed, owner-owned Blender rendering as an MCP image for visual inspection. Includes inline and separately queued renders from the same gallery. Read-only and does not start Modal or Blender. PNG must be at most 1024×1024 and 4 MiB; for larger renders use the existing browser gallery.',
+      inputSchema:{renderJobId:uuid},
+      annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
+    },async({renderJobId})=>{
+      const blocked=denied(READ_SCOPE);if(blocked)return blocked;
+      try{
+        const job=await renderJobs.get(ownerKey,renderJobId);
+        if(!job||job.status!=='completed'||!job.sha256||!job.size_bytes)
+          return failure(new JobConflict('Completed rendering not found'));
+        if(job.width<1||job.height<1||job.width>1024||job.height>1024||
+           job.size_bytes>4*1024*1024)
+          return failure(new JobConflict('Rendering exceeds MCP image limits; use browser gallery'));
+        // The store validates checksum, length and regular-file status before
+        // returning the path; never access arbitrary files or image URLs.
+        const filename=await renderedImages.verifiedPath(
+          job.project_id,job.id,job.sha256,job.size_bytes);
+        const fileInfo=await stat(filename);
+        if(fileInfo.size!==job.size_bytes||fileInfo.size>4*1024*1024)
+          return failure(new JobConflict('Rendering exceeds MCP image limits; use browser gallery'));
+        const bytes=await readFile(filename);
+        if(bytes.length!==job.size_bytes||
+           !bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||
+           bytes.toString('ascii',12,16)!=='IHDR'||bytes.readUInt32BE(16)!==job.width||
+           bytes.readUInt32BE(20)!==job.height)
+          return failure(new JobConflict('Verified render metadata mismatch'));
+        return {content:[
+          {type:'text' as const,text:JSON.stringify({
+            renderJobId:job.id,projectId:job.project_id,revision:job.source_revision,
+            engine:job.engine,width:job.width,height:job.height,samples:job.samples,
+            bytes:bytes.length,modalExecution:false
+          })},
+          {type:'image' as const,data:bytes.toString('base64'),mimeType:'image/png'}
+        ]};
+      }catch{return failure(new JobConflict('Rendering could not be read securely'));}
     });
   }
   if(glbPreviews&&glbPreviewFiles){
