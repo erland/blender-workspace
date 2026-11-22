@@ -35,6 +35,24 @@ browser preview.
 See [External BLEND/GLB import](docs/dev-041-external-blend-glb.md) and
 [cross-project scene composition](docs/dev-040-scene-composition.md).
 
+### Failure diagnostics (DEV-042)
+
+Failed Blender modeling jobs expose owner-scoped, structured diagnostics in
+`workspace_get_job` and Swedish explanations in the browser job history.
+Recognized Python exceptions include the safe exception class, user-code line
+and Blender exit code. Blender is started with `--python-exit-code 1` so a
+Python traceback cannot masquerade as a successful command-line process.
+Crash, timeout and explicitly evidenced memory exhaustion have separate
+classifications; a SIGKILL alone does not prove out-of-memory. Raw Blender
+logs and arbitrary traceback messages are **not** persisted or exposed to
+the user, because they may contain secrets or Python source.
+
+The Blender CI now exercises actual modern native hair curves on a sphere,
+increasing strand counts through 8, 32 and 128, and a deliberately failing
+Python script. Neither test uses paid Modal resources. See
+[diagnostics](docs/modal-job-diagnostics.md) and
+[DEV-042 acceptance](docs/dev-042-blender-error-diagnostics.md).
+
 ### Preflight before paid Blender execution (DEV-035)
 
 The MCP service deployed through Coolify includes a minimal CPython interpreter,

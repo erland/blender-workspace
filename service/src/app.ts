@@ -17,6 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {viewerPage} from './viewer-page.js';
 import type {ProjectDeletionService} from './jobs/project-deletion.js';
 import {projectIndexPage,projectImportPage,modelImportPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
+import {safeOwnerJobError,describeJobFailure} from './jobs/job-diagnostics.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -141,7 +142,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            ...models.map(j=>({id:j.id,project_id:j.project_id,
              project_name:names.get(j.project_id)??'Projekt',type:'model' as const,
              revision:j.requested_revision,status:j.status,created_at:j.created_at,
-             detail:j.note||'Blender Python',error:j.error_message})),
+             detail:j.note||'Blender Python',error:describeJobFailure(safeOwnerJobError(j.error_message))})),
            ...renders.map(r=>({id:r.id,project_id:r.project_id,
              project_name:names.get(r.project_id)??'Projekt',type:'render' as const,
              revision:r.source_revision,status:r.status,created_at:r.created_at,
@@ -263,7 +264,9 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const message=(request.query as {message?:string}).message;
          const renderJobs=services!.renderJobs
            ?await services!.renderJobs.list(session.ownerKey,projectId):[];
-         const modelJobs=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
+         const modelJobsRaw=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
+          const modelJobs=modelJobsRaw.map(j=>({...j,
+            error_message:describeJobFailure(safeOwnerJobError(j.error_message))}));
          reply.header('content-security-policy',"default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          const requestedView=(request.query as {view?:string}).view;
          const view=requestedView==='images'||requestedView==='history'||requestedView==='settings'

@@ -42,9 +42,37 @@ def blender_image_reference(value=None):
 
 class RunnerDiagnostic(Exception):
     """Structured non-secret failure diagnostic for the trusted Node worker."""
-    def __init__(self, phase, code, reason=None):
+    def __init__(self, phase, code, reason=None, *, exit_code=None,
+                 exception_type=None, source_line=None):
         super().__init__(code)
         self.phase, self.code, self.reason = phase, code, reason
+        self.exit_code, self.exception_type, self.source_line = exit_code, exception_type, source_line
+
+
+PYTHON_EXCEPTIONS = {
+    'AttributeError','TypeError','ValueError','KeyError','IndexError','NameError',
+    'RuntimeError','ZeroDivisionError','AssertionError','ImportError',
+    'ModuleNotFoundError','MemoryError','PermissionError','FileNotFoundError',
+    'OverflowError','ReferenceError','OSError','NotImplementedError','SyntaxError'
+}
+USER_ERROR = re.compile(
+    r'^BW_USER_PYTHON_ERROR type=([A-Za-z]+) line=([1-9][0-9]{0,5})$',re.M)
+
+
+def classify_blender_failure(exit_code, stdout, stderr):
+    """Classify observed evidence; a signal alone cannot prove OOM."""
+    output = stdout[-8000:] + chr(10) + stderr[-8000:]
+    matches = list(USER_ERROR.finditer(output))
+    if matches and type(exit_code) is int and exit_code != 0:
+        kind, line = matches[-1].groups()
+        if kind in PYTHON_EXCEPTIONS:
+            return 'python_script_error',kind,int(line)
+    if re.search(r'(?i)(?:std::bad_alloc|out of memory|cannot allocate memory|'
+                 r'CUDA_ERROR_OUT_OF_MEMORY)',output):
+        return 'out_of_memory',None,None
+    if type(exit_code) is int and (exit_code < 0 or exit_code >= 128):
+        return 'blender_crash',None,None
+    return 'blender_execution_failed',None,None
 
 
 def safe_failure_code(phase, error):
@@ -54,6 +82,12 @@ def safe_failure_code(phase, error):
     # SDK exception class is sometimes generic (RemoteError). Inspect only for
     # classification; the underlying message is never emitted or persisted.
     detail = str(error).lower()[:2000]
+    if phase == "blender_execution":
+        if 'timeout' in kind or 'timed out' in detail or 'deadline exceeded' in detail:
+            return 'blender_timeout'
+        if 'outofmemory' in kind or 'out of memory' in detail:
+            return 'out_of_memory'
+        return 'blender_execution_failed'
     if phase == "modal_start":
         if ("auth" in kind or "permission" in kind or "unauthorized" in kind or
                 "permission denied" in detail or "unauthorized" in detail or
@@ -152,17 +186,24 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
                 sandbox.filesystem.copy_from_local(str(Path(filename).resolve()),
                     '/workspace/out/source-%02d.%s' % (i,entry['format']))
         phase = "blender_execution"
-        process = sandbox.exec("blender", "-b", "--factory-startup", "--python",
+        process = sandbox.exec("blender", "-b", "--factory-startup", "--python-exit-code", "1", "--python",
             "/workspace/blender_workspace_poc/apply_python.py", "--",
             "NEW" if revision == 1 else "/workspace/out/input.blend",
             "/workspace/out/model.py", str(revision))
         code = process.wait()
-        report["blender_stdout_tail"] = process.stdout.read()[-8000:]
-        report["blender_stderr_tail"] = process.stderr.read()[-4000:]
+        # Never persist raw stream tails: user Python can print sensitive data.
+        stdout = process.stdout.read()[-8000:]
+        stderr = process.stderr.read()[-8000:]
+        report["blender_exit_code"] = code if type(code) is int else None
         if code != 0:
-            raise RuntimeError(f"Blender smoke failed: exit code {code}")
-        if "BW_SANDBOX_PYTHON PASS" not in report["blender_stdout_tail"]:
-            raise RuntimeError("Expected isolated Blender-Python success marker missing")
+            failure,exception_type,source_line = classify_blender_failure(
+                code,stdout,stderr)
+            raise RunnerDiagnostic('blender_execution',failure,
+                exit_code=code if type(code) is int else None,
+                exception_type=exception_type,source_line=source_line)
+        if "BW_SANDBOX_PYTHON PASS" not in stdout:
+            raise RunnerDiagnostic('blender_execution','blender_execution_failed',
+                exit_code=code if type(code) is int else None)
         executed = time.monotonic()
         phase = "artifact_transfer"
         # Always transfer the native project and inspection report first.
@@ -196,7 +237,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         report["status"] = "PASS"
         return report
     except Exception as exc:
-        code = safe_failure_code(phase, exc)
+        code = exc.code if isinstance(exc,RunnerDiagnostic) else safe_failure_code(phase,exc)
         # A fixed, non-secret detail identifies the exact failed validation check.
         from modal_provider.artifact_validation import ArtifactValidationError
         reason = exc.reason if phase == 'artifact_validation' and isinstance(exc, ArtifactValidationError) else None
@@ -204,6 +245,14 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         report["failure_code"] = code
         if reason is not None:
             report["failure_reason"] = reason
+        if isinstance(exc,RunnerDiagnostic):
+            if exc.exit_code is not None:
+                report['blender_exit_code'] = exc.exit_code
+            if exc.exception_type:
+                report['python_exception_type'] = exc.exception_type
+            if exc.source_line:
+                report['python_source_line'] = exc.source_line
+            raise exc from None
         raise RunnerDiagnostic(phase, code, reason) from None
     finally:
         if sandbox is not None:
@@ -253,6 +302,12 @@ def main():
             raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
     except RunnerDiagnostic as exc:
         detail = f" reason={exc.reason}" if exc.reason else ""
+        if type(exc.exit_code) is int and -99999 <= exc.exit_code <= 99999:
+            detail += f" exit={exc.exit_code}"
+        if exc.exception_type in PYTHON_EXCEPTIONS:
+            detail += f" exception={exc.exception_type}"
+            if type(exc.source_line) is int and 1 <= exc.source_line <= 999999:
+                detail += f" line={exc.source_line}"
         print(f"BW_DIAGNOSTIC phase={exc.phase} code={exc.code}{detail}", file=sys.stderr)
         raise SystemExit(1) from None
     except Exception:
