@@ -29,11 +29,12 @@ const key=process.env.MODAL_CREDENTIAL_ENCRYPTION_KEY;
 const accounts=key?ModalAccountManager.fromBase64(pool,key,new ModalCliTokenVerifier()):undefined;
 if(!accounts)throw new Error('Personal Modal credentials required');
 const uploads=new UploadedAssets(pool,new UploadedAssetStore(root));
-const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),
-  new ModalPythonExecutor(worker,18*60_000,accounts),uploads);
 const renderQueue=new RenderJobRepository(pool);
+const renderFiles=new RenderArtifactStore(root);
+const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),
+  new ModalPythonExecutor(worker,18*60_000,accounts),uploads,renderQueue,renderFiles);
 const renderWorkflow=new RenderOrchestrator(renderQueue,new LocalArtifactStore(root),
-  new RenderArtifactStore(root),new ModalRenderExecutor(worker,accounts));
+  renderFiles,new ModalRenderExecutor(worker,accounts));
 const previewQueue=new GlbPreviewRepository(pool);
 const previewWorkflow=new GlbPreviewOrchestrator(previewQueue,new LocalArtifactStore(root),
   new GlbPreviewArtifactStore(root),new ModalGlbPreviewExecutor(worker,accounts));
@@ -59,6 +60,10 @@ try {
   } else if(command==='recover'){
     const job=await workflow.recover(owner,argument);
     console.log(JSON.stringify({jobId:job.id,status:job.status}));
+  } else if(command==='inline-render-recover'){
+    const job=await jobs.get(owner,argument);
+    if(!job||job.status!=='completed')throw new Error('Completed model job not found');
+    console.log(JSON.stringify({registered:await workflow.registerSavedInlineRender(job)}));
   } else if(command==='render-recover'){
     console.log(JSON.stringify({recovered:await renderWorkflow.recover(owner,argument)}));
   } else if(command==='preview-recover'){
