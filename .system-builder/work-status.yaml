@@ -2,7 +2,7 @@ schema_version: 1
 project: blender-workspace
 status: code_complete_live_acceptance_deferred
 mode: CHANGE
-selected_step: VERIFY_DEV041_LIVE
+selected_step: VERIFY_DEV042_LIVE
 in_progress: null
 completed_steps:
   - DEV-001
@@ -20,6 +20,7 @@ completed_steps:
   - DEV-039
   - DEV-040
   - DEV-041
+  - DEV-042
 verification:
   dev008:
     status: DEFERRED
@@ -306,7 +307,7 @@ dev038:
   live_acceptance: DEFERRED
   next: "DEV-039 New project from an owned saved revision"
 
-next_development_step: VERIFY_DEV041_LIVE
+next_development_step: VERIFY_DEV042_LIVE
 
 dev039:
   status: COMPLETE
@@ -350,3 +351,15 @@ dev041:
 next_later_improvements:
   - "Owner-visible uploaded model library deletion and cleanup lifecycle"
   - "Larger source files via resumable streaming uploads where needed"
+
+dev042:
+  status: CODE_COMPLETE_VERIFICATION_PENDING
+  scope: "Classify Blender exit, user Python exceptions and known resource failures; present safe diagnostics in MCP and browser; real hair and traceback CI regressions"
+  source_pr: https://github.com/erland/blender-workspace/pull/85
+  code_ci:
+    status: PARTIAL
+    service_run: https://github.com/erland/blender-workspace/actions/runs/44996193467
+    blender_run: https://github.com/erland/blender-workspace/actions/runs/44996193537
+    deployment_run: https://github.com/erland/blender-workspace/actions/runs/44996193528
+  live_acceptance: DEFERRED
+  next: "Verify the next real owner-paid Blender failure and job history in deployed Coolify; never automatically rerun failed jobs"

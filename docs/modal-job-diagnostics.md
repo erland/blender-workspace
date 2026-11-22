@@ -26,6 +26,25 @@ pull issue; `sandbox_start_failed` to a Modal allocation issue;
 `artifact_transfer_failed` or `artifact_invalid` to artifact handling.
 These are **classifications**, not complete low-level stack traces.
 
+Since DEV-042, Blender starts with `--python-exit-code 1` so that a raised
+Python exception leads to a nonzero process exit. Trusted Blender code emits
+a strict `BW_USER_PYTHON_ERROR` marker containing only a recognized Python
+exception **class** and the last line in the user script. The Modal
+controller combines it with the process exit code, validates the fields and
+returns `python_script_error`. The owner can see, for example:
+```json
+{"failure":{"phase":"blender_execution","code":"python_script_error",
+  "exitCode":1,"exceptionType":"AttributeError","sourceLine":142}}
+```
+The web job history displays the same failure in Swedish. Other recognized
+codes include `blender_crash`, `blender_timeout` and `out_of_memory`.
+The latter requires explicit memory-exhaustion evidence; exit 137 or SIGKILL
+on their own remain crash/unknown. Unknown older jobs stay generic.
+
+The full traceback and Python exception message remain unexposed: either
+can contain credentials, filesystem paths, input data and user source. The
+controller never persists raw stdout/stderr in `modal_run_report.json`.
+
 ## Security design
 
 - The worker captures a bounded 8 KiB tail of stderr and stdout from
@@ -34,7 +53,8 @@ These are **classifications**, not complete low-level stack traces.
 - The Python runner emits the strict `BW_DIAGNOSTIC phase=... code=...`
   line upon failure. Node validates both fields against a fixed allowlist.
   Unrecognized output results in a generic code.
-- The database stores only normalized `BW_JOB_ERROR` phase/code messages.
+- The database stores only normalized `BW_JOB_ERROR` phase/code and optional
+  allowlisted process exit/exception class/user line metadata.
   Provider exceptions, Python source, paths and credential values are
   never copied into these messages.
 - Historical free-form `error_message` entries are **not** returned
