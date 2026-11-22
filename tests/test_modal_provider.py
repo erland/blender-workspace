@@ -236,10 +236,10 @@ class ModalProviderTests(unittest.TestCase):
             source = Path(tmp) / 'source.blend'
             source.write_bytes(b'BLENDER model content')
             manifest = Path(tmp) / 'assets.json'
-            manifest.write_text(json.dumps([{'index':0,'offset':[5,0,0]}]))
+            manifest.write_text(json.dumps([{'index':0,'offset':[5,0,0],'format':'blend'}]))
             run(sdk, Path(tmp) / 'out', revision=2, input_blend=str(prior),
                 python_file=str(script), assets_manifest=str(manifest),
-                asset_blends=[str(source)])
+                asset_files=[str(source)])
             copies = [c.args for c in sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list]
             self.assertIn((str(manifest.resolve()),'/workspace/out/asset-sources.json'),copies)
             self.assertIn((str(source.resolve()),'/workspace/out/source-00.blend'),copies)
@@ -252,12 +252,12 @@ class ModalProviderTests(unittest.TestCase):
             source=Path(tmp)/'source.blend'
             source.write_bytes(b'BLENDER content')
             manifest=Path(tmp)/'assets.json'
-            manifest.write_text(json.dumps([{'index':0,'offset':[0,0,0]}]))
+            manifest.write_text(json.dumps([{'index':0,'offset':[0,0,0],'format':'blend'}]))
             from modal_provider.runner import run
             for args in (
-                {'assets_manifest':str(manifest),'asset_blends':[]},
-                {'assets_manifest':str(manifest),'asset_blends':[str(source)]*5},
-                {'assets_manifest':str(manifest),'asset_blends':[str(Path(tmp)/'missing.blend')]},
+                {'assets_manifest':str(manifest),'asset_files':[]},
+                {'assets_manifest':str(manifest),'asset_files':[str(source)]*5},
+                {'assets_manifest':str(manifest),'asset_files':[str(Path(tmp)/'missing.blend')]},
             ):
                 with self.assertRaises(ValueError):
                     run(sdk,Path(tmp)/'out',python_file=str(script),**args)
