@@ -307,7 +307,8 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       if(!project)return failure(new JobConflict('Project not found'));
       if(project.current_revision!==expectedRevision)
         return failure(new JobConflict('Stale project revision'));
-      if(sourceRevision!==undefined && (expectedRevision===0||sourceRevision>expectedRevision))
+      if(sourceRevision!==undefined && (!Number.isSafeInteger(sourceRevision)||
+         sourceRevision<1||expectedRevision===0||sourceRevision>expectedRevision))
         return failure(new JobConflict('Invalid historical source revision'));
       const selectedSource=expectedRevision===0?0:(sourceRevision??expectedRevision);
       if(selectedSource>0){
