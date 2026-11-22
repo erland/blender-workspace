@@ -192,6 +192,20 @@ jobs:
             -b --factory-startup --disable-autoexec --python /workspace/tests/blender_hair_diagnostics_smoke.py \
             | tee blender-dev042.log
           grep -q 'BW_DEV042_HAIR PASS' blender-dev042.log
+      - name: Verify real Python exception is pinpointed without Modal
+        run: |
+          set -eu
+          mkdir -p dev042-failure
+          chmod 777 dev042-failure
+          printf "import bpy\\nraise AttributeError('synthetic test failure')\\n" > dev042-failure/model.py
+          set +e
+          docker run --rm -v "$PWD/dev042-failure:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/blender_workspace_poc/apply_python.py \
+            -- NEW /workspace/out/model.py 1 > blender-dev042-failure.log 2>&1
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q 'BW_USER_PYTHON_ERROR type=AttributeError line=2' blender-dev042-failure.log
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4

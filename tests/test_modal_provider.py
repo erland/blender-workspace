@@ -173,6 +173,27 @@ class ModalProviderTests(unittest.TestCase):
                 run(sdk, Path(tmp) / "out", python_file=str(script))
             sdk.Sandbox.create.return_value.terminate.assert_called_once_with(wait=True)
 
+    def test_python_error_propagates_safe_metadata_and_redacts_report(self):
+        sdk=self.sdk(exit_code=1)
+        proc=sdk.Sandbox.create.return_value.exec.return_value
+        proc.stderr.read.return_value=(
+            'PRIVATE PATH /secrets/client; token=SECRET-123'+chr(10)+
+            'BW_USER_PYTHON_ERROR type=AttributeError line=142'+chr(10))
+        with TemporaryDirectory() as tmp:
+            script,_=self.files(tmp)
+            out=Path(tmp)/'out'
+            with self.assertRaises(RunnerDiagnostic) as raised:
+                run(sdk,out,python_file=str(script))
+            diagnostic=raised.exception
+            self.assertEqual((diagnostic.phase,diagnostic.code),
+                             ('blender_execution','python_script_error'))
+            self.assertEqual((diagnostic.exit_code,diagnostic.exception_type,
+                              diagnostic.source_line),(1,'AttributeError',142))
+            report=(out/'modal_run_report.json').read_text()
+            self.assertNotIn('SECRET-123',report)
+            self.assertNotIn('PRIVATE PATH',report)
+            self.assertEqual(json.loads(report)['blender_exit_code'],1)
+
     def test_copy_failure_always_terminates(self):
         sdk = self.sdk(copy_error=OSError("transport failure"))
         with TemporaryDirectory() as tmp:
