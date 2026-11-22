@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import os from 'node:os';
-import type {BlenderExecutor} from './orchestrator.js';
+import type {BlenderExecutor,BlenderAssetInput} from './orchestrator.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import type {ModalCredentials,ModalAccountManager} from '../modal/modal-accounts.js';
 import {JobExecutionError,parseRunnerDiagnostic} from './job-diagnostics.js';
@@ -23,12 +23,16 @@ export class ModalPythonExecutor implements BlenderExecutor {
     if(!path.isAbsolute(repoRoot))throw new RangeError('Worker root must be absolute');
   }
   async runPythonScript(outDir:string,owner:string,revision:number,
-      spec:PythonScriptSpec,inputBlend?:string):Promise<void> {
+      spec:PythonScriptSpec,inputBlend?:string,assets:BlenderAssetInput[]=[]):Promise<void> {
     if(!Number.isInteger(revision)||revision<1||revision>99999999||
       (revision===1&&inputBlend!==undefined)||(revision>1&&!inputBlend))
       throw new RangeError('Invalid Python scene revision');
     if(inputBlend&&!path.isAbsolute(inputBlend))
       throw new RangeError('Invalid source path');
+    if(!Array.isArray(assets)||assets.length>4||assets.some(a=>
+      !path.isAbsolute(a.path)||!Array.isArray(a.offset)||a.offset.length!==3||
+      a.offset.some(n=>!Number.isFinite(n)||Math.abs(n)>100000)))
+      throw new RangeError('Invalid model asset inputs');
     const safe=parsePythonScript(spec);
     if(!owner?.trim())throw new Error('Missing job owner');
     if(!this.accounts)throw new Error('Personal Modal account service unavailable');
@@ -38,11 +42,18 @@ export class ModalPythonExecutor implements BlenderExecutor {
     try {
       const filename=path.join(folder,'model.py');
       await writeFile(filename,safe.code,{mode:0o600,flag:'wx'});
+      if(assets.length)await writeFile(path.join(folder,'asset-sources.json'),
+        JSON.stringify(assets.map((a,i)=>({index:i,offset:a.offset}))),
+        {mode:0o600,flag:'wx'});
       const script=path.join(this.repoRoot,'modal_provider','runner.py');
       await new Promise<void>((resolve,reject)=>{
         const args=[script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib','8192',
           '--revision',String(revision),'--python-file',filename];
         if(inputBlend)args.push('--input-blend',inputBlend);
+        if(assets.length){
+          args.push('--assets-manifest',path.join(folder,'asset-sources.json'));
+          for(const asset of assets)args.push('--asset-blend',asset.path);
+        }
         const proc=spawn('python3',args,{cwd:this.repoRoot,stdio:['ignore','pipe','pipe'],env});
         let ended=false,timedOut=false;
         let stdout='',stderr='';

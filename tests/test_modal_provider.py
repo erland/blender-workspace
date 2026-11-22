@@ -227,6 +227,42 @@ class ModalProviderTests(unittest.TestCase):
         self.assertEqual(estimate_usd(60, 2, 8192), 0.007932)
         self.assertEqual(ARTIFACT_NAMES, ("scene.blend", "scene.json"))
 
+    def test_composition_sources_are_transferred_to_fixed_sandbox_paths(self):
+        sdk = self.sdk()
+        with TemporaryDirectory() as tmp, patch(
+            "modal_provider.artifact_validation.validate_python_outputs"
+        ):
+            script, prior = self.files(tmp)
+            source = Path(tmp) / 'source.blend'
+            source.write_bytes(b'BLENDER model content')
+            manifest = Path(tmp) / 'assets.json'
+            manifest.write_text(json.dumps([{'index':0,'offset':[5,0,0]}]))
+            run(sdk, Path(tmp) / 'out', revision=2, input_blend=str(prior),
+                python_file=str(script), assets_manifest=str(manifest),
+                asset_blends=[str(source)])
+            copies = [c.args for c in sdk.Sandbox.create.return_value.filesystem.copy_from_local.call_args_list]
+            self.assertIn((str(manifest.resolve()),'/workspace/out/asset-sources.json'),copies)
+            self.assertIn((str(source.resolve()),'/workspace/out/source-00.blend'),copies)
+            self.assertTrue(sdk.Sandbox.create.call_args.kwargs['block_network'])
+
+    def test_invalid_composition_sources_fail_before_modal_allocation(self):
+        sdk=self.sdk()
+        with TemporaryDirectory() as tmp:
+            script,_=self.files(tmp)
+            source=Path(tmp)/'source.blend'
+            source.write_bytes(b'BLENDER content')
+            manifest=Path(tmp)/'assets.json'
+            manifest.write_text(json.dumps([{'index':0,'offset':[0,0,0]}]))
+            from modal_provider.runner import run
+            for args in (
+                {'assets_manifest':str(manifest),'asset_blends':[]},
+                {'assets_manifest':str(manifest),'asset_blends':[str(source)]*5},
+                {'assets_manifest':str(manifest),'asset_blends':[str(Path(tmp)/'missing.blend')]},
+            ):
+                with self.assertRaises(ValueError):
+                    run(sdk,Path(tmp)/'out',python_file=str(script),**args)
+            sdk.Sandbox.create.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@ schema_version: 1
 project: blender-workspace
 status: change_in_progress
 mode: CHANGE
-selected_step: DEV-040
+selected_step: DEV-041
 in_progress: null
 completed_steps:
   - DEV-001
@@ -18,6 +18,7 @@ completed_steps:
   - DEV-037
   - DEV-038
   - DEV-039
+  - DEV-040
 verification:
   dev008:
     status: DEFERRED
@@ -304,7 +305,7 @@ dev038:
   live_acceptance: DEFERRED
   next: "DEV-039 New project from an owned saved revision"
 
-next_development_step: DEV-040
+next_development_step: DEV-041
 
 dev039:
   status: COMPLETE
@@ -318,3 +319,16 @@ dev039:
     deployment_run: https://github.com/erland/blender-workspace/actions/runs/44992744479
   live_acceptance: DEFERRED
   next: "DEV-040 Combine saved owned models into a shared Blender scene"
+
+dev040:
+  status: COMPLETE
+  scope: "Compose up to four saved owned BLEND revisions into an independently versioned scene, with placement and guarded Modal execution"
+  source_pr: https://github.com/erland/blender-workspace/pull/83
+  implementation_sha: 72766dfc7ea64e00bc630d608bd12752bd7e3c19
+  code_ci:
+    status: PASS
+    service_run: https://github.com/erland/blender-workspace/actions/runs/44993465404
+    blender_run: https://github.com/erland/blender-workspace/actions/runs/44993465426
+    deployment_run: https://github.com/erland/blender-workspace/actions/runs/44993465400
+  live_acceptance: DEFERRED
+  next: "DEV-041 Secure owner-scoped external BLEND and GLB upload and import; OBJ excluded"

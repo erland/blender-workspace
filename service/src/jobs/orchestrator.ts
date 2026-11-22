@@ -5,9 +5,15 @@ import type { Job, JobRepository } from './job-repository.js';
 import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-store.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {JobExecutionError} from './job-diagnostics.js';
+import {parseAssetSources,type AssetSource} from './asset-sources.js';
 
+export interface BlenderAssetInput {
+  path:string;
+  offset:[number,number,number];
+}
 export interface BlenderExecutor {
-  runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,inputBlend?:string):Promise<void>;
+  runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,
+    inputBlend?:string,assets?:BlenderAssetInput[]):Promise<void>;
 }
 
 const SCENE_ARTIFACTS=['scene.blend','scene.json'] as const;
@@ -37,7 +43,19 @@ export class JobOrchestrator {
         throw new Error('Invalid source revision');
       const source=sourceRevision===0?undefined:await this.files.verifiedArtifactPath(
         job.project_id,sourceRevision,'scene.blend');
-      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source);
+      const requestedAssets=parseAssetSources(job.asset_sources??[]);
+      const assets:BlenderAssetInput[]=[];
+      if(requestedAssets.length){
+        // A project could be deleted after reservation. Fail before billing
+        // rather than using orphaned stored files.
+        const verified=await this.jobs.validateAssetSources(owner,requestedAssets);
+        for(const item of verified){
+          assets.push({path:await this.files.verifiedArtifactPath(
+            item.projectId,item.revision,'scene.blend'),
+            offset:item.offset as [number,number,number]});
+        }
+      }
+      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets);
       // GLB is a disposable preview, never a prerequisite for the native
       // Blender revision. Only publish one if the trusted worker declared it.
       const artifacts:IncomingArtifact[]=SCENE_ARTIFACTS.map(name=>({
