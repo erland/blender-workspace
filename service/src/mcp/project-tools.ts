@@ -9,6 +9,7 @@ import {PythonScriptSchema} from '../jobs/python-script.js';
 import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import type {GlbPreviewRepository} from '../jobs/glb-preview-repository.js';
+import type {ProjectCloneService} from '../jobs/project-clone.js';
 import type {GlbPreviewArtifactStore} from '../storage/glb-preview-artifacts.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from '../jobs/render-repository.js';
 import {inspectSavedScene,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
@@ -19,6 +20,7 @@ export interface ProjectServices {
   jobs: JobRepository;
   modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'>;
   artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'>;
+  projectClone?:Pick<ProjectCloneService,'clone'>;
   viewerOrigin?:string;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'get'|'list'>;
   glbPreviews?:Pick<GlbPreviewRepository,'reserve'|'get'|'latest'>;
@@ -48,7 +50,7 @@ function safeJob(j: {id:string;project_id:string;status:string;requested_revisio
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
  permissions?:ReadonlySet<string>,oauth=false,resource?:string):void {
   const {ownerKey,projects,jobs,modalAccounts,artifacts,viewerOrigin,renderJobs,
-    glbPreviews,glbPreviewFiles}=deps;
+    glbPreviews,glbPreviewFiles,projectClone}=deps;
   const viewerLink=(projectId:string,revision:number)=>
     viewerOrigin+'/viewer/'+encodeURIComponent(projectId)+'/revisions/'+revision;
   async function ownedViewerRevision(projectId:string,revision:number):Promise<boolean>{
@@ -93,6 +95,21 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     try { return result({project:safeProject(await projects.create(ownerKey,name,description??''))}); }
     catch(e) { return failure(e); }
   });
+  if(projectClone){
+    server.registerTool('workspace_clone_project_from_revision',{
+      description:'Create an independent new project from a saved BLEND revision belonging to your account. Copies checksum-verified original files without Blender or Modal, preserving source intact.',
+      inputSchema:{sourceProjectId:uuid,sourceRevision:z.number().int().min(1).max(99999999),
+        name:cleanName,description:cleanDescription.optional()},...schemes(WRITE_SCOPE)
+    },async({sourceProjectId,sourceRevision,name,description})=>{
+      const block=denied(WRITE_SCOPE);if(block)return block;
+      try{
+        const project=await projectClone.clone(ownerKey,sourceProjectId,sourceRevision,name,description??'');
+        return result({project:safeProject(project),
+          clonedFrom:{projectId:sourceProjectId,revision:sourceRevision},
+          newRevision:1,modalExecution:false});
+      }catch(e){return failure(e);}
+    });
+  }
   server.registerTool('workspace_get_project', {
     description: 'Read metadata for a project you own.',
     inputSchema: {projectId:uuid}, annotations: {readOnlyHint:true},...schemes(READ_SCOPE)
@@ -119,7 +136,9 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       const versions=await projects.revisions(ownerKey,projectId);
       return result({revisions:versions.map(v=>({revision:v.revision,createdAt:v.created_at,note:v.note,
         artifactAvailable:v.artifact_prefix!==null,
-        ...(v.source_revision!=null?{sourceRevision:v.source_revision}:{})}))}); }
+        ...(v.source_revision!=null?{sourceRevision:v.source_revision}:{}),
+        ...(v.source_project_id&&v.source_project_revision?{
+          clonedFrom:{projectId:v.source_project_id,revision:v.source_project_revision}}:{})}))}); }
     catch(e){return failure(e);}
   });
   server.registerTool('workspace_inspect_scene',{

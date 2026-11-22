@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import type {ProjectArchiveService} from './jobs/project-archive.js';
+import type {ProjectCloneService} from './jobs/project-clone.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from './jobs/render-repository.js';
 import {validateViewerCamera,viewerDimensions} from './jobs/viewer-camera.js';
 import type {RenderArtifactStore} from './storage/render-artifacts.js';
@@ -26,6 +27,7 @@ export function createApp(config:ServiceConfig,
   modalAccounts?:ProjectServices['modalAccounts'];artifacts?:ProjectServices['artifacts'];
   projectDeletion?:Pick<ProjectDeletionService,'delete'>;
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
+   projectClone?:Pick<ProjectCloneService,'clone'>;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
   glbPreviews?:Pick<GlbPreviewRepository,'latest'|'get'|'reserve'>;
@@ -667,6 +669,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
      registerProjectTools(server,{ownerKey:principal.ownerKey,
        projects:services.projects,jobs:services.jobs,
        ...(services.artifacts?{artifacts:services.artifacts}:{}),
+        ...(services.projectClone?{projectClone:services.projectClone}:{}),
        ...(services.modalAccounts?{modalAccounts:services.modalAccounts}:{}),
        ...(services.renderJobs?{renderJobs:services.renderJobs}:{}),
        ...(services.glbPreviews?{glbPreviews:services.glbPreviews}:{}),

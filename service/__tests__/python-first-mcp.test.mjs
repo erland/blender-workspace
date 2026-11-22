@@ -119,3 +119,33 @@ test('DEV-038 rejects invalid historical sources and stale destinations before q
   }
   assert.equal(context.checked,0);
 });
+
+test('DEV-039 MCP cloning is write-scoped, uses authenticated owner and does not reserve a Modal job',async()=>{
+ const tools=new Map(),owner='owner-test',sourceId=randomUUID(),newId=randomUUID();
+ let invoked=null;
+ const server={registerTool(name,config,handler){tools.set(name,{config,handler});}};
+ const deps={
+  ownerKey:owner,
+  projects:{async get(){return null;},async revisions(){return [];}},
+  jobs:{async reserve(){throw new Error('Cloning must never queue Modal');}},
+  projectClone:{async clone(...args){invoked=args;return {
+   id:newId,name:'Derived',description:'Independent scene',
+   current_revision:1,created_at:new Date(),updated_at:new Date()
+  };}}
+ };
+ registerProjectTools(server,deps,new Set(['workspace:read','workspace:write']));
+ const handler=tools.get('workspace_clone_project_from_revision').handler;
+ const reply=readResult(await handler({sourceProjectId:sourceId,sourceRevision:3,
+  name:'Derived',description:'Independent scene'}));
+ assert.equal(reply.project.id,newId);
+ assert.equal(reply.newRevision,1);
+ assert.equal(reply.modalExecution,false);
+ assert.deepEqual(invoked,[owner,sourceId,3,'Derived','Independent scene']);
+ const readOnly=new Map();
+ registerProjectTools({registerTool(n,c,h){readOnly.set(n,{h});}},
+  deps,new Set(['workspace:read']));
+ const denied=await readOnly.get('workspace_clone_project_from_revision').h({
+  sourceProjectId:sourceId,sourceRevision:3,name:'No write'});
+ assert.equal(denied.isError,true);
+ assert.deepEqual(invoked,[owner,sourceId,3,'Derived','Independent scene']);
+});
