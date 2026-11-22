@@ -27,18 +27,29 @@ obj=bpy.data.objects.new('Hair curves',curves)
 bpy.context.scene.collection.objects.link(obj)
 obj.parent=sphere
 assert obj.type=='CURVES'
-# Increase display counts in bounded steps; avoids allocating hundreds of
-# thousands of curves in the CI environment.
-for density in (8,32,128):
-    curves.resolution=2
-    curves['bw_test_hair_density']=density
+# Create real native Curves strands at increasing densities, not just a
+# metadata counter. Hair can be rendered in Blender despite lossy GLB preview.
+for target in (8,32,128):
+    missing=target-len(curves.curves)
+    if missing>0:
+        curves.add_curves(sizes=[2]*missing)
+    assert len(curves.curves)==target,(target,len(curves.curves))
+    points=curves.attributes['position'].data
+    import math
+    for i in range(target):
+        angle=(i*2.399963229728653)
+        z=1.8*(i+.5)/target-.9
+        radius=math.sqrt(max(0.0,1-z*z))
+        for j in range(2):
+            points[2*i+j].vector=(radius*math.cos(angle)*(1+.1*j),
+                radius*math.sin(angle)*(1+.1*j),z*(1+.1*j))
     bpy.context.view_layer.update()
-    assert curves['bw_test_hair_density']==density
-    print('BW_HAIR_LEVEL',density,flush=True)
+    print('BW_HAIR_LEVEL',target,flush=True)
 filename=out/'hair_diagnostic.blend'
 bpy.ops.wm.save_as_mainfile(filepath=str(filename),compress=False)
 assert filename.exists() and filename.stat().st_size>256
 bpy.ops.wm.open_mainfile(filepath=str(filename),load_ui=False,use_scripts=False)
 assert 'Hair curves' in bpy.data.objects
 assert bpy.data.objects['Hair curves'].type=='CURVES'
+assert len(bpy.data.objects['Hair curves'].data.curves)==128
 print('BW_DEV042_HAIR PASS',flush=True)
