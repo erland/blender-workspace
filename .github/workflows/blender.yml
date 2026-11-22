@@ -200,7 +200,7 @@ jobs:
           printf "import bpy\\nraise AttributeError('synthetic test failure')\\n" > dev042-failure/model.py
           set +e
           docker run --rm -v "$PWD/dev042-failure:/workspace/out" --entrypoint blender blender-workspace:ci \
-            -b --factory-startup --disable-autoexec --python /workspace/blender_workspace_poc/apply_python.py \
+            -b --factory-startup --disable-autoexec --python-exit-code 1 --python /workspace/blender_workspace_poc/apply_python.py \
             -- NEW /workspace/out/model.py 1 > blender-dev042-failure.log 2>&1
           status=$?
           set -e
