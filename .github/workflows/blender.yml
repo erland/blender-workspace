@@ -217,6 +217,13 @@ jobs:
           grep -q 'BW_DEV043_NATIVE_RELOAD PASS' blender-dev043.log
           grep -q 'BW_DEV043_EXPORT_FALLBACK PASS' blender-dev043.log
           grep -q 'BW_DEV043_HAIR_EXPORT PASS' blender-dev043.log
+      - name: DEV-044 Verify bounded hair and modifier metadata without Modal
+        run: |
+          set -o pipefail
+          docker run --rm --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/tests/blender_complexity_inspection_smoke.py \
+            | tee blender-dev044.log
+          grep -q 'BW_DEV044_COMPLEXITY PASS' blender-dev044.log
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4
