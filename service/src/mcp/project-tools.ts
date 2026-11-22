@@ -14,7 +14,7 @@ import type {GlbPreviewRepository} from '../jobs/glb-preview-repository.js';
 import type {ProjectCloneService} from '../jobs/project-clone.js';
 import type {GlbPreviewArtifactStore} from '../storage/glb-preview-artifacts.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from '../jobs/render-repository.js';
-import {inspectSavedScene,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
+import {inspectSavedScene,inspectSavedPerformance,geometrySnapshot,geometryValidation,materialCatalog} from '../scene/scene-contract.js';
 
 export interface ProjectServices {
   ownerKey: string;
@@ -420,12 +420,23 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     try {const j=await jobs.get(ownerKey,jobId);
       if(!j)return failure(new JobConflict('Job not found'));
       const job=safeJob(j);
-      if(j.status==='completed'&&await ownedViewerRevision(j.project_id,j.requested_revision))
-        return result({job,viewerUrl:viewerLink(j.project_id,j.requested_revision),
-          requiresGoogleLogin:true});
+      let performance=null;
+      if(j.status==='completed'&&artifacts){
+        try{performance=await inspectSavedPerformance(artifacts,j.project_id,j.requested_revision);}
+        catch{/* Previous or missing reports never block job status. */}
+      }
+      const viewerAvailable=j.status==='completed'&&await ownedViewerRevision(
+        j.project_id,j.requested_revision);
       const diagnostic=(j.status==='failed'||j.status==='needs_recovery')
         ?safeOwnerJobError(j.error_message):null;
-      return result({job,...(diagnostic?{failure:diagnostic}:{})});
+      return result({job,
+        ...(viewerAvailable?{viewerUrl:viewerLink(j.project_id,j.requested_revision),
+          requiresGoogleLogin:true}:{}),
+        ...(performance?{performance}:{}),
+        ...(performance?.inlineRender?.status==='available'&&viewerOrigin
+          ?{inlinePngUrl:viewerOrigin+'/projects/'+j.project_id+'/revisions/'+j.requested_revision+'/scene.png',
+            requiresGoogleLogin:true}:{}),
+        ...(diagnostic?{failure:diagnostic}:{})});
     } catch(e){return failure(e);}
   });
 }
