@@ -8,6 +8,7 @@ import sys
 import json
 import signal
 import struct
+import traceback
 from pathlib import Path
 import bpy
 
@@ -89,7 +90,23 @@ def main():
     ensure_object_ids(bpy.data.objects)
     compose_sources()
     # Intentional unrestricted bpy/Python API *inside* the isolated Sandbox.
-    exec(code,{'__name__':'__main__','bpy':bpy})
+    try:
+        exec(code,{'__name__':'__main__','bpy':bpy})
+    except Exception as exc:
+        safe_types={'AttributeError','TypeError','ValueError','KeyError','IndexError',
+                    'NameError','RuntimeError','ZeroDivisionError','AssertionError',
+                    'ImportError','ModuleNotFoundError','MemoryError',
+                    'PermissionError','FileNotFoundError','OverflowError',
+                    'ReferenceError','OSError','NotImplementedError','SyntaxError'}
+        user_frames=[frame for frame in traceback.extract_tb(exc.__traceback__)
+                     if frame.filename=='<blender-workspace-user-code>']
+        kind=type(exc).__name__
+        if kind in safe_types and user_frames:
+            line=user_frames[-1].lineno
+            if 1<=line<=999999:
+                print('BW_USER_PYTHON_ERROR type=%s line=%d' % (kind,line),
+                      file=sys.stderr,flush=True)
+        raise
     ensure_object_ids(bpy.data.objects)
     # Scene detail is bounded by Sandbox memory/time and artifact size, not
     # arbitrary counts of objects, meshes, vertices or polygons.
