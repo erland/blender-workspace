@@ -64,6 +64,13 @@ export class JobRepository {
   private async assertOwnedSources(
     db:Pick<Pool,'query'>,owner:string,sources:AssetSource[]):Promise<void>{
     for(const source of sources){
+      if('uploadId' in source){
+        const result=await db.query(
+          'SELECT 1 FROM bw_uploaded_assets WHERE id=$1 AND owner_key=$2',
+          [source.uploadId,owner]);
+        if(!result.rowCount)throw new JobConflict('Uploaded model is unavailable');
+        continue;
+      }
       const res=await db.query(
         `SELECT 1 FROM bw_project_revisions r
           JOIN bw_projects p ON p.id=r.project_id
