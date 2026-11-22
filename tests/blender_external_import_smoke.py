@@ -28,6 +28,8 @@ mat=bpy.data.materials.new('External orange')
 mat.use_nodes=True
 mat.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value=(.9,.25,.02,1)
 obj.data.materials.append(mat)
+bpy.ops.object.camera_add(location=(0,-5,5))
+bpy.context.object.name='External camera to exclude'
 bpy.ops.export_scene.gltf(filepath=str(out/'source-01.glb'),export_format='GLB')
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -40,6 +42,7 @@ bpy.context.object.name='Ground'
 result=compose_sources()
 assert [x['objectsImported'] for x in result]==[1,1],result
 assert {'Native Rex','External sphere','Ground'}<=set(bpy.data.objects.keys())
+assert 'External camera to exclude' not in bpy.data.objects
 assert abs(bpy.data.objects['Native Rex'].location.x+3)<.001
 assert abs(bpy.data.objects['External sphere'].location.x-3)<.001
 assert bpy.data.objects['Native Rex'].data.materials[0].name=='Native olive skin'

@@ -45,10 +45,16 @@ def compose_sources():
         else:
             before=set(bpy.data.objects)
             bpy.ops.import_scene.gltf(filepath=str(filename))
-            objects=[obj for obj in bpy.data.objects if obj not in before
-                     and obj.type not in {'CAMERA','LIGHT','SPEAKER'}]
-            # GLB import links objects to the active scene by default.
-            # Move them to the isolated source collection below.
+            loaded=[obj for obj in bpy.data.objects if obj not in before]
+            objects=[obj for obj in loaded
+                     if obj.type not in {'CAMERA','LIGHT','SPEAKER'}]
+            # GLB importer links every source object into the active scene.
+            # Excluded cameras, lights and speakers must be removed, not only
+            # omitted from the new collection.
+            for unwanted in loaded:
+                if unwanted not in objects:
+                    bpy.data.objects.remove(unwanted,do_unlink=True)
+            # Move remaining GLB objects to their dedicated collection.
         if not objects:
             raise ValueError('Source contains no importable objects')
         group=bpy.data.collections.new('Imported model %02d' % (index+1))
