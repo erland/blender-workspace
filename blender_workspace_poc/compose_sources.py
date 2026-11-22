@@ -9,7 +9,7 @@ import bpy
 from blender_workspace_poc.object_identity import assign_new_object_id
 
 ROOT=Path('/workspace/out')
-SOURCE_DIR=ROOT/'assets'
+SOURCE_DIR=ROOT
 MANIFEST=ROOT/'asset-sources.json'
 
 def compose_sources():
