@@ -41,6 +41,7 @@ function clearVideoDownload(){
   videoShare.hidden=true;
 }
 function configureVideoFormats(){
+  const selectedMime=videoFormat.value;
   const formats=typeof HTMLCanvasElement!=='undefined'&&
     typeof HTMLCanvasElement.prototype.captureStream==='function'
     ?supportedVideoFormats():[];
@@ -50,6 +51,7 @@ function configureVideoFormats(){
     option.value=item.mimeType;option.textContent=item.label;
     videoFormat.append(option);
   }
+  if(formats.some(f=>f.mimeType===selectedMime))videoFormat.value=selectedMime;
   const duration=main.animation?.duration??0;
   const supported=formats.length>0&&duration>0&&duration<=MAX_VIDEO_SECONDS;
   videoFormat.disabled=!supported;
@@ -432,13 +434,16 @@ videoStart.addEventListener('click',()=>{
       const filename=videoFileName(revision,selectedAnimationName(),recordedFormat);
       videoDownload.href=videoObjectUrl;videoDownload.download=filename;
       videoDownload.hidden=false;
-      if(typeof File==='function'){
-        const file=new File([blob],filename,{type:blob.type});
-        if(typeof navigator.share==='function'&&
-           navigator.canShare?.({files:[file]})){
-          videoSharedFile=file;videoShare.hidden=false;
+      // Optional platform sharing must never invalidate a completed download.
+      try{
+        if(typeof File==='function'){
+          const file=new File([blob],filename,{type:blob.type});
+          if(typeof navigator.share==='function'&&
+             navigator.canShare?.({files:[file]})){
+            videoSharedFile=file;videoShare.hidden=false;
+          }
         }
-      }
+      }catch{/* Download via the local Blob URL remains available. */}
       videoStatus.textContent='Videon är färdig ('+recordedFormat.toUpperCase()+
         ', 720p). Välj Spara video eller Dela video.';
     }).catch(error=>{
