@@ -24,8 +24,10 @@ project revisions and uploaded models.
 - Files are private, ID-addressed, immutable and SHA-256 verified on source
   retrieval. Owner checks are repeated when queueing and immediately before
   sending any files to a paid network-blocked Modal Sandbox.
-- Upload is buffered by Fastify with an explicit 32 MiB body limit; max four
-  imported assets per modeling job. A file may require further processing in
+- Upload is buffered by Fastify with an explicit 32 MiB body limit. Each
+  account may store up to 50 files, with at most 512 MiB of uploaded source
+  data. Quotas are serialized by owner in PostgreSQL. A modeling job can
+  import up to four sources. A file may require further processing in
   Blender; header validation is not a guarantee that Blender can load it.
 - Native BLEND imports preserve Blender objects and referenced materials,
   armatures and animation datablocks. GLB import uses Blender's glTF importer
