@@ -224,6 +224,16 @@ jobs:
             -b --factory-startup --disable-autoexec --python /workspace/tests/blender_complexity_inspection_smoke.py \
             | tee blender-dev044.log
           grep -q 'BW_DEV044_COMPLEXITY PASS' blender-dev044.log
+      - name: DEV-045 Verify same-process Cycles and native model preservation
+        run: |
+          set -o pipefail
+          mkdir -p dev045-out
+          chmod 777 dev045-out
+          docker run --rm -v "$PWD/dev045-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --disable-autoexec --python /workspace/tests/blender_inline_render_smoke.py \
+            | tee blender-dev045.log
+          grep -q 'BW_DEV045_INLINE_RENDER PASS' blender-dev045.log
+          grep -q 'BW_DEV045_RENDER_FALLBACK PASS' blender-dev045.log
       - name: Upload Blender evidence
         if: always()
         uses: actions/upload-artifact@v4
