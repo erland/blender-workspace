@@ -59,8 +59,10 @@ test('DEV-031 browser image export does not invoke Blender/Modal',async()=>{
   assert.match(src,/wireframeMaterials/);
   // Browser PNG export remains local; the new, explicitly confirmed
   // render button is a separate and intentionally billed feature.
+  // Keep this assertion scoped to the PNG callback. DEV-051 has a
+  // separate, also local, video recorder later in the same viewer module.
   const snapshot=src.slice(src.indexOf("document.getElementById('snapshot').addEventListener"),
-    src.indexOf("revisionPicker.addEventListener"));
+    src.indexOf("// The transport is shared across normal and comparison views."));
   assert.equal(snapshot.includes('fetch('),false);
   assert.equal(snapshot.includes('renderApi'),false);
   assert.equal(snapshot.includes('Modal'),false);
