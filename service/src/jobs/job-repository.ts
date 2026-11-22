@@ -126,6 +126,22 @@ export class JobRepository {
        ORDER BY j.created_at DESC,j.id DESC LIMIT $3`,
       [owner,projectId??null,limit])).rows;
   }
+  /** Identify successful older inline previews not yet registered in the
+   * shared render gallery. This is metadata-only; reconciliation never runs
+   * Blender or queues Modal.
+   */
+  async listUnregisteredInlineRenders(limit=100):Promise<Job[]> {
+    if(!Number.isInteger(limit)||limit<1||limit>100)throw new RangeError('Invalid limit');
+    return (await this.pool.query<Job>(
+      `SELECT j.* FROM bw_jobs j
+       JOIN bw_projects p ON p.id=j.project_id AND p.owner_key=j.owner_key
+       JOIN bw_project_revisions v ON v.project_id=j.project_id
+         AND v.revision=j.requested_revision AND v.artifact_prefix IS NOT NULL
+       LEFT JOIN bw_render_jobs r ON r.id=j.id
+       WHERE j.status='completed' AND j.operation_spec->>'inlineRender'='true'
+         AND p.deleted_at IS NULL AND r.id IS NULL
+       ORDER BY j.created_at DESC LIMIT $1`,[limit])).rows;
+  }
   async get(owner:string,id:string):Promise<Job|null> {
     if (!owner.trim() || owner.length>200) throw new RangeError('Invalid owner');
     const r=await this.pool.query<Job>(

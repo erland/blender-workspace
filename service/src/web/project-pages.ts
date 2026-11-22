@@ -1,9 +1,9 @@
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
-export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;pngAvailable?:boolean}
+export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean}
 export interface PortalModelJob {id:string;project_id:string;requested_revision:number;status:string;note:string;error_message:string|null;created_at:Date}
 export interface PortalJobItem {id:string;project_id:string;project_name:string;type:'model'|'render';revision:number;status:string;created_at:Date;detail:string;error:string|null}
-export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null;inline?:boolean}
+export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null}
 export function escapeHtml(v:string):string {
  return v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -11,9 +11,8 @@ export function escapeHtml(v:string):string {
 const when=(d:Date)=>new Date(d).toLocaleDateString('sv-SE',{year:'numeric',month:'short',day:'numeric',timeZone:'Europe/Stockholm'});
 const projectUrl=(id:string)=>'/projects/'+encodeURIComponent(id);
 const viewerUrl=(id:string,r:number)=>'/viewer/'+encodeURIComponent(id)+'/revisions/'+r;
-const renderUrl=(projectId:string,r:PortalRender)=>r.inline
-  ?'/projects/'+encodeURIComponent(projectId)+'/revisions/'+r.source_revision+'/scene.png'
-  :'/renders/'+encodeURIComponent(projectId)+'/'+encodeURIComponent(r.id)+'.png';
+const renderUrl=(projectId:string,r:PortalRender)=>
+  '/renders/'+encodeURIComponent(projectId)+'/'+encodeURIComponent(r.id)+'.png';
 const style=[
 '*,*::before,*::after{box-sizing:border-box}',
 'body{margin:0;background:#f4f7fb;color:#19263b;font:16px system-ui,sans-serif;line-height:1.5}',

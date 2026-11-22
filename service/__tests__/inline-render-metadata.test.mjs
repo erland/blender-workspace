@@ -36,13 +36,15 @@ test('DEV-045 exposes only bounded and verified performance and status',async()=
   }finally{await rm(folder,{recursive:true,force:true});}
 });
 
-test('DEV-045 inline revision image is usable in project gallery and thumbnails',()=>{
-  const id='11111111-1111-4111-8111-111111111111',date=new Date('2026-11-22T09:00:00Z');
+test('DEV-046 unified render image uses the same URL as every other render',()=>{
+  const id='11111111-1111-4111-8111-111111111111';
+  const renderId='22222222-2222-4222-8222-222222222222';
+  const date=new Date('2026-11-22T09:00:00Z');
   const project={id,name:'Cat',description:'',current_revision:1,updated_at:date};
-  const revision={revision:1,artifact_prefix:'x',note:'',created_at:date,pngAvailable:true,glbAvailable:true};
-  const render={id:'revision-1',source_revision:1,engine:'CYCLES',width:512,height:512,
-    samples:16,status:'completed',created_at:date,inline:true};
-  const url='/projects/'+id+'/revisions/1/scene.png';
-  assert.match(projectIndexPage([{project,revisions:[revision],renders:[render]}]),new RegExp(url.replaceAll('/','\\/')));
+  const revision={revision:1,artifact_prefix:'x',note:'',created_at:date,glbAvailable:true};
+  const render={id:renderId,source_revision:1,engine:'CYCLES',width:512,height:512,
+    samples:16,status:'completed',created_at:date};
+  const url='/renders/'+id+'/'+renderId+'.png';
+  assert.ok(projectIndexPage([{project,revisions:[revision],renders:[render]}]).includes(url));
   assert.ok(projectDetailPage(project,[revision],undefined,undefined,[render],[],'images').includes(url));
 });

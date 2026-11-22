@@ -7,6 +7,8 @@ import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {JobExecutionError} from './job-diagnostics.js';
 import {parseAssetSources} from './asset-sources.js';
 import type {UploadedAssets} from './uploaded-assets.js';
+import type {RenderJobRepository} from './render-repository.js';
+import type {RenderArtifactStore} from '../storage/render-artifacts.js';
 
 export interface BlenderAssetInput {
   path:string;
@@ -23,7 +25,9 @@ export class JobOrchestrator {
   constructor(private readonly jobs:JobRepository,
               private readonly files:LocalArtifactStore,
               private readonly executor:BlenderExecutor,
-              private readonly uploads?:Pick<UploadedAssets,'verifiedPath'>) {}
+              private readonly uploads?:Pick<UploadedAssets,'verifiedPath'>,
+              private readonly renderJobs?:Pick<RenderJobRepository,'registerInline'>,
+              private readonly renderFiles?:Pick<RenderArtifactStore,'publish'|'inspectUncommitted'>) {}
   async execute(owner:string,jobId:string):Promise<Job> {
     const job=await this.jobs.claim(owner,jobId);
     return this.executeClaimed(job);
@@ -95,8 +99,11 @@ export class JobOrchestrator {
       // Never replay a potentially billed job after publication. The journal
       // and checksum-verified artifacts permit an explicit metadata recovery.
       try{
-        return await this.jobs.finalize(owner,jobId,
+        const committed=await this.jobs.finalize(owner,jobId,
           `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`);
+        // Optional derived preview must never invalidate a committed BLEND.
+        await this.registerSavedInlineRender(committed);
+        return committed;
       }catch{
         throw new JobExecutionError('revision_commit','revision_commit_failed');
       }
@@ -110,11 +117,42 @@ export class JobOrchestrator {
   async recover(owner:string,jobId:string):Promise<Job> {
     const job=await this.jobs.get(owner,jobId);
     if(!job)throw new Error('Job not found');
-    if(job.status==='completed')return job;
+    if(job.status==='completed'){
+      await this.registerSavedInlineRender(job);
+      return job;
+    }
     if(!['needs_recovery','running'].includes(job.status))
       throw new Error('Job is not recoverable');
     await this.files.inspect(job.project_id,job.requested_revision,true);
-    return this.jobs.finalize(owner,jobId,
+    const committed=await this.jobs.finalize(owner,jobId,
       `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`);
+    await this.registerSavedInlineRender(committed);
+    return committed;
+  }
+
+  /** Copy a verified immutable PNG to the existing render storage, then
+   * register a normal completed render. Safe to repeat without Modal billing.
+   * Failure cannot roll back or falsely mark the modeling job as failed.
+   */
+  async registerSavedInlineRender(job:Job):Promise<boolean>{
+    if(job.status!=='completed'||!this.renderJobs||!this.renderFiles)return false;
+    let spec:PythonScriptSpec;
+    try{spec=parsePythonScript(job.operation_spec);}catch{return false;}
+    if(!spec.inlineRender)return false;
+    let image:string;
+    try{
+      image=await this.files.verifiedArtifactPath(
+        job.project_id,job.requested_revision,'scene.png');
+    }catch{return false;} // Rendering was optional and may have failed.
+    try{
+      let saved=await this.renderFiles.inspectUncommitted(job.project_id,job.id);
+      if(!saved)saved=await this.renderFiles.publish(job.project_id,job.id,image);
+      await this.renderJobs.registerInline(job.owner_key,job.project_id,
+        job.requested_revision,job.id,saved.sha256,saved.sizeBytes);
+      return true;
+    }catch{
+      // Keep the native image for a later, no-Modal reconciliation.
+      return false;
+    }
   }
 }

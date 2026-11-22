@@ -54,6 +54,40 @@ export class RenderJobRepository {
      throw e;
    }finally{c.release();}
  }
+ /** Publish an already rendered modeling PNG as an ordinary completed render.
+  * Uses the model job UUID as the deterministic render UUID for idempotent
+  * recovery. No job is queued and no additional Sandbox is created.
+  */
+ async registerInline(owner:string,projectId:string,revision:number,
+    modelJobId:string,digest:string,bytes:number):Promise<void>{
+   if(!owner.trim()||!Number.isSafeInteger(revision)||revision<1||
+      !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(modelJobId)||
+      !/^[0-9a-f]{64}$/.test(digest)||!Number.isSafeInteger(bytes)||
+      bytes<33||bytes>16*1024*1024)
+     throw new RangeError('Invalid inline render registration');
+   const result=await this.pool.query(
+     `INSERT INTO bw_render_jobs
+       (id,project_id,owner_key,source_revision,engine,width,height,samples,
+        status,requested_from,camera_override,sha256,size_bytes,finished_at)
+      SELECT $4,j.project_id,j.owner_key,j.requested_revision,
+        'CYCLES',512,512,16,'completed','project',NULL,$5,$6,now()
+      FROM bw_jobs j
+      JOIN bw_project_revisions r ON r.project_id=j.project_id
+        AND r.revision=j.requested_revision AND r.artifact_prefix IS NOT NULL
+      JOIN bw_projects p ON p.id=j.project_id AND p.owner_key=j.owner_key
+      WHERE j.id=$4 AND j.owner_key=$1 AND j.project_id=$2
+        AND j.requested_revision=$3 AND j.status='completed'
+        AND j.operation_spec->>'inlineRender'='true'
+        AND p.deleted_at IS NULL
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id`,[owner,projectId,revision,modelJobId,digest,bytes]);
+   if(result.rowCount===0){
+     const row=await this.get(owner,modelJobId);
+     if(!row||row.project_id!==projectId||row.source_revision!==revision||
+        row.status!=='completed'||row.sha256!==digest||row.size_bytes!==bytes)
+       throw new Error('Inline render registration unavailable');
+   }
+ }
  async list(owner:string,projectId:string,revision?:number):Promise<RenderJob[]>{
    return (await this.pool.query<RenderJob>(
      `SELECT j.* FROM bw_render_jobs j JOIN bw_projects p ON p.id=j.project_id

@@ -115,13 +115,9 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
            if(last?.artifact_prefix&&services!.artifacts){
              try{
                const manifest=await services!.artifacts.inspect(project.id,last.revision,false);
-               const inline=manifest.artifacts.some(a=>a.name==='scene.png')?[{
-                  id:'revision-'+last.revision,project_id:project.id,source_revision:last.revision,
-                  status:'completed',engine:'CYCLES',width:512,height:512,samples:16,
-                  created_at:last.created_at,inline:true}]:[];
-                return {project,renders:[...inline,...recentRenders.filter(r=>r.project_id===project.id)].slice(0,3),revisions:revisions.map(r=>r.revision===last.revision
-                 ?{...r,glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb'),
-                    pngAvailable:manifest.artifacts.some(a=>a.name==='scene.png')}:r)};
+               return {project,renders:recentRenders.filter(r=>r.project_id===project.id),
+                 revisions:revisions.map(r=>r.revision===last.revision
+                   ?{...r,glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb')}:r)};
              }catch{/* Display native-only on broken/legacy preview manifests. */}
            }
            return {project,renders:recentRenders.filter(r=>r.project_id===project.id),revisions:revisions.map(r=>({...r,glbAvailable:false,pngAvailable:false}))};
@@ -270,13 +266,6 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const message=(request.query as {message?:string}).message;
          const renderJobs=services!.renderJobs
            ?await services!.renderJobs.list(session.ownerKey,projectId):[];
-         const inlineRenders=previews.filter(r=>r.artifact_prefix&&r.pngAvailable).map(r=>({
-           id:'revision-'+r.revision,project_id:projectId,source_revision:r.revision,
-           engine:'CYCLES',width:512,height:512,samples:16,status:'completed',
-           created_at:r.created_at,inline:true
-         }));
-         const allRenders=[...renderJobs,...inlineRenders].sort(
-           (a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime());
          const modelJobsRaw=await services!.jobs.list?.(session.ownerKey,projectId,50)??[];
           const modelJobs=modelJobsRaw.map(j=>({...j,
             error_message:describeJobFailure(safeOwnerJobError(j.error_message))}));
@@ -284,7 +273,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const requestedView=(request.query as {view?:string}).view;
          const view=requestedView==='images'||requestedView==='history'||requestedView==='settings'
            ?requestedView:'overview';
-         return projectDetailPage(project,previews,session.csrf,message,allRenders,modelJobs,view);
+         return projectDetailPage(project,previews,session.csrf,message,renderJobs,modelJobs,view);
        }catch{return reply.code(503).send('Projektet kunde inte hämtas. Försök igen senare.');}
      });
      // Render requests are explicitly billed. Never launch Modal in an HTTP request.
@@ -316,25 +305,6 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          const queued=await services!.renderJobs.reserve(session.ownerKey,id,revision,options);
          return reply.code(303).header('location','/projects/'+id+'?view=images&message=render_queued').send();
        }catch{return reply.code(303).header('location','/projects/'+id+'?view=images&message=render_error').send();}
-     });
-     // Inline images are immutable owner-scoped, checksum-verified artifacts.
-     app.get('/projects/:projectId/revisions/:revision/scene.png',async(request,reply)=>{
-       const session=google.settingsSession(request.headers.cookie);
-       secure(reply).header('vary','Cookie').header('cache-control','private, no-store')
-         .header('cross-origin-resource-policy','same-origin')
-         .header('content-security-policy',"default-src 'none'");
-       if(!session)return reply.code(401).send('Unauthorized');
-       const {projectId,revision}=request.params as {projectId:string;revision:string};
-       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(projectId)||
-          !/^[1-9][0-9]{0,7}$/.test(revision)||!services!.artifacts)
-         return reply.code(404).send('Not found');
-       try{
-         const revisions=await services!.projects.revisions(session.ownerKey,projectId);
-         if(!revisions.some(r=>r.revision===Number(revision)&&r.artifact_prefix))
-           return reply.code(404).send('Not found');
-         const file=await services!.artifacts.verifiedArtifactPath(projectId,Number(revision),'scene.png');
-         return reply.type('image/png').send(createReadStream(file));
-       }catch{return reply.code(404).send('Not found');}
      });
      // Signed-cookie owner-only PNG retrieval; file bytes never contain an access token.
      app.get('/renders/:projectId/:jobId.png',async(request,reply)=>{
