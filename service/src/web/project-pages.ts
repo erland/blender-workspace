@@ -1,9 +1,9 @@
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
-export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean}
+export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;pngAvailable?:boolean}
 export interface PortalModelJob {id:string;project_id:string;requested_revision:number;status:string;note:string;error_message:string|null;created_at:Date}
 export interface PortalJobItem {id:string;project_id:string;project_name:string;type:'model'|'render';revision:number;status:string;created_at:Date;detail:string;error:string|null}
-export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null}
+export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null;inline?:boolean}
 export function escapeHtml(v:string):string {
  return v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -11,6 +11,9 @@ export function escapeHtml(v:string):string {
 const when=(d:Date)=>new Date(d).toLocaleDateString('sv-SE',{year:'numeric',month:'short',day:'numeric',timeZone:'Europe/Stockholm'});
 const projectUrl=(id:string)=>'/projects/'+encodeURIComponent(id);
 const viewerUrl=(id:string,r:number)=>'/viewer/'+encodeURIComponent(id)+'/revisions/'+r;
+const renderUrl=(projectId:string,r:PortalRender)=>r.inline
+  ?'/projects/'+encodeURIComponent(projectId)+'/revisions/'+r.source_revision+'/scene.png'
+  :'/renders/'+encodeURIComponent(projectId)+'/'+encodeURIComponent(r.id)+'.png';
 const style=[
 '*,*::before,*::after{box-sizing:border-box}',
 'body{margin:0;background:#f4f7fb;color:#19263b;font:16px system-ui,sans-serif;line-height:1.5}',
@@ -154,7 +157,7 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
   const recent=renders.filter(r=>r.status==='completed').slice(0,3);
   const thumbnails=recent.length
     ?'<div class="project-thumbnails" aria-hidden="true">'+recent.map(r=>{
-       const src='/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+'.png';
+       const src=renderUrl(p.id,r);
        return '<span><img loading="lazy" decoding="async" src="'+src+
          '" alt=""></span>';
      }).join('')+'</div>'
@@ -204,7 +207,7 @@ function projectRenderHistory(projectId:string,renders:PortalRender[]):string {
      const engine=escapeHtml(r.engine==='CYCLES'?'Cycles':'Eevee');
      const state=escapeHtml(statusLabels[r.status]??'Okänd status');
      const metadata=engine+' · '+r.width+' × '+r.height+' · '+r.samples+' samples';
-     const imageUrl='/renders/'+encodeURIComponent(projectId)+'/'+encodeURIComponent(r.id)+'.png';
+     const imageUrl=renderUrl(projectId,r);
      const visual=r.status==='completed'
        ?'<a class="render-thumb" href="'+imageUrl+'" target="_blank" rel="noopener" aria-label="Öppna PNG för revision '+
          revision+', '+metadata+'"><img loading="lazy" decoding="async" src="'+imageUrl+
@@ -262,7 +265,7 @@ export function projectDetailPage(
  const latestImages=renders.filter(r=>r.status==='completed').slice(0,3);
  const previews=latestImages.length
    ?'<div class="overview-images">'+latestImages.map(r=>{
-     const imageUrl='/renders/'+encodeURIComponent(p.id)+'/'+encodeURIComponent(r.id)+'.png';
+     const imageUrl=renderUrl(p.id,r);
      return '<a class="overview-image" href="'+imageUrl+'" target="_blank" rel="noopener"'+
        ' aria-label="Öppna rendering för revision '+r.source_revision+'">'+
        '<img loading="lazy" decoding="async" src="'+imageUrl+'"'+

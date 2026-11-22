@@ -9,14 +9,16 @@ import json
 import signal
 import struct
 import traceback
+import time
 from pathlib import Path
 import bpy
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.object_identity import ensure_object_ids
-from blender_workspace_poc.common import ensure_output, export_glb, write_manifest
+from blender_workspace_poc.common import ensure_output, export_glb, write_manifest, artifact_record
 from blender_workspace_poc.glb_material_fallback import glb_material_fallback, source_material_stats
 from blender_workspace_poc.compose_sources import compose_sources
+from blender_workspace_poc.inline_render import render_inline
 
 def preview_document(path):
     # The GLB exporter can succeed while generating a preview without scene
@@ -65,9 +67,10 @@ def main():
     if '--' not in sys.argv:
         raise SystemExit('Missing fixed Python operation parameters')
     args=sys.argv[sys.argv.index('--')+1:]
-    if len(args)!=3:
-        raise SystemExit('Expected SOURCE_OR_NEW SCRIPT_FILE REVISION')
-    source,script_file,revision=args
+    if len(args) not in (3,4) or (len(args)==4 and args[3]!='RENDER'):
+        raise SystemExit('Expected SOURCE_OR_NEW SCRIPT_FILE REVISION [RENDER]')
+    inline_requested=len(args)==4
+    source,script_file,revision=args[:3]
     revision=int(revision)
     if not 1<=revision<=99999999:
         raise ValueError('Invalid revision')
@@ -78,6 +81,7 @@ def main():
     if not 1<=len(data)<=65536 or b'\x00' in data or not data.strip():
         raise ValueError('Invalid Python source length or content')
     code=compile(data,'<blender-workspace-user-code>','exec')
+    timing_start=time.monotonic()
     if source=='NEW':
         if revision!=1:
             raise ValueError('Initial scene requires revision 1')
@@ -107,6 +111,7 @@ def main():
                 print('BW_USER_PYTHON_ERROR type=%s line=%d' % (kind,line),
                       file=sys.stderr,flush=True)
         raise
+    modeling_seconds=round(time.monotonic()-timing_start,3)
     ensure_object_ids(bpy.data.objects)
     # Scene detail is bounded by Sandbox memory/time and artifact size, not
     # arbitrary counts of objects, meshes, vertices or polygons.
@@ -116,12 +121,15 @@ def main():
     blend,glb,report=(out/'scene.blend',out/'scene.glb',out/'scene.json')
     # An uncompressed BLEND allows the trusted controller to verify its
     # native BLENDER header without parsing untrusted compressed input.
+    save_start=time.monotonic()
     bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=False)
+    save_seconds=round(time.monotonic()-save_start,3)
     preview={'format':'glb','status':'unavailable','reason':'export_failed'}
     files=[blend]
     def preview_timeout(_signum,_frame):
         raise TimeoutError('Optional preview export exceeded its time budget')
     previous_handler=signal.getsignal(signal.SIGALRM)
+    export_start=time.monotonic()
     try:
         signal.signal(signal.SIGALRM,preview_timeout)
         signal.alarm(90)  # preview must not consume the whole paid sandbox budget
@@ -143,7 +151,38 @@ def main():
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM,previous_handler)
+    export_seconds=round(time.monotonic()-export_start,3)
+    # Capture the authoritative saved scene BEFORE temporary preview camera/light.
     write_manifest(report,'sandbox_python',files,preview=preview)
+    render_status=None
+    render_seconds=None
+    if inline_requested:
+        png=out/'scene.png'
+        render_start=time.monotonic()
+        try:
+            signal.signal(signal.SIGALRM,preview_timeout)
+            signal.alarm(150)
+            render_status=render_inline(png)
+            from modal_provider.artifact_validation import validate_png_preview
+            validate_png_preview(png)
+            files.append(png)
+        except Exception:
+            png.unlink(missing_ok=True)
+            render_status={'format':'png','status':'unavailable','reason':'render_failed'}
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM,previous_handler)
+            render_seconds=round(time.monotonic()-render_start,3)
+    report_data=json.loads(report.read_text())
+    if render_status is not None and render_status['status']=='available':
+        report_data['artifacts'].append(artifact_record(out/'scene.png'))
+    report_data['timings']={'modelingSeconds':modeling_seconds,
+                            'blendSaveSeconds':save_seconds,
+                            'glbExportSeconds':export_seconds,
+                            **({'inlineRenderSeconds':render_seconds} if render_seconds is not None else {})}
+    if render_status is not None:
+        report_data['inlineRender']=render_status
+    report.write_text(json.dumps(report_data,ensure_ascii=False,indent=2)+'\n')
     print('BW_SANDBOX_PYTHON PASS',flush=True)
 
 if __name__=='__main__':

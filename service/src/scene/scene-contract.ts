@@ -180,3 +180,48 @@ export function materialCatalog(scene:SceneDescription){
   }
   return {available:true,materials:library};
 }
+
+
+// Safe, bounded performance values saved with a completed owner-owned revision.
+// Never return free-text worker logs or unchecked report fields.
+const measuredSeconds=z.number().finite().min(0).max(3600);
+const storedPerformance=z.object({
+  timings:z.object({
+    modelingSeconds:measuredSeconds,
+    blendSaveSeconds:measuredSeconds,
+    glbExportSeconds:measuredSeconds,
+    inlineRenderSeconds:measuredSeconds.optional(),
+  }).strict().optional(),
+  execution:z.object({
+    sandboxStartSeconds:measuredSeconds,
+    blenderExecutionSeconds:measuredSeconds,
+    artifactTransferSeconds:measuredSeconds,
+    estimatedComputeUsd:z.number().finite().min(0).max(10),
+    estimateNote:z.literal('Approximate elapsed compute, not a Modal invoice'),
+  }).strict().optional(),
+  inlineRender:z.object({
+    format:z.literal('png'),
+    status:z.enum(['available','unavailable']),
+    engine:z.literal('CYCLES').optional(),
+    width:z.literal(512).optional(),
+    height:z.literal(512).optional(),
+    samples:z.literal(16).optional(),
+    framing:z.literal('auto-stored-bounds').optional(),
+    reason:z.literal('render_failed').optional()
+  }).strict().optional()
+}).passthrough();
+
+export async function inspectSavedPerformance(
+  storage:Pick<LocalArtifactStore,'verifiedArtifactPath'>,
+  projectId:string,revision:number){
+  const filename=await storage.verifiedArtifactPath(projectId,revision,'scene.json');
+  if((await stat(filename)).size>2*1024*1024)throw new Error('Scene report too large');
+  const report=SceneReportSchema.parse(JSON.parse(await readFile(filename,'utf8')));
+  const data=storedPerformance.parse(report);
+  if(!data.timings&&!data.execution&&!data.inlineRender)return null;
+  return {
+    ...(data.timings?{timings:data.timings}:{}),
+    ...(data.execution?{execution:data.execution}:{}),
+    ...(data.inlineRender?{inlineRender:data.inlineRender}:{})
+  };
+}

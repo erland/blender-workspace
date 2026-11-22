@@ -50,6 +50,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
       await new Promise<void>((resolve,reject)=>{
         const args=[script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib','8192',
           '--revision',String(revision),'--python-file',filename];
+        if(safe.inlineRender)args.push('--inline-render');
         if(inputBlend)args.push('--input-blend',inputBlend);
         if(assets.length){
           args.push('--assets-manifest',path.join(folder,'asset-sources.json'));

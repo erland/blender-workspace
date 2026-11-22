@@ -112,7 +112,7 @@ def estimate_usd(seconds, cpu=2, memory_mib=8192):
 
 def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         revision=1, input_blend=None, python_file=None,
-        assets_manifest=None, asset_files=None):
+        assets_manifest=None, asset_files=None, inline_render=False):
     """Run only a validated Python script inside an owner-billed isolated Sandbox."""
     if not 1 <= revision <= 99999999:
         raise ValueError('Invalid Python scene revision')
@@ -189,7 +189,8 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         process = sandbox.exec("blender", "-b", "--factory-startup", "--python-exit-code", "1", "--python",
             "/workspace/blender_workspace_poc/apply_python.py", "--",
             "NEW" if revision == 1 else "/workspace/out/input.blend",
-            "/workspace/out/model.py", str(revision))
+            "/workspace/out/model.py", str(revision),
+            *(['RENDER'] if inline_render else []))
         code = process.wait()
         # Never persist raw stream tails: user Python can print sensitive data.
         stdout = process.stdout.read()[-8000:]
@@ -227,6 +228,14 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
             report["artifacts"].append({
                 "name":"scene.glb","bytes":local.stat().st_size,
                 "sha256":_sha256_file(local)})
+        if inline_render and metadata.get("inlineRender",{}).get("status")=="available":
+            local=out/"scene.png"
+            sandbox.filesystem.copy_to_local("/workspace/out/scene.png",str(local))
+            from modal_provider.artifact_validation import validate_png_preview
+            validate_png_preview(local)
+            report["artifacts"].append({"name":"scene.png",
+                "bytes":local.stat().st_size,"sha256":_sha256_file(local)})
+        report["inline_render_status"]=metadata.get("inlineRender",{}).get("status","not_requested")
         report["preview_status"]=metadata.get("preview",{}).get("status","unknown")
         phase = "artifact_validation"
         from modal_provider.artifact_validation import validate_python_outputs
@@ -234,6 +243,15 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
         report["sandbox_start_seconds"] = round(created - started, 3)
         report["blender_execution_seconds"] = round(executed - created, 3)
         report["artifact_transfer_seconds"] = round(time.monotonic() - executed, 3)
+        # Persist safe execution totals in revision JSON for owner inspection.
+        metadata["execution"]={
+            "sandboxStartSeconds":report["sandbox_start_seconds"],
+            "blenderExecutionSeconds":report["blender_execution_seconds"],
+            "artifactTransferSeconds":report["artifact_transfer_seconds"],
+            "estimatedComputeUsd":estimate_usd(time.monotonic()-started,cpu,memory_mib),
+            "estimateNote":"Approximate elapsed compute, not a Modal invoice"
+        }
+        (out/"scene.json").write_text(json.dumps(metadata,ensure_ascii=False,indent=2)+"\n")
         report["status"] = "PASS"
         return report
     except Exception as exc:
@@ -281,6 +299,7 @@ def main():
     p.add_argument("--python-file", required=True)
     p.add_argument("--assets-manifest")
     p.add_argument("--asset-file", action="append", default=[])
+    p.add_argument("--inline-render", action="store_true")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--cpu", type=float, default=2)
     p.add_argument("--memory-mib", type=int, default=8192)
@@ -297,7 +316,8 @@ def main():
         report = run(modal, args.out, cpu=args.cpu, memory_mib=args.memory_mib,
                      timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
                      python_file=args.python_file,
-                     assets_manifest=args.assets_manifest,asset_files=args.asset_file)
+                     assets_manifest=args.assets_manifest,asset_files=args.asset_file,
+                     inline_render=args.inline_render)
         if report["status"] != "PASS" or not report["sandbox_terminated"]:
             raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
     except RunnerDiagnostic as exc:

@@ -2,7 +2,7 @@ schema_version: 1
 project: blender-workspace
 status: code_complete_live_acceptance_deferred
 mode: CHANGE
-selected_step: VERIFY_DEV044_LIVE
+selected_step: VERIFY_DEV045_LIVE
 in_progress: null
 completed_steps:
   - DEV-001
@@ -23,6 +23,7 @@ completed_steps:
   - DEV-042
   - DEV-043
   - DEV-044
+  - DEV-045
 verification:
   dev008:
     status: DEFERRED
@@ -309,7 +310,7 @@ dev038:
   live_acceptance: DEFERRED
   next: "DEV-039 New project from an owned saved revision"
 
-next_development_step: VERIFY_DEV044_LIVE
+next_development_step: VERIFY_DEV045_LIVE
 
 dev039:
   status: COMPLETE
@@ -384,3 +385,16 @@ dev044:
     deployment_run: https://github.com/erland/blender-workspace/actions/runs/44999083012
   live_acceptance: DEFERRED
   next: "Verify stored complexity in the next owner-authorized Blender revision; never automatically start a paid job"
+
+dev045:
+  status: COMPLETE
+  scope: "Optional in-process Cycles 512x512 preview with close framing, safe PNG persistence, project gallery and measured execution metadata"
+  source_pr: https://github.com/erland/blender-workspace/pull/88
+  code_ci:
+    status: PASS
+    source_sha: 2f14750ba586713654346c88a1a0ad6c3e63e835
+    service_run: https://github.com/erland/blender-workspace/actions/runs/45005853103
+    blender_run: https://github.com/erland/blender-workspace/actions/runs/45005853138
+    deployment_run: https://github.com/erland/blender-workspace/actions/runs/45005853224
+  live_acceptance: DEFERRED
+  next: "Explicitly authorize one owner-paid Modal job with inlineRender true to compare cost and timings; no automatic billable test"

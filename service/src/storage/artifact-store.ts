@@ -24,7 +24,7 @@ export class RevisionConflictError extends Error {
 }
 const MAX_ARTIFACTS = 12;
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
-const FILE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,80}\.(?:blend|glb|json)$/;
+const FILE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,80}\.(?:blend|glb|json|png)$/;
 const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function projectId(value: string) {
   if (!PROJECT_ID.test(value)) throw new RangeError('Expected a project UUID');
