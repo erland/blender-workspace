@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # necessarily the repository root. Preserve package imports in every failure path.
 if __package__ in (None, "") and str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from modal_provider.app_config import modal_app_name
 ARTIFACT_NAMES = ("scene.blend", "scene.json")  # required; GLB is optional
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
@@ -170,7 +171,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
     phase = "modal_start"
     try:
         image = sdk.Image.from_registry(image_ref, add_python="3.11")
-        app = sdk.App.lookup("blender-workspace-dev002", create_if_missing=True)
+        app = sdk.App.lookup(modal_app_name(), create_if_missing=True)
         sandbox = sdk.Sandbox.create(
             "sleep", str(timeout), app=app, image=image, cpu=cpu, memory=memory_mib,
             timeout=timeout, workdir="/workspace", block_network=True)

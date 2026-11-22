@@ -5,6 +5,10 @@ authenticated MCP service. Project/job/revision metadata lives in PostgreSQL;
 artifacts are stored with SHA-256 integrity metadata. User-owned Modal
 credentials power short-lived, network-blocked Blender Sandboxes.
 
+## Modal app name (DEV-048)
+
+Modeling, Cycles/Eevee rendering and GLB preview refresh all use the same Modal App name: `blender-workspace` by default. This changes only which **Modal App** contains future Sandboxes in each connected owner's Modal workspace. It does **not** rename a Modal workspace or move saved Blender projects. Set optional `MODAL_APP_NAME` in the **job-worker's** Coolify environment to override this name. The older `blender-workspace-dev002` Modal App is not deleted automatically; verify it has no active Sandboxes before removing it manually. No Modal job is necessary to deploy this change.
+
 ## Authoring: Python-first
 
 **The only public MCP modeling-write tool is

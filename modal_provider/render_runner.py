@@ -9,6 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 from modal_provider.runner import blender_image_reference
+from modal_provider.app_config import modal_app_name
 
 PNG_SIGNATURE=b'\x89PNG\r\n\x1a\n'
 MAX_PNG=16*1024*1024
@@ -45,7 +46,7 @@ def render(sdk, out_dir, input_blend, engine, width, height, samples, camera_jso
     out.mkdir(parents=True,exist_ok=True)
     try:
         image=sdk.Image.from_registry(image_ref,add_python='3.11')
-        app=sdk.App.lookup('blender-workspace-dev002',create_if_missing=True)
+        app=sdk.App.lookup(modal_app_name(),create_if_missing=True)
         sandbox=sdk.Sandbox.create('sleep','360',app=app,image=image,cpu=2,
                                    memory=8192,timeout=360,workdir='/workspace',
                                    block_network=True)
