@@ -13,7 +13,7 @@ if(form){
  const file=document.getElementById('model-file').files[0];
  const status=document.getElementById('model-upload-result');
  if(!file){status.textContent='Välj en BLEND- eller GLB-fil först.';return;}
- if(!/\\.(?:blend|glb)$/i.test(file.name)){
+ if(!/\.(?:blend|glb)$/i.test(file.name)){
    status.textContent='Filen måste ha ändelsen .blend eller .glb.';return;
  }
  if(file.size<20||file.size>32*1024*1024){
