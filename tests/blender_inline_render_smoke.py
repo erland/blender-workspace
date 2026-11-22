@@ -26,6 +26,7 @@ try:
     report=json.loads((out/'scene.json').read_text())
     assert report['inlineRender']['status']=='available',report.get('inlineRender')
     assert report['inlineRender']['framing']=='auto-stored-bounds'
+    assert {obj['name'] for obj in report['scene']['objects']}=={'Visible cube'}
     assert set(a['path'] for a in report['artifacts'])=={'scene.blend','scene.glb','scene.png'}
     assert report['timings']['inlineRenderSeconds']>0
     assert validate_python_outputs(out)['object_count']==1
