@@ -159,7 +159,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     catch(e){return failure(e);}
   });
   server.registerTool('workspace_inspect_scene',{
-    description:'Read the actual object list and scene metadata saved with one owned Blender project revision. Works for arbitrary object names, meshes, lights, cameras, armatures and other scene objects. Read-only; does not execute Blender.',
+    description:'Read saved object metadata, including bounded stored geometry/hair complexity and modifier hints when present. Generated Geometry Nodes/child hair counts are unknown; no dependency graph evaluation. Read-only; does not execute Blender.',
     inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999)},
     annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
   },async({projectId,revision})=>{
@@ -194,7 +194,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     }catch{return failure(new JobConflict('Saved material catalog could not be inspected'));}
   });
   server.registerTool('workspace_inspect_geometry',{
-    description:'Inspect exact saved base-mesh vertex, edge and face counts, world-space bounds, UV layers, modifiers and diagnostic counts. No Blender job, no Model execution. Historic revisions without geometry metrics return available=false, never guessed values. Optional objectId filters to one stable object identity.',
+    description:'Inspect saved base-mesh topology plus stored object complexity (hair curves/points and modifier/procedural hints). Never evaluates Geometry Nodes or child hair. Legacy reports mark complexity unavailable rather than guessing. No Blender/Modal job. Optional objectId filters one stable object ID.',
     inputSchema:{projectId:uuid,revision:z.number().int().min(1).max(99999999),
       objectId:uuid.optional()},
     annotations:{readOnlyHint:true},...schemes(READ_SCOPE)

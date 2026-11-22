@@ -5,6 +5,7 @@ from pathlib import Path
 import bpy
 from blender_workspace_poc.object_identity import ensure_object_ids,PROPERTY
 from blender_workspace_poc.geometry_report import describe_mesh
+from blender_workspace_poc.complexity_report import describe_complexity
 from blender_workspace_poc.material_library import describe_material_library
 FRAME_RATE=24
 FRAME_END=49
@@ -28,6 +29,7 @@ def inspect_scene():
             'name':obj.name,
             'objectId':obj.get(PROPERTY),
             'type':obj.type,
+            'complexity':describe_complexity(obj),
             'parent':obj.parent.name if obj.parent else None,
             'materials':[m.name for m in obj.data.materials if m] if obj.type=='MESH' else [],
             'bones':[b.name for b in obj.data.bones] if obj.type=='ARMATURE' else [],
