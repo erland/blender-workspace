@@ -327,12 +327,13 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     });
   }
   server.registerTool('workspace_queue_python_script',{
-    description:'Validate Python syntax in the MCP service before queueing Blender Python in a short-lived, network-blocked Modal Sandbox. Optional sourceRevision lets an edit create the next immutable revision from an earlier saved revision; omit it to use the latest. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
+    description:'Validate Python syntax in the MCP service before queueing Blender Python in a short-lived, network-blocked Modal Sandbox. Optional sourceRevision lets an edit create the next immutable revision from an earlier saved revision; omit it to use the latest. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. An optional inlineRender:true generates a 512x512 Cycles image with 16 samples during the same Blender process at additional billable runtime, and never affects the native BLEND if it fails. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       code:PythonScriptSchema.shape.code,note:note.optional(),
+      inlineRender:z.boolean().optional(),
       sourceRevision:z.number().int().min(1).max(99999998).optional(),
       assetSources:AssetSourcesSchema.optional()},...schemes(WRITE_SCOPE)
-  },async({projectId,expectedRevision,code,note:jobNote,sourceRevision,assetSources})=>{
+  },async({projectId,expectedRevision,code,note:jobNote,sourceRevision,assetSources,inlineRender})=>{
     const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
     try{
       // Syntax errors are actionable and never reserve a job or start Modal.
@@ -368,12 +369,13 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
           await artifacts.verifiedArtifactPath(asset.projectId,asset.revision,'scene.blend');
         }
       }
-      const spec=PythonScriptSchema.parse({kind:'python_script',code});
+      const spec=PythonScriptSchema.parse({kind:'python_script',code,...(inlineRender?{inlineRender:true}:{})});
       const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
         jobNote??'Sandboxed Blender Python',undefined,spec,sourceRevision,inputs);
       return result({job:safeJob(job),execution:'modal-sandbox',
         ...(selectedSource>0?{sourceRevision:selectedSource}:{}),
         ...(inputs.length?{assetSources:inputs}:{}),
+        ...(inlineRender?{inlineRenderRequested:true}:{}),
         message:'Queued Blender Python for isolated execution; one immutable scene revision'});
     }catch(error){
       if(error instanceof PythonSyntaxError)
