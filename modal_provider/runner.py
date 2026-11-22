@@ -148,7 +148,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
                 '/workspace/out/asset-sources.json')
             for i,filename in enumerate(asset_blends):
                 sandbox.filesystem.copy_from_local(str(Path(filename).resolve()),
-                    '/workspace/out/assets/source-%02d.blend' % i)
+                    '/workspace/out/source-%02d.blend' % i)
         phase = "blender_execution"
         process = sandbox.exec("blender", "-b", "--factory-startup", "--python",
             "/workspace/blender_workspace_poc/apply_python.py", "--",
