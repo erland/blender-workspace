@@ -15,6 +15,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.object_identity import ensure_object_ids
 from blender_workspace_poc.common import ensure_output, export_glb, write_manifest
 from blender_workspace_poc.glb_material_fallback import glb_material_fallback, source_material_stats
+from blender_workspace_poc.compose_sources import compose_sources
 
 def preview_document(path):
     # The GLB exporter can succeed while generating a preview without scene
@@ -86,6 +87,7 @@ def main():
             raise ValueError('Only an explicit saved scene predecessor is supported')
         bpy.ops.wm.open_mainfile(filepath=source,load_ui=False,use_scripts=False)
     ensure_object_ids(bpy.data.objects)
+    compose_sources()
     # Intentional unrestricted bpy/Python API *inside* the isolated Sandbox.
     exec(code,{'__name__':'__main__','bpy':bpy})
     ensure_object_ids(bpy.data.objects)

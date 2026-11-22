@@ -7,6 +7,7 @@ import {READ_SCOPE,WRITE_SCOPE} from '../auth/oauth.js';
 import type {ModalAccountManager} from '../modal/modal-accounts.js';
 import {PythonScriptSchema} from '../jobs/python-script.js';
 import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
+import {AssetSourcesSchema,parseAssetSources} from '../jobs/asset-sources.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import type {GlbPreviewRepository} from '../jobs/glb-preview-repository.js';
 import type {ProjectCloneService} from '../jobs/project-clone.js';
@@ -313,8 +314,9 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     description:'Validate Python syntax in the MCP service before queueing Blender Python in a short-lived, network-blocked Modal Sandbox. Optional sourceRevision lets an edit create the next immutable revision from an earlier saved revision; omit it to use the latest. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
       code:PythonScriptSchema.shape.code,note:note.optional(),
-      sourceRevision:z.number().int().min(1).max(99999998).optional()},...schemes(WRITE_SCOPE)
-  },async({projectId,expectedRevision,code,note:jobNote,sourceRevision})=>{
+      sourceRevision:z.number().int().min(1).max(99999998).optional(),
+      assetSources:AssetSourcesSchema.optional()},...schemes(WRITE_SCOPE)
+  },async({projectId,expectedRevision,code,note:jobNote,sourceRevision,assetSources})=>{
     const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
     try{
       // Syntax errors are actionable and never reserve a job or start Modal.
@@ -336,11 +338,21 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
           return failure(new JobConflict('Saved source revision not found'));
         await artifacts.verifiedArtifactPath(projectId,selectedSource,'scene.blend');
       }
+      const inputs=parseAssetSources(assetSources);
+      for(const asset of inputs){
+        const sourceProject=await projects.get(ownerKey,asset.projectId);
+        if(!sourceProject)return failure(new JobConflict('Model source unavailable'));
+        const versions=await projects.revisions(ownerKey,asset.projectId);
+        if(!versions.some(v=>v.revision===asset.revision&&v.artifact_prefix))
+          return failure(new JobConflict('Model source revision unavailable'));
+        await artifacts.verifiedArtifactPath(asset.projectId,asset.revision,'scene.blend');
+      }
       const spec=PythonScriptSchema.parse({kind:'python_script',code});
       const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
-        jobNote??'Sandboxed Blender Python',undefined,spec,sourceRevision);
+        jobNote??'Sandboxed Blender Python',undefined,spec,sourceRevision,inputs);
       return result({job:safeJob(job),execution:'modal-sandbox',
         ...(selectedSource>0?{sourceRevision:selectedSource}:{}),
+        ...(inputs.length?{assetSources:inputs}:{}),
         message:'Queued Blender Python for isolated execution; one immutable scene revision'});
     }catch(error){
       if(error instanceof PythonSyntaxError)

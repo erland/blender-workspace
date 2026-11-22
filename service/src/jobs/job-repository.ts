@@ -3,10 +3,11 @@ import type { Pool } from 'pg';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {preflightPython} from './python-preflight.js';
 import {safeStoredJobError} from './job-diagnostics.js';
+import {parseAssetSources,type AssetSource} from './asset-sources.js';
 
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
-  id:string; project_id:string;owner_key:string; expected_revision:number;source_revision:number|null;
+  id:string; project_id:string;owner_key:string; expected_revision:number;source_revision:number|null;asset_sources:AssetSource[];
   requested_revision:number;status:JobStatus;note:string;error_message:string|null;created_at:Date;updated_at:Date;finished_at:Date|null;edit_spec:unknown|null;operation_spec:PythonScriptSpec|null;
 }
 export class JobConflict extends Error {
@@ -14,7 +15,7 @@ export class JobConflict extends Error {
 }
 export class JobRepository {
   constructor(private readonly pool:Pool) {}
-  async reserve(owner:string, projectId:string, expectedRevision:number, note='',_retiredEdit?:never,operation?:PythonScriptSpec, sourceRevision?:number):Promise<Job> {
+  async reserve(owner:string, projectId:string, expectedRevision:number, note='',_retiredEdit?:never,operation?:PythonScriptSpec, sourceRevision?:number, assetSources?:AssetSource[]):Promise<Job> {
     if (!owner.trim() || owner.length>200 || note.length>5000 || !Number.isSafeInteger(expectedRevision) ||
         expectedRevision<0 || expectedRevision>99999998)
       throw new RangeError('Invalid job input');
@@ -28,6 +29,7 @@ export class JobRepository {
     if(_retiredEdit!==undefined)throw new RangeError('Structured scene edits are retired');
     if(operation===undefined)throw new RangeError('Python script is required');
     const safeOperation=parsePythonScript(operation);
+    const selectedAssets=parseAssetSources(assetSources);
     // Last gate before reservation: no syntax-invalid script can be dispatched.
     await preflightPython(safeOperation.code);
     const client=await this.pool.connect();
@@ -45,10 +47,12 @@ export class JobRepository {
            AND artifact_prefix IS NOT NULL`,[projectId,selectedSource]);
         if(!source.rowCount)throw new JobConflict('Selected source revision is unavailable');
       }
+      await this.assertOwnedSources(client,owner,selectedAssets);
       const j=await client.query<Job>(`INSERT INTO bw_jobs
-        (id,project_id,owner_key,expected_revision,requested_revision,source_revision,status,note,edit_spec,operation_spec)
-        VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8::jsonb,$9::jsonb) RETURNING *`,
-        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,selectedSource,note,null,JSON.stringify(safeOperation)]);
+        (id,project_id,owner_key,expected_revision,requested_revision,source_revision,asset_sources,status,note,edit_spec,operation_spec)
+        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,'pending',$8,$9::jsonb,$10::jsonb) RETURNING *`,
+        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,selectedSource,
+          JSON.stringify(selectedAssets),note,null,JSON.stringify(safeOperation)]);
       await client.query('COMMIT');
       return j.rows[0];
     } catch (e) {
@@ -56,6 +60,24 @@ export class JobRepository {
       if ((e as {code?:string}).code==='23505') throw new JobConflict('Another job is active');
       throw e;
     } finally { client.release(); }
+  }
+  private async assertOwnedSources(
+    db:Pick<Pool,'query'>,owner:string,sources:AssetSource[]):Promise<void>{
+    for(const source of sources){
+      const res=await db.query(
+        `SELECT 1 FROM bw_project_revisions r
+          JOIN bw_projects p ON p.id=r.project_id
+          WHERE p.id=$1 AND p.owner_key=$2 AND p.deleted_at IS NULL
+            AND r.revision=$3 AND r.artifact_prefix IS NOT NULL`,
+        [source.projectId,owner,source.revision]);
+      if(!res.rowCount)throw new JobConflict('Model source is unavailable');
+    }
+  }
+  /** Revalidate queued owner-scoped source references before spending Modal credits. */
+  async validateAssetSources(owner:string,sources:AssetSource[]):Promise<AssetSource[]>{
+    const safe=parseAssetSources(sources);
+    await this.assertOwnedSources(this.pool,owner,safe);
+    return safe;
   }
   /** Multiple dispatchers can claim distinct jobs without duplicate execution. */
   async claimNext():Promise<Job|null> {
@@ -89,7 +111,7 @@ export class JobRepository {
     if(!owner.trim()||owner.length>200||!Number.isInteger(limit)||limit<1||limit>100)
       throw new RangeError('Invalid job history request');
     return (await this.pool.query<Job>(
-      `SELECT j.id,j.project_id,j.owner_key,j.expected_revision,j.requested_revision,j.source_revision,
+      `SELECT j.id,j.project_id,j.owner_key,j.expected_revision,j.requested_revision,j.source_revision,j.asset_sources,
          j.status,j.note,j.error_message,j.created_at,j.updated_at,j.finished_at
        FROM bw_jobs j JOIN bw_projects p ON p.id=j.project_id
        WHERE j.owner_key=$1 AND p.owner_key=$1 AND p.deleted_at IS NULL
