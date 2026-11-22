@@ -9,6 +9,15 @@ from pathlib import Path
 import time
 
 
+def _is_native_blend_magic(path):
+    """Accept Blender's raw or Zstandard-compressed native format by magic.
+    Decompression and semantic validation only happen in isolated Blender.
+    """
+    with Path(path).open('rb') as handle:
+        magic=handle.read(7)
+    return magic.startswith(b'BLENDER') or magic.startswith(b'\\x28\\xb5\\x2f\\xfd')
+
+
 def _sha256_file(path):
     digest = hashlib.sha256()
     with Path(path).open('rb') as source:
@@ -151,7 +160,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 source.stat().st_size<20 or source.stat().st_size>256*1024*1024 or
                 not isinstance(entry,dict) or set(entry)!={'index','offset','format'} or
                 entry['format'] not in ('blend','glb') or
-                (entry['format']=='blend' and source.open('rb').read(7)!=b'BLENDER') or
+                (entry['format']=='blend' and not _is_native_blend_magic(source)) or
                 (entry['format']=='glb' and source.open('rb').read(4)!=b'glTF') or
                 entry['index']!=i or not isinstance(entry['offset'],list) or
                 len(entry['offset'])!=3 or
