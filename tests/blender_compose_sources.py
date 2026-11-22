@@ -32,8 +32,8 @@ bpy.ops.mesh.primitive_uv_sphere_add()
 bpy.context.object.name='Existing terrain'
 bpy.context.object[PROPERTY]='77777777-7777-4777-8777-777777777777'
 (root/'asset-sources.json').write_text(json.dumps([
- {'index':0,'offset':[-4,0,0]},
- {'index':1,'offset':[4,0,0]}
+ {'index':0,'offset':[-4,0,0],'format':'blend'},
+ {'index':1,'offset':[4,0,0],'format':'blend'}
 ]))
 result=compose_sources()
 assert len(result)==2,result
