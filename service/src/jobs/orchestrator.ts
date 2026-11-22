@@ -136,7 +136,8 @@ export class JobOrchestrator {
    */
   async registerSavedInlineRender(job:Job):Promise<boolean>{
     if(job.status!=='completed'||!this.renderJobs||!this.renderFiles)return false;
-    const spec=parsePythonScript(job.operation_spec);
+    let spec:PythonScriptSpec;
+    try{spec=parsePythonScript(job.operation_spec);}catch{return false;}
     if(!spec.inlineRender)return false;
     let image:string;
     try{
