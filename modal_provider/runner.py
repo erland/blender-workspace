@@ -186,7 +186,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
                 sandbox.filesystem.copy_from_local(str(Path(filename).resolve()),
                     '/workspace/out/source-%02d.%s' % (i,entry['format']))
         phase = "blender_execution"
-        process = sandbox.exec("blender", "-b", "--factory-startup", "--python",
+        process = sandbox.exec("blender", "-b", "--factory-startup", "--python-exit-code", "1", "--python",
             "/workspace/blender_workspace_poc/apply_python.py", "--",
             "NEW" if revision == 1 else "/workspace/out/input.blend",
             "/workspace/out/model.py", str(revision))
