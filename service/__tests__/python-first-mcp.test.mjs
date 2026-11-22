@@ -15,7 +15,7 @@ function setup({revision=0,connected=true}={}){
     ownerKey:owner,
     projects:{
       async get(w,id){return w===owner&&id===projectId?{id,current_revision:revision}:null;},
-      async revisions(){return revision===0?[]:[{revision,artifact_prefix:'saved'}];}
+      async revisions(){return Array.from({length:revision},(_,i)=>({revision:i+1,artifact_prefix:'saved'}));}
     },
     jobs:{async reserve(...args){queued=args;return {id:randomUUID(),project_id:projectId,
       status:'pending',requested_revision:revision+1};}},
@@ -88,5 +88,34 @@ test('DEV-035 MCP syntax errors return line details and do not queue jobs',async
   assert.equal(response.isError,true);
   assert.match(response.content[0].text,/Python syntax error at line 2/);
   assert.equal(context.queued,null);
+  assert.equal(context.checked,0);
+});
+
+test('DEV-038 can branch from a saved earlier revision while keeping the latest write lock',async()=>{
+  const context=setup({revision:3});
+  const handler=context.tools.get('workspace_queue_python_script').handler;
+  const response=readResult(await handler({projectId:context.projectId,expectedRevision:3,
+    sourceRevision:1,code:'pass',note:'Alternative from revision 1'}));
+  assert.equal(response.sourceRevision,1);
+  assert.equal(response.job.requestedRevision,4);
+  assert.equal(context.queued[2],3,'destination must still lock latest revision');
+  assert.equal(context.queued[6],1,'selected predecessor must reach the job repository');
+  assert.equal(context.checked,1);
+});
+
+test('DEV-038 rejects invalid historical sources and stale destinations before queueing',async()=>{
+  const context=setup({revision:3});
+  const handler=context.tools.get('workspace_queue_python_script').handler;
+  for(const args of [
+    {expectedRevision:3,sourceRevision:4},
+    {expectedRevision:2,sourceRevision:1},
+    {expectedRevision:3,sourceRevision:0},
+    {expectedRevision:3,sourceRevision:-1}
+  ]){
+    const response=await handler({projectId:context.projectId,
+      ...args,code:'pass'});
+    assert.equal(response.isError,true);
+    assert.equal(context.queued,null);
+  }
   assert.equal(context.checked,0);
 });
