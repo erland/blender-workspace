@@ -153,6 +153,86 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          return jobsOverviewPage(entries);
        }catch{return reply.code(503).send('Jobblistan kunde inte hämtas. Försök igen senare.');}
      });
+
+     app.get('/models/import',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
+       if(!session)return reply.redirect('/settings/login');
+       if(!services!.uploads)return reply.code(503).send('Filimport är inte tillgänglig');
+       try{
+         const [uploads,projects]=await Promise.all([
+           services!.uploads.list(session.ownerKey,40),
+           services!.projects.list(session.ownerKey,100)]);
+         reply.header('content-security-policy',
+           "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+         return modelImportPage(session.csrf,uploads,projects,
+           (request.query as {message?:string}).message);
+       }catch{return reply.code(503).send('Kunde inte visa uppladdade modeller.');}
+     });
+     app.get('/models/assets/upload.js',async(_request,reply)=>
+       secure(reply).header('content-security-policy',"default-src 'none'")
+         .type('application/javascript; charset=utf-8').send(modelUploadScript));
+     app.post('/models/uploads',{bodyLimit:MAX_UPLOAD_BYTES},async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie');
+       if(!session)return reply.code(401).send({error:'unauthorized'});
+       const origin=request.headers.origin;
+       const safari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+       if((origin!==config.publicOrigin&&!safari)||request.headers['x-csrf-token']!==session.csrf)
+         return reply.code(403).send({error:'forbidden'});
+       if(request.headers['content-type']!=='application/vnd.blender-workspace.model')
+         return reply.code(415).send({error:'unsupported_media_type'});
+       if(!services!.uploads)return reply.code(503).send({error:'uploads_unavailable'});
+       try{
+         const raw=request.headers['x-model-filename'];
+         if(typeof raw!=='string'||raw.length>600)
+           return reply.code(400).send({error:'invalid_filename'});
+         const filename=decodeURIComponent(raw);
+         const uploaded=await services!.uploads.upload(session.ownerKey,filename,request.body as Buffer);
+         return reply.code(201).send({uploadId:uploaded.id,format:uploaded.format});
+       }catch{return reply.code(422).send({error:'invalid_model'});}
+     });
+     // Uploading never starts a job. A separate, confirmed request reserves
+     // one owner-paid Modal import job and creates the next immutable revision.
+     app.post('/models/compose',{bodyLimit:4096},async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie');
+       if(!session)return reply.code(401).send('Unauthorized');
+       const origin=request.headers.origin;
+       const safari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+       if(origin!==config.publicOrigin&&!safari)return reply.code(403).send('Forbidden');
+       if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+         return reply.code(415).send('Unsupported Media Type');
+       const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
+       if(form.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
+       if(form.get('confirm')!=='yes')return reply.code(400).send('Kostnadsbekräftelse saknas');
+       if(!services!.uploads||!services!.modalAccounts)return reply.code(503).send('Importtjänsten saknas');
+       const uploadId=form.get('uploadId')??'';
+       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(uploadId))
+         return reply.code(400).send('Ogiltigt modell-ID');
+       try{
+         if(!(await services!.modalAccounts.status(session.ownerKey)).connected)
+           return reply.code(409).send('Anslut Modal innan du startar importen');
+         await services!.uploads.verifiedPath(session.ownerKey,uploadId);
+         const destination=form.get('projectId')??'new';
+         let project;
+         if(destination==='new'){
+           const name=form.get('name')??'';
+           if(!name.trim()||name.length>200)return reply.code(400).send('Ogiltigt projektnamn');
+           project=await services!.projects.create(session.ownerKey,name.trim());
+         }else{
+           if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(destination))
+             return reply.code(404).send('Projektet hittades inte');
+           project=await services!.projects.get(session.ownerKey,destination);
+           if(!project)return reply.code(404).send('Projektet hittades inte');
+         }
+         await services!.jobs.reserve(session.ownerKey,project.id,project.current_revision,
+           'Importera extern BLEND/GLB',undefined,{kind:'python_script',code:'pass'},
+           undefined,[{uploadId,offset:[0,0,0]}]);
+         return reply.code(303).header('location',
+           '/projects/'+project.id+'?message=import_queued').send();
+       }catch{return reply.code(303).header('location','/models/import?message=error').send();}
+     });
      // Dedicated secondary import workflow: the project list stays the first content on mobile.
      app.get('/projects/import',async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
