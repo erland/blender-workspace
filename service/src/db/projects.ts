@@ -5,7 +5,7 @@ export interface Project {
   created_at:Date;updated_at:Date;deleted_at:Date|null;
 }
 export interface Revision {
-  project_id:string;revision:number;source_revision:number|null;note:string;artifact_prefix:string|null;created_at:Date;
+  project_id:string;revision:number;source_revision:number|null;source_project_id:string|null;source_project_revision:number|null;note:string;artifact_prefix:string|null;created_at:Date;
 }
 function required(value:string,max:number,label:string) {
   if (!value.trim() || value.length>max) throw new RangeError(`${label} must be 1-${max} characters`);
@@ -92,6 +92,34 @@ export class ProjectRepository {
       }
       await c.query('UPDATE bw_projects SET current_revision=$2,deleted_at=NULL,updated_at=now() WHERE id=$1 AND owner_key=$3',
         [id,entries.length,owner]);
+      await c.query('COMMIT');
+    }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+  }
+  /** Finalize a staged, independently copied project with provenance. */
+  async finishClone(owner:string,id:string,sourceId:string,sourceRevision:number):Promise<void>{
+    required(owner,200,'owner');
+    if(!Number.isSafeInteger(sourceRevision)||sourceRevision<1||sourceRevision>99999999)
+      throw new RangeError('Invalid source revision');
+    const c=await this.pool.connect();
+    try{
+      await c.query('BEGIN');
+      const staged=await c.query(
+        `SELECT 1 FROM bw_projects WHERE id=$1 AND owner_key=$2 AND deleted_at IS NOT NULL
+           AND deletion_requested_at IS NULL AND current_revision=0 FOR UPDATE`,[id,owner]);
+      if(!staged.rowCount)throw new Error('Clone not staged');
+      const source=await c.query(
+        `SELECT 1 FROM bw_project_revisions r JOIN bw_projects p ON p.id=r.project_id
+         WHERE p.id=$1 AND p.owner_key=$2 AND p.deleted_at IS NULL
+           AND r.revision=$3 AND r.artifact_prefix IS NOT NULL`,[sourceId,owner,sourceRevision]);
+      if(!source.rowCount)throw new Error('Clone source unavailable');
+      await c.query(
+        `INSERT INTO bw_project_revisions
+         (project_id,revision,note,artifact_prefix,source_project_id,source_project_revision)
+         VALUES($1,1,$2,$3,$4,$5)`,
+        [id,'Copied from revision '+sourceRevision,id+'/00000001',sourceId,sourceRevision]);
+      await c.query(
+        `UPDATE bw_projects SET current_revision=1,deleted_at=NULL,updated_at=now()
+         WHERE id=$1 AND owner_key=$2 AND deleted_at IS NOT NULL`,[id,owner]);
       await c.query('COMMIT');
     }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
   }

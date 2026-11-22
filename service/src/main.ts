@@ -10,6 +10,7 @@ import {ModalCliTokenVerifier} from './modal/modal-token-verifier.js';
 import {LocalArtifactStore} from './storage/artifact-store.js';
 import {ProjectDeletionService} from './jobs/project-deletion.js';
 import {ProjectArchiveService} from './jobs/project-archive.js';
+import {ProjectCloneService} from './jobs/project-clone.js';
 import {RenderJobRepository} from './jobs/render-repository.js';
 import {RenderArtifactStore} from './storage/render-artifacts.js';
 import {GlbPreviewRepository} from './jobs/glb-preview-repository.js';
@@ -28,13 +29,14 @@ const projects=pool?new ProjectRepository(pool):undefined;
 const artifacts=pool?new LocalArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'):undefined;
 const projectDeletion=projects&&artifacts?new ProjectDeletionService(projects,artifacts):undefined;
 const projectArchive=projects&&artifacts?new ProjectArchiveService(projects,artifacts):undefined;
+const projectClone=projects&&artifacts?new ProjectCloneService(projects,artifacts):undefined;
 const renderJobs=pool?new RenderJobRepository(pool):undefined;
 const renderedImages=pool?new RenderArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'):undefined;
 const glbPreviews=pool?new GlbPreviewRepository(pool):undefined;
 const glbPreviewFiles=pool?new GlbPreviewArtifactStore(process.env.ARTIFACT_ROOT??'/data/blender-workspace'):undefined;
 const app=createApp(config,pool?{
   ownerKey:config.ownerKey,projects:projects!,jobs:new JobRepository(pool),
-  artifacts:artifacts!,projectDeletion:projectDeletion!,projectArchive:projectArchive!,
+  artifacts:artifacts!,projectDeletion:projectDeletion!,projectArchive:projectArchive!,projectClone:projectClone!,
   renderJobs:renderJobs!,renderedImages:renderedImages!,
   glbPreviews:glbPreviews!,glbPreviewFiles:glbPreviewFiles!,
   ...(modalAccounts?{modalAccounts}:{})
