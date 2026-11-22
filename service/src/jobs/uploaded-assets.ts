@@ -10,14 +10,28 @@ export class UploadedAssets {
  async upload(owner:string,filename:string,bytes:Buffer):Promise<UploadedAsset>{
   if(!owner.trim()||owner.length>200)throw new RangeError('Invalid owner');
   const checked=validateUpload(bytes,filename),id=randomUUID();
-  await this.store.store(bytes,id,checked.format);
+  const client=await this.pool.connect();
+  let saved=false;
   try{
-   const row=await this.pool.query<UploadedAsset>(
+   await client.query('BEGIN');
+   // Serialize concurrent uploads for this owner across service instances.
+   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[owner]);
+   const usage=await client.query<{count:string;total:string}>(
+     'SELECT count(*)::text AS count,coalesce(sum(size_bytes),0)::text AS total FROM bw_uploaded_assets WHERE owner_key=$1',[owner]);
+   if(Number(usage.rows[0].count)>=50 ||
+      Number(usage.rows[0].total)+checked.sizeBytes>512*1024*1024)
+     throw new RangeError('Upload library limit reached');
+   await this.store.store(bytes,id,checked.format);saved=true;
+   const row=await client.query<UploadedAsset>(
      `INSERT INTO bw_uploaded_assets(id,owner_key,filename,format,size_bytes,sha256)
       VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
       [id,owner,filename,checked.format,checked.sizeBytes,checked.sha256]);
-   return row.rows[0];
-  }catch(error){await this.store.remove(id,checked.format);throw error;}
+   await client.query('COMMIT');return row.rows[0];
+  }catch(error){
+   await client.query('ROLLBACK');
+   if(saved)await this.store.remove(id,checked.format);
+   throw error;
+  }finally{client.release();}
  }
  async get(owner:string,id:string):Promise<UploadedAsset|null>{
   if(!owner.trim()||owner.length>200)return null;
