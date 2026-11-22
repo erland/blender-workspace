@@ -353,13 +353,13 @@ next_later_improvements:
   - "Larger source files via resumable streaming uploads where needed"
 
 dev042:
-  status: CODE_COMPLETE_VERIFICATION_PENDING
+  status: COMPLETE
   scope: "Classify Blender exit, user Python exceptions and known resource failures; present safe diagnostics in MCP and browser; real hair and traceback CI regressions"
   source_pr: https://github.com/erland/blender-workspace/pull/85
   code_ci:
-    status: PARTIAL
-    service_run: https://github.com/erland/blender-workspace/actions/runs/44996193467
-    blender_run: https://github.com/erland/blender-workspace/actions/runs/44996193537
-    deployment_run: https://github.com/erland/blender-workspace/actions/runs/44996193528
+    status: PASS
+    service_run: https://github.com/erland/blender-workspace/actions/runs/44996419496
+    blender_run: https://github.com/erland/blender-workspace/actions/runs/44996419495
+    deployment_run: https://github.com/erland/blender-workspace/actions/runs/44996419565
   live_acceptance: DEFERRED
   next: "Verify the next real owner-paid Blender failure and job history in deployed Coolify; never automatically rerun failed jobs"
