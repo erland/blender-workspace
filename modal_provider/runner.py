@@ -56,7 +56,23 @@ PYTHON_EXCEPTIONS = {
     'OverflowError','ReferenceError','OSError','NotImplementedError','SyntaxError'
 }
 USER_ERROR = re.compile(
-    r'^BW_USER_PYTHON_ERROR type=([A-Za-z]+) line=([1-9][0-9]{0,5})
+    r'^BW_USER_PYTHON_ERROR type=([A-Za-z]+) line=([1-9][0-9]{0,5})$',re.M)
+
+
+def classify_blender_failure(exit_code, stdout, stderr):
+    """Classify observed evidence; a signal alone cannot prove OOM."""
+    output = stdout[-8000:] + chr(10) + stderr[-8000:]
+    matches = list(USER_ERROR.finditer(output))
+    if matches and type(exit_code) is int and exit_code != 0:
+        kind, line = matches[-1].groups()
+        if kind in PYTHON_EXCEPTIONS:
+            return 'python_script_error',kind,int(line)
+    if re.search(r'(?i)(?:std::bad_alloc|out of memory|cannot allocate memory|'
+                 r'CUDA_ERROR_OUT_OF_MEMORY)',output):
+        return 'out_of_memory',None,None
+    if type(exit_code) is int and (exit_code < 0 or exit_code >= 128):
+        return 'blender_crash',None,None
+    return 'blender_execution_failed',None,None
 
 
 def safe_failure_code(phase, error):
