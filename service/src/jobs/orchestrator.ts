@@ -72,6 +72,13 @@ export class JobOrchestrator {
         name,sourcePath:path.join(temp,name)
       }));
       try {
+        if((await stat(path.join(temp,'scene.png'))).isFile())
+          artifacts.push({name:'scene.png',sourcePath:path.join(temp,'scene.png')});
+      }catch(error){
+        if((error as NodeJS.ErrnoException).code!=='ENOENT')
+          throw new JobExecutionError('artifact_storage','artifact_storage_failed');
+      }
+      try {
         if((await stat(path.join(temp,'scene.glb'))).isFile())
           artifacts.push({name:'scene.glb',sourcePath:path.join(temp,'scene.glb')});
       }catch(error){
