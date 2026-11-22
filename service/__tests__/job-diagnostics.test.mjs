@@ -40,7 +40,8 @@ test('bounded subprocess diagnostics ignore secret-bearing stderr/stdout',async 
   ].join('\n');
   await writeFile(path.join(root,'modal_provider','runner.py'),py);
   const executor=new ModalPythonExecutor(root,30000,{
-    async requireConnected(){return {tokenId:'test-id',tokenSecret:SECRET};}
+    async requireConnected(){return {tokenId:'test-id',tokenSecret:SECRET};},
+    async memoryMiB(){return 2048;}
   });
   let failure;
   try{
@@ -60,7 +61,8 @@ test('unexpected process failure reveals no output to caller or persistence',asy
   await writeFile(path.join(root,'modal_provider','runner.py'),
     "import sys\nsys.stderr.write("+JSON.stringify(SECRET)+")\nsys.exit(1)\n");
   const executor=new ModalPythonExecutor(root,30000,{
-    async requireConnected(){return {tokenId:'id',tokenSecret:SECRET};}
+    async requireConnected(){return {tokenId:'id',tokenSecret:SECRET};},
+    async memoryMiB(){return 2048;}
   });
   await assert.rejects(
     ()=>executor.runPythonScript(path.join(root,'out'),'owner',1,
