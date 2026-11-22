@@ -55,7 +55,7 @@ export class LiveGoogleProvider implements GoogleIdentityProvider {
       ...(typeof payload.email==='string'?{email:payload.email}:{})};
   }
 }
-type Pending={kind?:'settings';state:string;nonce:string;expires:number;clientId:string;
+type Pending={kind?:'settings';returnTo?:string;state:string;nonce:string;expires:number;clientId:string;
   redirect:string;scope:string;resource:string;challenge:string;clientState?:string};
 const b64=(s:string)=>Buffer.from(s,'utf8').toString('base64url');
 interface SettingsSession {ownerKey:string;csrf:string;expires:number;}
@@ -107,8 +107,21 @@ export class GoogleOAuthServer {
       return p.expires>Date.now()&&typeof p.state==='string'&&typeof p.nonce==='string'?p:undefined;
     }catch{return undefined;}
   }
-  async beginSettingsLogin(){
-    const pending:Pending={kind:'settings',state:random(),nonce:random(),
+  /** Only immutable render image URLs can be resumed after Google login.
+   * Reject absolute URLs, query parameters and arbitrary paths to prevent
+   * open redirects or abuse of the signed OAuth pending-state cookie.
+   */
+  /** Only same-origin immutable render URLs may survive an OAuth login. */
+  private renderReturnPath(input:string|undefined):string|undefined{
+    if(!input||input.length>180)return undefined;
+    const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+    const matcher=new RegExp('^/renders/'+uuid+'/'+uuid+'\\.png'+String.fromCharCode(36),'i');
+    return matcher.test(input)?input:undefined;
+  }
+  async beginSettingsLogin(returnTo?:string){
+    if(returnTo!==undefined&&!this.renderReturnPath(returnTo))
+      throw new RangeError('Invalid login return path');
+    const pending:Pending={kind:'settings',...(returnTo?{returnTo}:{}),state:random(),nonce:random(),
       expires:Date.now()+600_000,clientId:'',redirect:'',scope:'',
       resource:this.resource,challenge:''};
     return {status:302,body:'',headers:{
@@ -210,7 +223,7 @@ export class GoogleOAuthServer {
       const session:SettingsSession={ownerKey,csrf:random(),expires:Date.now()+8*3600_000};
       const encoded=b64(JSON.stringify(session));
       return {status:302,body:'',headers:{
-        location:'/',
+        location:this.renderReturnPath(pending.returnTo)??'/',
         'set-cookie':[this.cookie('',0),
           this.settingsCookie(encoded+'.'+this.signature(encoded),8*3600)],
         'cache-control':'no-store'

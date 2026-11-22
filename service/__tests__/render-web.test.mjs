@@ -63,7 +63,18 @@ test('browser only queues render after explicit signed-owner, origin and CSRF ch
  assert.match(ok.headers.location,/render_queued/);
  assert.equal(queued,1);
  const url='/renders/'+PROJECT+'/'+RENDER+'.png';
- assert.equal((await service.inject({method:'GET',url})).statusCode,401);
+ const plain=await service.inject({method:'GET',url});
+ assert.equal(plain.statusCode,401,'embedded image and API fetches retain 401');
+ const direct=await service.inject({method:'GET',url,
+   headers:{'sec-fetch-dest':'document','sec-fetch-mode':'navigate'}});
+ assert.equal(direct.statusCode,302,'direct image tabs should offer Google sign in');
+ assert.equal(direct.headers.location,
+   '/settings/login?next='+encodeURIComponent(url));
+ const embedded=await service.inject({method:'GET',url,
+   headers:{'sec-fetch-dest':'image'}});
+ assert.equal(embedded.statusCode,401);
+ assert.equal(renderReads,0);
+
  assert.equal((await service.inject({method:'GET',url,headers:{cookie:'session=other'}})).statusCode,404);
  assert.equal(renderReads,0);
  const image=await service.inject({method:'GET',url,headers:{cookie:'session=owner'}});
