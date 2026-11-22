@@ -4,6 +4,8 @@ Never call evaluated_get(), to_mesh(), a dependency-graph evaluation, or
 procedural node evaluation just to collect diagnostics. Counts describe
 stored datablocks only; child hair and generated meshes remain unknown.
 """
+from itertools import islice
+
 MAX_MODIFIERS = 64
 MAX_COUNT = 1_000_000_000
 
@@ -21,7 +23,7 @@ def describe_complexity(obj):
         "proceduralPotential": False,
         "modifiers": [],
     }
-    for modifier in list(obj.modifiers)[:MAX_MODIFIERS]:
+    for modifier in islice(obj.modifiers, MAX_MODIFIERS):
         modifier_type = str(modifier.type)
         record["modifiers"].append({
             "name": str(modifier.name)[:512],
