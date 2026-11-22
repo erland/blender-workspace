@@ -14,6 +14,22 @@ MAX_BLEND_BYTES=256*1024*1024
 MAX_GLB_BYTES=128*1024*1024
 MAX_REPORT_BYTES=16*1024*1024
 
+MAX_INLINE_PNG_BYTES=16*1024*1024
+
+def validate_png_preview(path):
+    """Validate a 512x512 8-bit RGB/RGBA PNG; bounded and checksum-verifiable."""
+    p=Path(path)
+    if p.is_symlink() or not p.is_file() or not 33<=p.stat().st_size<=MAX_INLINE_PNG_BYTES:
+        raise ValueError('Invalid inline PNG size')
+    with p.open('rb') as stream:
+        header=stream.read(33)
+    if header[:8]!=b'\\x89PNG\\r\\n\\x1a\\n' or header[12:16]!=b'IHDR':
+        raise ValueError('Invalid inline PNG signature')
+    width,height=struct.unpack_from('>II',header,16)
+    if (width,height)!=(512,512) or header[24]!=8 or header[25] not in (2,6):
+        raise ValueError('Invalid inline PNG dimensions')
+    return True
+
 def _file(folder,name,max_bytes,header_only=False):
     file=Path(folder)/name
     if file.is_symlink() or not file.is_file() or not 0<file.stat().st_size<=max_bytes:
@@ -81,17 +97,31 @@ def _validate_python_outputs(folder):
             raise ValueError('Duplicate scene object identity')
         seen.add(identifier)
     artifacts=report.get('artifacts')
-    if not isinstance(artifacts,list) or len(artifacts) not in (1,2):
+    if not isinstance(artifacts,list) or len(artifacts) not in (1,2,3):
         raise ValueError('Sandbox report must list both model files')
     checks={'scene.blend':blend}
     if glb is not None:
         checks['scene.glb']=glb
+    png_file=Path(folder)/'scene.png'
+    if png_file.exists():
+        validate_png_preview(png_file)
+        checks['scene.png']=None
     if {item.get('path') for item in artifacts if isinstance(item,dict)}!=set(checks):
         raise ValueError('Unexpected sandbox artifact list')
     for item in artifacts:
         payload=checks[item['path']]
         if item.get('size_bytes')!=Path(folder,item['path']).stat().st_size or item.get('sha256')!=_digest(Path(folder,item['path'])):
             raise ValueError('Sandbox artifact checksum mismatch')
+    inline=report.get('inlineRender')
+    if inline is not None:
+        if not isinstance(inline,dict) or inline.get('format')!='png' or inline.get('status') not in ('available','unavailable'):
+            raise ValueError('Invalid inline render metadata')
+        if (inline['status']=='available') != png_file.exists():
+            raise ValueError('Inline render file mismatch')
+        if inline['status']=='available' and (inline.get('width'),inline.get('height'),inline.get('samples'),inline.get('engine'))!=(512,512,16,'CYCLES'):
+            raise ValueError('Invalid inline render settings')
+    elif png_file.exists():
+        raise ValueError('Inline render file mismatch')
     preview=report.get('preview')
     if preview is not None:
         if not isinstance(preview,dict) or preview.get('format')!='glb':
@@ -123,6 +153,13 @@ VALIDATION_REASONS = {
     'Duplicate scene object identity': 'object_id_duplicate',
     'Sandbox report must list both model files': 'report_artifact_list_invalid',
     'Unexpected sandbox artifact list': 'report_artifact_list_invalid',
+    'Invalid inline PNG size': 'artifact_unclassified',
+    'Invalid inline PNG signature': 'artifact_unclassified',
+    'Invalid inline PNG dimensions': 'artifact_unclassified',
+    'Invalid inline render metadata': 'report_provenance_invalid',
+    'Invalid inline render file mismatch': 'report_artifact_list_invalid',
+    'Inline render file mismatch': 'report_artifact_list_invalid',
+    'Invalid inline render settings': 'report_provenance_invalid',
     'Sandbox artifact checksum mismatch': 'artifact_checksum_mismatch',
 }
 class ArtifactValidationError(ValueError):
