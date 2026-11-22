@@ -55,7 +55,7 @@ export class LiveGoogleProvider implements GoogleIdentityProvider {
       ...(typeof payload.email==='string'?{email:payload.email}:{})};
   }
 }
-type Pending={kind?:'settings';state:string;nonce:string;expires:number;clientId:string;
+type Pending={kind?:'settings';returnTo?:string;state:string;nonce:string;expires:number;clientId:string;
   redirect:string;scope:string;resource:string;challenge:string;clientState?:string};
 const b64=(s:string)=>Buffer.from(s,'utf8').toString('base64url');
 interface SettingsSession {ownerKey:string;csrf:string;expires:number;}
@@ -107,7 +107,196 @@ export class GoogleOAuthServer {
       return p.expires>Date.now()&&typeof p.state==='string'&&typeof p.nonce==='string'?p:undefined;
     }catch{return undefined;}
   }
-  async beginSettingsLogin(){
+  /** Only immutable render image URLs can be resumed after Google login.
+   * Reject absolute URLs, query parameters and arbitrary paths to prevent
+   * open redirects or abuse of the signed OAuth pending-state cookie.
+   */
+  private renderReturnPath(input:string|undefined):string|undefined{
+    if(!input||input.length>180)return undefined;
+    const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+    return new RegExp('^/renders/'+uuid+'/'+uuid+'\\.png
+    const pending:Pending={kind:'settings',...(returnTo?{returnTo}:{}),state:random(),nonce:random(),
+      expires:Date.now()+600_000,clientId:'',redirect:'',scope:'',
+      resource:this.resource,challenge:''};
+    return {status:302,body:'',headers:{
+      location:this.provider.authorizeUrl(pending.state,pending.nonce,this.callback),
+      'set-cookie':this.cookie(this.signedPending(pending),600),
+      'cache-control':'no-store'
+    }};
+  }
+  private settingsCookie(value:string,maxAge:number):string{
+    return 'bw_modal_settings='+value+'; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age='+maxAge;
+  }
+  settingsSession(cookie:string|undefined):SettingsSession|undefined {
+    const value=cookie?.split(';').map(x=>x.trim())
+      .find(x=>x.startsWith('bw_modal_settings='))?.slice('bw_modal_settings='.length);
+    if(!value||value.length>3000)return undefined;
+    const [encoded,signature,...rest]=value.split('.');
+    if(!encoded||!signature||rest.length)return undefined;
+    const one=Buffer.from(signature),two=Buffer.from(this.signature(encoded));
+    if(one.length!==two.length||!timingSafeEqual(one,two))return undefined;
+    try{
+      const session=JSON.parse(Buffer.from(encoded,'base64url').toString('utf8')) as SettingsSession;
+      return session.expires>Date.now()&&typeof session.ownerKey==='string'&&
+        /^oauth:[a-f0-9]{64}$/.test(session.ownerKey)&&
+        typeof session.csrf==='string'&&session.csrf.length>=32?session:undefined;
+    }catch{return undefined;}
+  }
+  logoutSettings(){
+    return {status:303,body:'',headers:{
+      location:'/', 'set-cookie':this.settingsCookie('',0),'cache-control':'no-store'
+    }};
+  }
+  private cookie(value:string,maxAge:number):string{
+    return 'bw_oauth_pending='+value+'; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age='+maxAge;
+  }
+  async register(input:unknown){
+    const now=Date.now();
+    this.registrationTimes=this.registrationTimes.filter(t=>now-t<60_000);
+    if(this.registrationTimes.length>=MAX_CLIENTS_PER_MINUTE)return error('temporarily_unavailable',429);
+    this.registrationTimes.push(now);
+    if(!input||typeof input!=='object')return error('invalid_client_metadata');
+    const obj=input as Record<string,unknown>;
+    if(!Array.isArray(obj.redirect_uris)||obj.redirect_uris.length<1||obj.redirect_uris.length>10||
+      obj.redirect_uris.some(x=>typeof x!=='string'||x.length>2048||!this.safeRedirect(x)))
+      return error('invalid_redirect_uri');
+    if(obj.token_endpoint_auth_method!==undefined&&obj.token_endpoint_auth_method!=='none')
+      return error('invalid_client_metadata');
+    if(obj.client_name!==undefined&&
+      (typeof obj.client_name!=='string'||obj.client_name.length>200))return error('invalid_client_metadata');
+    const client:OAuthClient={clientId:'bwc_'+random(),redirectUris:obj.redirect_uris as string[],
+      name:typeof obj.client_name==='string'?obj.client_name:''};
+    await this.store.register(client);
+    return {status:201,body:{client_id:client.clientId,redirect_uris:client.redirectUris,
+      client_name:client.name,token_endpoint_auth_method:'none',
+      grant_types:['authorization_code','refresh_token'],response_types:['code']},
+      headers:{'cache-control':'no-store'}};
+  }
+  private safeRedirect(value:string):boolean {
+    try {
+      const url=new URL(value);
+      if(url.hash||url.username||url.password)return false;
+      if(url.protocol!=='https:'&&!(this.config.allowLocalRedirects&&url.protocol==='http:'&&
+          ['localhost','127.0.0.1'].includes(url.hostname)))return false;
+      return this.config.allowedRedirectOrigins.includes(url.origin);
+    }catch{return false;}
+  }
+  async authorize(query:Record<string,unknown>){
+    const get=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
+    if(get('response_type')!=='code')return error('unsupported_response_type');
+    if(get('resource')!==this.resource)return error('invalid_target');
+    if(get('code_challenge_method')!=='S256'||!CHALLENGE.test(get('code_challenge')))
+      return error('invalid_request');
+    const scopes=get('scope').split(/\s+/).filter(Boolean);
+    if(!scopes.length||scopes.some(s=>s!==READ_SCOPE&&s!==WRITE_SCOPE))return error('invalid_scope');
+    const client=await this.store.client(get('client_id'));
+    if(!client||!client.redirectUris.includes(get('redirect_uri')))return error('invalid_client');
+    const pending:Pending={state:random(),nonce:random(),expires:Date.now()+600_000,
+      clientId:client.clientId,redirect:get('redirect_uri'),scope:[...new Set(scopes)].join(' '),
+      resource:this.resource,challenge:get('code_challenge'),
+      ...(get('state')?{clientState:get('state')}: {})};
+    return {status:302,body:'',headers:{location:this.provider.authorizeUrl(
+      pending.state,pending.nonce,this.callback),
+      'set-cookie':this.cookie(this.signedPending(pending),600),
+      'cache-control':'no-store'}};
+  }
+  async callbackLogin(query:Record<string,unknown>,cookie?:string){
+    const pending=this.readPending(cookie);
+    if(!pending||query.state!==pending.state||typeof query.code!=='string'||
+      !query.code)return error('invalid_request');
+    let identity:GoogleIdentity;
+    try{identity=await this.provider.exchangeAndVerify(query.code,this.callback,pending.nonce);}
+    catch{return error('access_denied',403);}
+    if(!identity.verified||!identity.subject||identity.subject.length>512)
+      return error('access_denied',403);
+    if(this.config.allowedEmails.length>0&&
+      (!identity.email||!this.config.allowedEmails.includes(identity.email.toLowerCase())))
+      return error('access_denied',403);
+    if(pending.kind==='settings'){
+      const ownerKey='oauth:'+hash(this.issuer+String.fromCharCode(0)+identity.subject);
+      const session:SettingsSession={ownerKey,csrf:random(),expires:Date.now()+8*3600_000};
+      const encoded=b64(JSON.stringify(session));
+      return {status:302,body:'',headers:{
+        location:this.renderReturnPath(pending.returnTo)??'/',
+        'set-cookie':[this.cookie('',0),
+          this.settingsCookie(encoded+'.'+this.signature(encoded),8*3600)],
+        'cache-control':'no-store'
+      }};
+    }
+    const code=random();
+    await this.store.saveCode(hash(code),{
+      clientId:pending.clientId,redirectUri:pending.redirect,
+      googleSubject:identity.subject,...(identity.email?{email:identity.email}:{}),
+      scope:pending.scope,resource:pending.resource,challenge:pending.challenge});
+    const redirect=new URL(pending.redirect);
+    redirect.searchParams.set('code',code);
+    redirect.searchParams.set('iss',this.issuer);
+    if(pending.clientState)redirect.searchParams.set('state',pending.clientState);
+    return {status:302,body:'',headers:{location:redirect.toString(),
+      'set-cookie':this.cookie('',0),'cache-control':'no-store'}};
+  }
+  async token(form:Record<string,string>) {
+    if(form.grant_type==='authorization_code'){
+      const code=form.code;
+      const verifier=form.code_verifier;
+      if(!code||!verifier||!VERIFIER.test(verifier)||!form.client_id||!form.redirect_uri)
+        return error('invalid_request');
+      const challenge=createHash('sha256').update(verifier).digest('base64url');
+      const grant=await this.store.consumeCode(hash(code),form.client_id,form.redirect_uri,
+        challenge,form.resource);
+      if(!grant)
+        return error('invalid_grant');
+      return this.issue(grant);
+    }
+    if(form.grant_type==='refresh_token'){
+      if(!form.refresh_token||!form.client_id)return error('invalid_request');
+      const grant=await this.store.consumeRefresh(hash(form.refresh_token),form.client_id,form.resource);
+      if(!grant)
+        return error('invalid_grant');
+      return this.issue(grant);
+    }
+    return error('unsupported_grant_type');
+  }
+  private async issue(record:GrantRecord|RefreshRecord){
+    const access=await new SignJWT({scope:record.scope}).setProtectedHeader({
+      alg:'EdDSA',kid:'bw-oauth-1',typ:'at+jwt'})
+      .setIssuer(this.issuer).setAudience(this.resource).setSubject(record.googleSubject)
+      .setIssuedAt().setExpirationTime('1h').sign(this.key);
+    const refresh=random();
+    await this.store.saveRefresh(hash(refresh),{clientId:record.clientId,
+      googleSubject:record.googleSubject,...(record.email?{email:record.email}:{}),
+      scope:record.scope,resource:record.resource});
+    return {status:200,body:{access_token:access,token_type:'Bearer',
+      expires_in:3600,scope:record.scope,refresh_token:refresh},
+      headers:{'cache-control':'no-store','pragma':'no-cache'}};
+  }
+}
+export function loadGoogleAuthConfig(env:NodeJS.ProcessEnv,publicOrigin:string):GoogleAuthConfig{
+  for(const field of ['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET',
+    'OAUTH_SIGNING_KEY','OAUTH_SESSION_SECRET','GOOGLE_ALLOWED_REDIRECT_ORIGINS']) {
+    if(!env[field])throw new Error(field+' is required for Google auth');
+  }
+  if((env.OAUTH_SESSION_SECRET??'').length<32)throw new Error('OAUTH_SESSION_SECRET must be at least 32 characters');
+  let key:KeyObject;
+  try{
+    key=createPrivateKey({key:Buffer.from(env.OAUTH_SIGNING_KEY!,'base64'),format:'der',type:'pkcs8'});
+  }catch{throw new Error('OAUTH_SIGNING_KEY must be base64 PKCS8 DER');}
+  if(key.asymmetricKeyType!=='ed25519')throw new Error('OAUTH_SIGNING_KEY must be an Ed25519 key');
+  const allowedRedirectOrigins=(env.GOOGLE_ALLOWED_REDIRECT_ORIGINS??'').split(',')
+    .map(s=>s.trim()).filter(Boolean).map(s=>new URL(s).origin);
+  if(!allowedRedirectOrigins.length)throw new Error('No allowed redirect origins');
+  return {publicOrigin,googleClientId:env.GOOGLE_CLIENT_ID!,
+    googleClientSecret:env.GOOGLE_CLIENT_SECRET!,signingKey:key,
+    sessionSecret:env.OAUTH_SESSION_SECRET!,
+    allowedEmails:(env.GOOGLE_ALLOWED_EMAILS??'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean),
+    allowedRedirectOrigins,
+    allowLocalRedirects:env.NODE_ENV==='test'&&env.OAUTH_ALLOW_LOCAL_TEST==='true'};
+}
+,'i').test(input)?input:undefined;
+  }
+  async beginSettingsLogin(returnTo?:string){
+    if(returnTo!==undefined&&!this.renderReturnPath(returnTo))
+      throw new RangeError('Invalid login return path');
     const pending:Pending={kind:'settings',state:random(),nonce:random(),
       expires:Date.now()+600_000,clientId:'',redirect:'',scope:'',
       resource:this.resource,challenge:''};
