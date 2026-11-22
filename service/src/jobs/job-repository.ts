@@ -6,7 +6,7 @@ import {safeStoredJobError} from './job-diagnostics.js';
 
 export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
 export interface Job {
-  id:string; project_id:string;owner_key:string; expected_revision:number;
+  id:string; project_id:string;owner_key:string; expected_revision:number;source_revision:number|null;
   requested_revision:number;status:JobStatus;note:string;error_message:string|null;created_at:Date;updated_at:Date;finished_at:Date|null;edit_spec:unknown|null;operation_spec:PythonScriptSpec|null;
 }
 export class JobConflict extends Error {
@@ -14,10 +14,15 @@ export class JobConflict extends Error {
 }
 export class JobRepository {
   constructor(private readonly pool:Pool) {}
-  async reserve(owner:string, projectId:string, expectedRevision:number, note='',_retiredEdit?:never,operation?:PythonScriptSpec):Promise<Job> {
+  async reserve(owner:string, projectId:string, expectedRevision:number, note='',_retiredEdit?:never,operation?:PythonScriptSpec, sourceRevision?:number):Promise<Job> {
     if (!owner.trim() || owner.length>200 || note.length>5000 || !Number.isSafeInteger(expectedRevision) ||
         expectedRevision<0 || expectedRevision>99999998)
       throw new RangeError('Invalid job input');
+    if(sourceRevision!==undefined && (!Number.isSafeInteger(sourceRevision)||
+      sourceRevision<1||sourceRevision>expectedRevision))
+      throw new RangeError('Source revision must be a saved predecessor');
+    if(expectedRevision===0&&sourceRevision!==undefined)
+      throw new RangeError('Initial scene cannot use a source revision');
     // The public MCP writer is Python-only. Also reject internal callers
     // before opening a database transaction: no new demo/typed jobs may queue.
     if(_retiredEdit!==undefined)throw new RangeError('Structured scene edits are retired');
@@ -33,10 +38,17 @@ export class JobRepository {
          WHERE id=$1 AND owner_key=$2 AND deleted_at IS NULL FOR UPDATE`,[projectId,owner]);
       if (!p.rowCount) throw new JobConflict('Project not found or unauthorized');
       if (p.rows[0].current_revision !== expectedRevision) throw new JobConflict('Stale project revision');
+      const selectedSource=expectedRevision===0?null:(sourceRevision??expectedRevision);
+      if(selectedSource!==null){
+        const source=await client.query(
+          `SELECT 1 FROM bw_project_revisions WHERE project_id=$1 AND revision=$2
+           AND artifact_prefix IS NOT NULL`,[projectId,selectedSource]);
+        if(!source.rowCount)throw new JobConflict('Selected source revision is unavailable');
+      }
       const j=await client.query<Job>(`INSERT INTO bw_jobs
-        (id,project_id,owner_key,expected_revision,requested_revision,status,note,edit_spec,operation_spec)
-        VALUES($1,$2,$3,$4,$5,'pending',$6,$7::jsonb,$8::jsonb) RETURNING *`,
-        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,note,null,JSON.stringify(safeOperation)]);
+        (id,project_id,owner_key,expected_revision,requested_revision,source_revision,status,note,edit_spec,operation_spec)
+        VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8::jsonb,$9::jsonb) RETURNING *`,
+        [randomUUID(),projectId,owner,expectedRevision,expectedRevision+1,selectedSource,note,null,JSON.stringify(safeOperation)]);
       await client.query('COMMIT');
       return j.rows[0];
     } catch (e) {
@@ -77,7 +89,7 @@ export class JobRepository {
     if(!owner.trim()||owner.length>200||!Number.isInteger(limit)||limit<1||limit>100)
       throw new RangeError('Invalid job history request');
     return (await this.pool.query<Job>(
-      `SELECT j.id,j.project_id,j.owner_key,j.expected_revision,j.requested_revision,
+      `SELECT j.id,j.project_id,j.owner_key,j.expected_revision,j.requested_revision,j.source_revision,
          j.status,j.note,j.error_message,j.created_at,j.updated_at,j.finished_at
        FROM bw_jobs j JOIN bw_projects p ON p.id=j.project_id
        WHERE j.owner_key=$1 AND p.owner_key=$1 AND p.deleted_at IS NULL
@@ -126,8 +138,9 @@ export class JobRepository {
          WHERE id=$1 AND owner_key=$2 AND current_revision=$4 AND deleted_at IS NULL
          RETURNING id`,[job.project_id,owner,job.requested_revision,job.expected_revision]);
       if(!updated.rowCount)throw new JobConflict('Project revision changed');
-      await c.query(`INSERT INTO bw_project_revisions(project_id,revision,note,artifact_prefix)
-        VALUES($1,$2,$3,$4)`,[job.project_id,job.requested_revision,job.note,artifactPrefix]);
+      await c.query(`INSERT INTO bw_project_revisions(project_id,revision,note,artifact_prefix,source_revision)
+        VALUES($1,$2,$3,$4,$5)`,[job.project_id,job.requested_revision,job.note,artifactPrefix,
+          job.source_revision??(job.expected_revision>0?job.expected_revision:null)]);
       const finished=await c.query<Job>(`UPDATE bw_jobs SET status='completed',error_message=NULL,
         updated_at=now(),finished_at=now() WHERE id=$1 RETURNING *`,[jobId]);
       await c.query('COMMIT');

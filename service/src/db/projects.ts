@@ -5,7 +5,7 @@ export interface Project {
   created_at:Date;updated_at:Date;deleted_at:Date|null;
 }
 export interface Revision {
-  project_id:string;revision:number;note:string;artifact_prefix:string|null;created_at:Date;
+  project_id:string;revision:number;source_revision:number|null;note:string;artifact_prefix:string|null;created_at:Date;
 }
 function required(value:string,max:number,label:string) {
   if (!value.trim() || value.length>max) throw new RangeError(`${label} must be 1-${max} characters`);
