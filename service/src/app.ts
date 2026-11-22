@@ -335,8 +335,19 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
        const session=google.settingsSession(request.headers.cookie);
        secure(reply).header('vary','Cookie').header('content-security-policy',"default-src 'none'")
          .header('cross-origin-resource-policy','same-origin');
-       if(!session)return reply.code(401).send('Unauthorized');
        const {projectId,jobId}=request.params as {projectId:string;jobId:string};
+       if(!session){
+         // Directly opened image URLs are navigations. Embedded images and
+         // fetch/API requests must not unexpectedly receive a login HTML page.
+         const destination=request.headers['sec-fetch-dest'];
+         if(request.method==='GET'&&destination==='document'){
+           const returnTo='/renders/'+encodeURIComponent(projectId)+'/'+
+             encodeURIComponent(jobId)+'.png';
+           return reply.code(302).header('location',
+             '/settings/login?next='+encodeURIComponent(returnTo)).send();
+         }
+         return reply.code(401).send('Unauthorized');
+       }
        if(!/^[0-9a-f-]{36}$/i.test(projectId)||!/^[0-9a-f-]{36}$/i.test(jobId))
          return reply.code(404).send('Not found');
        if(!services!.renderJobs||!services!.renderedImages)return reply.code(404).send('Not found');
@@ -472,8 +483,12 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          }
        });
      }
-     app.get('/settings/login',async(_request,reply)=>{
-       const response=await google.beginSettingsLogin();
+     app.get('/settings/login',async(request,reply)=>{
+       const query=request.query as {next?:unknown};
+       const next=typeof query.next==='string'?query.next:undefined;
+       let response;
+       try{response=await google.beginSettingsLogin(next);}
+       catch{return reply.code(400).send('Invalid return path');}
        for(const [key,value] of Object.entries(response.headers))reply.header(key,value);
        reply.code(response.status);return response.body;
      });
