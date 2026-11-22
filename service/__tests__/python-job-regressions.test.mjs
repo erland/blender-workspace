@@ -100,3 +100,39 @@ test('Tampered Python predecessor blocks the worker and a later revision',
     assert.deepEqual(await x.store.listRevisions(x.project.id),[1]);
     assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
   });
+
+test('DEV-038 historical source creates a new sequential revision and retains source provenance',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+    const x=await setup(t);
+    await x.queue(0);
+    await x.queue(1);
+    await x.queue(2);
+    const source1=await x.store.verifiedArtifactPath(x.project.id,1,'scene.blend');
+    const oldBytes=await readFile(source1);
+    const branch=await x.jobs.reserve(x.owner,x.project.id,3,
+      'Alternative from revision 1',undefined,{kind:'python_script',code:'pass'},1);
+    assert.equal(branch.requested_revision,4);
+    assert.equal(branch.source_revision,1);
+    await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,3,
+      'Concurrent',undefined,{kind:'python_script',code:'pass'},2),JobConflict);
+    assert.equal((await x.orchestrator.execute(x.owner,branch.id)).status,'completed');
+    assert.equal(x.calls.at(-1).source,source1);
+    assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,4);
+    assert.deepEqual(await x.store.listRevisions(x.project.id),[1,2,3,4]);
+    assert.equal((await readFile(source1)).toString(),oldBytes.toString());
+    const history=await x.projects.revisions(x.owner,x.project.id);
+    assert.equal(history.at(-1).source_revision,1);
+    assert.equal((await x.jobs.get(x.owner,branch.id)).source_revision,1);
+  });
+
+test('DEV-038 cannot select a nonexistent, future or initial-scene source',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+    const x=await setup(t);
+    const spec={kind:'python_script',code:'pass'};
+    await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,0,'',undefined,spec,1),RangeError);
+    await x.queue(0);
+    await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,1,'',undefined,spec,2),RangeError);
+    await assert.rejects(()=>x.jobs.reserve(x.owner,x.project.id,1,'',undefined,spec,0),RangeError);
+    await assert.rejects(()=>x.jobs.reserve(x.other,x.project.id,1,'',undefined,spec,1),JobConflict);
+    assert.equal((await x.projects.get(x.owner,x.project.id)).current_revision,1);
+  });

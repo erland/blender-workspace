@@ -29,8 +29,14 @@ export class JobOrchestrator {
       if(job.edit_spec!==null && job.edit_spec!==undefined)
         throw new Error('Retired structured edit job is not executable');
       const spec=parsePythonScript(job.operation_spec);
-      const source=job.expected_revision===0?undefined:await this.files.verifiedArtifactPath(
-        job.project_id,job.expected_revision,'scene.blend');
+      // The optimistic destination revision remains the latest; the read-only
+      // BLEND source may be any older saved revision owned by this project.
+      const sourceRevision=job.source_revision??job.expected_revision;
+      if(job.expected_revision===0&&sourceRevision!==0 ||
+         sourceRevision<0 || sourceRevision>job.expected_revision)
+        throw new Error('Invalid source revision');
+      const source=sourceRevision===0?undefined:await this.files.verifiedArtifactPath(
+        job.project_id,sourceRevision,'scene.blend');
       await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source);
       // GLB is a disposable preview, never a prerequisite for the native
       // Blender revision. Only publish one if the trusted worker declared it.

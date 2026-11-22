@@ -117,7 +117,9 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     try { const p=await projects.get(ownerKey,projectId);
       if(!p)return failure(new JobConflict('Project not found'));
       const versions=await projects.revisions(ownerKey,projectId);
-      return result({revisions:versions.map(v=>({revision:v.revision,createdAt:v.created_at,note:v.note,artifactAvailable:v.artifact_prefix!==null}))}); }
+      return result({revisions:versions.map(v=>({revision:v.revision,createdAt:v.created_at,note:v.note,
+        artifactAvailable:v.artifact_prefix!==null,
+        ...(v.source_revision!=null?{sourceRevision:v.source_revision}:{})}))}); }
     catch(e){return failure(e);}
   });
   server.registerTool('workspace_inspect_scene',{
@@ -289,10 +291,11 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
     });
   }
   server.registerTool('workspace_queue_python_script',{
-    description:'Validate Python syntax in the MCP service before queueing Blender Python in a short-lived, network-blocked Modal Sandbox. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
+    description:'Validate Python syntax in the MCP service before queueing Blender Python in a short-lived, network-blocked Modal Sandbox. Optional sourceRevision lets an edit create the next immutable revision from an earlier saved revision; omit it to use the latest. Untrusted Python can use the full bpy API only inside the isolated worker; never submit secrets or external file paths. Creates a new immutable revision. The same owner checks and SHA-256 verified predecessor apply for every revision. This is the only MCP modeling-write tool. Each script is executed in a new isolated worker with resource limits; no remote assets, filesystem paths or secrets may be submitted.',
     inputSchema:{projectId:uuid,expectedRevision:z.number().int().min(0).max(99999998),
-      code:PythonScriptSchema.shape.code,note:note.optional()},...schemes(WRITE_SCOPE)
-  },async({projectId,expectedRevision,code,note:jobNote})=>{
+      code:PythonScriptSchema.shape.code,note:note.optional(),
+      sourceRevision:z.number().int().min(1).max(99999998).optional()},...schemes(WRITE_SCOPE)
+  },async({projectId,expectedRevision,code,note:jobNote,sourceRevision})=>{
     const blocked=denied(WRITE_SCOPE);if(blocked)return blocked;
     try{
       // Syntax errors are actionable and never reserve a job or start Modal.
@@ -304,16 +307,21 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       if(!project)return failure(new JobConflict('Project not found'));
       if(project.current_revision!==expectedRevision)
         return failure(new JobConflict('Stale project revision'));
-      if(expectedRevision>0){
+      if(sourceRevision!==undefined && (!Number.isSafeInteger(sourceRevision)||
+         sourceRevision<1||expectedRevision===0||sourceRevision>expectedRevision))
+        return failure(new JobConflict('Invalid historical source revision'));
+      const selectedSource=expectedRevision===0?0:(sourceRevision??expectedRevision);
+      if(selectedSource>0){
         const history=await projects.revisions(ownerKey,projectId);
-        if(!history.some(v=>v.revision===expectedRevision&&v.artifact_prefix))
+        if(!history.some(v=>v.revision===selectedSource&&v.artifact_prefix))
           return failure(new JobConflict('Saved source revision not found'));
-        await artifacts.verifiedArtifactPath(projectId,expectedRevision,'scene.blend');
+        await artifacts.verifiedArtifactPath(projectId,selectedSource,'scene.blend');
       }
       const spec=PythonScriptSchema.parse({kind:'python_script',code});
       const job=await jobs.reserve(ownerKey,projectId,expectedRevision,
-        jobNote??'Sandboxed Blender Python',undefined,spec);
+        jobNote??'Sandboxed Blender Python',undefined,spec,sourceRevision);
       return result({job:safeJob(job),execution:'modal-sandbox',
+        ...(selectedSource>0?{sourceRevision:selectedSource}:{}),
         message:'Queued Blender Python for isolated execution; one immutable scene revision'});
     }catch(error){
       if(error instanceof PythonSyntaxError)
