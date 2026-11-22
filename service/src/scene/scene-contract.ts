@@ -34,6 +34,25 @@ const geometry=z.object({
     ctx.addIssue({code:'custom',message:'Invalid mesh diagnostics'});
 });
 export type GeometryDescription=z.infer<typeof geometry>;
+// Snapshots never force a dependency-graph evaluation. These counts are
+// measured on stored datablocks, not generated geometry or child hair.
+const storedComplexity=z.object({
+  source:z.literal('stored'),
+  evaluated:z.literal(false),
+  proceduralPotential:z.boolean(),
+  modifiers:z.array(z.object({
+    name:boundedName,type:boundedName,procedural:z.boolean()
+  }).strict()).max(64),
+  mesh:z.object({vertices:counter,edges:counter,faces:counter}).strict().optional(),
+  hair:z.object({
+    curveCount:counter,pointCount:counter,interpolatedCount:z.null()
+  }).strict().optional(),
+  splines:counter.optional(),
+  points:counter.optional(),
+}).strict().superRefine((value,ctx)=>{
+  if(value.proceduralPotential!==value.modifiers.some(m=>m.procedural))
+    ctx.addIssue({code:'custom',message:'Inconsistent procedural flag'});
+});
 const sceneObject=z.object({
   name:boundedName,
   objectId:z.string().uuid().optional(),
@@ -42,7 +61,8 @@ const sceneObject=z.object({
   materials:z.array(z.string().max(512)).max(256).default([]),
   bones:z.array(z.string().max(512)).max(2048).default([]),
   localTransform:transform.optional(),
-  geometry:geometry.optional()
+  geometry:geometry.optional(),
+  complexity:storedComplexity.optional()
 }).strip();
 const color=z.tuple([z.number().finite().min(0).max(1),
   z.number().finite().min(0).max(1),z.number().finite().min(0).max(1)]);
@@ -103,6 +123,17 @@ export async function inspectSavedScene(
 export function geometrySnapshot(scene:SceneDescription,objectId?:string){
   const all=objectId?scene.objects.filter(o=>o.objectId===objectId):scene.objects;
   if(objectId&&all.length===0)throw new Error('Object ID not found in revision');
+  const complexityObjects=all.filter(o=>o.complexity!==undefined);
+  const complexityMissing=all.length-complexityObjects.length;
+  const complexity={
+    available:complexityMissing===0 && all.length>0,
+    partial:complexityMissing>0 && complexityObjects.length>0,
+    objectsWithoutMetrics:complexityMissing,
+    ...(complexityMissing>0?{reason:'Complexity metrics absent from one or more saved objects'}:{}),
+    objects:complexityObjects.map(o=>({
+      name:o.name,objectId:o.objectId,type:o.type,complexity:o.complexity!
+    }))
+  };
   const meshes=all.filter(o=>o.type==='MESH');
   const available=meshes.filter(o=>o.geometry!==undefined);
   const missing=meshes.length-available.length;
@@ -112,6 +143,7 @@ export function geometrySnapshot(scene:SceneDescription,objectId?:string){
     reason:missing>0?'Geometry metrics unavailable in one or more saved mesh reports':
       meshes.length===0?'No mesh objects in selection':undefined,
     meshCount:meshes.length,
+    complexity,
     meshesWithoutMetrics:missing,
     objects:available.map(o=>({name:o.name,objectId:o.objectId,geometry:o.geometry!}))
   };
