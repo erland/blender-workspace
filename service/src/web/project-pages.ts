@@ -352,3 +352,38 @@ export function projectDeletePage(p:PortalProject,csrf:string,message?:string):s
   '<div class="actions" style="margin-top:18px"><button class="button danger-button" type="submit">Radera permanent</button>'+
   '<a class="button alt" href="'+path+'">Avbryt</a></div></form></section>');
 }
+
+/** Owner-authenticated upload and explicit paid model composition. */
+export function modelImportPage(csrf:string,
+ uploads:{id:string;filename:string;format:string;size_bytes:number}[],
+ projects:{id:string;name:string;current_revision:number}[],message?:string):string{
+ const options=uploads.map(u=>'<option value="'+escapeHtml(u.id)+'">'+
+   escapeHtml(u.filename)+' ('+u.format.toUpperCase()+', '+
+   (u.size_bytes/1048576).toFixed(1)+' MiB)</option>').join('');
+ const destinations=projects.map(p=>'<option value="'+escapeHtml(p.id)+'">'+
+   escapeHtml(p.name)+' – rev '+p.current_revision+'</option>').join('');
+ const notification=message==='queued'?'<p role="status">Modellimporten ligger i kön. Revisionen visas när jobbet är klart.</p>':
+   message==='error'?'<p role="alert">Importen kunde inte beställas. Kontrollera Modal och projektets revision.</p>':'';
+ return layout('Importera 3D-modell',
+  '<div class="breadcrumb"><a href="/">← Mina projekt</a></div>'+
+  '<h1>Importera 3D-modell</h1><p class="muted">Ladda upp BLEND eller GLB (max 32 MiB). Uppladdningen startar inget Modal-jobb.</p>'+
+  notification+
+  '<section class="panel" style="padding:20px;margin-top:20px"><h2>1. Ladda upp fil</h2>'+
+  '<form id="upload-model-form"><input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+  '<label for="model-file">BLEND eller GLB</label> <input id="model-file" type="file" accept=".blend,.glb" required>'+
+  '<button class="button" type="submit">Ladda upp</button>'+
+  '<p id="model-upload-result" role="status" aria-live="polite"></p></form></section>'+
+  '<section class="panel" style="padding:20px;margin-top:20px"><h2>2. Importera till en scen</h2>'+
+  (uploads.length?'<form method="post" action="/models/compose">'+
+   '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+   '<label for="uploaded-model">Sparad modell</label><select id="uploaded-model" name="uploadId" required>'+options+'</select>'+
+   '<label for="target-project">Målprojekt</label><select id="target-project" name="projectId">'+
+   '<option value="new">Skapa nytt projekt</option>'+destinations+'</select>'+
+   '<label for="import-name">Projektnamn (för nytt projekt)</label>'+
+   '<input id="import-name" name="name" maxlength="200" value="Importerad 3D-modell">'+
+   '<p class="muted small">Import sker vid origo. Vid befintligt projekt skapas nästa revision.</p>'+
+   '<label><input type="checkbox" name="confirm" value="yes" required> Jag godkänner en betald Modal-körning för att importera modellen.</label>'+
+   '<button class="button" type="submit">Starta import</button></form>':
+   '<p class="muted">Ladda upp en modell för att fortsätta.</p>')+
+  '</section><script src="/models/assets/upload.js" defer></script>');
+}
