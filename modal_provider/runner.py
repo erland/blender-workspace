@@ -6,6 +6,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from modal_provider.app_config import modal_app_name
 import time
 
 
@@ -170,7 +171,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=8192, timeout=900,
     phase = "modal_start"
     try:
         image = sdk.Image.from_registry(image_ref, add_python="3.11")
-        app = sdk.App.lookup("blender-workspace-dev002", create_if_missing=True)
+        app = sdk.App.lookup(modal_app_name(), create_if_missing=True)
         sandbox = sdk.Sandbox.create(
             "sleep", str(timeout), app=app, image=image, cpu=cpu, memory=memory_mib,
             timeout=timeout, workdir="/workspace", block_network=True)
