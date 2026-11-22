@@ -13,7 +13,7 @@ MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_TOTAL = 512 * 1024 * 1024  # expanded project size, separate from ZIP transfer
 MAX_FILES = 1200
 MAX_FILE = 256 * 1024 * 1024
-PATTERN = re.compile(r"^revisions/([0-9]{8})/([a-zA-Z0-9][a-zA-Z0-9_-]{0,80}\.(?:blend|glb|json))$")
+PATTERN = re.compile(r"^revisions/([0-9]{8})/([a-zA-Z0-9][a-zA-Z0-9_-]{0,80}\.(?:blend|glb|json|png))$")
 UUID = re.compile(r"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
