@@ -429,12 +429,14 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
         j.project_id,j.requested_revision);
       const diagnostic=(j.status==='failed'||j.status==='needs_recovery')
         ?safeOwnerJobError(j.error_message):null;
+      const registeredRender=j.status==='completed'&&renderJobs
+        ?await renderJobs.get(ownerKey,j.id):null;
       return result({job,
         ...(viewerAvailable?{viewerUrl:viewerLink(j.project_id,j.requested_revision),
           requiresGoogleLogin:true}:{}),
         ...(performance?{performance}:{}),
-        ...(performance?.inlineRender?.status==='available'&&viewerOrigin
-          ?{inlinePngUrl:viewerOrigin+'/projects/'+j.project_id+'/revisions/'+j.requested_revision+'/scene.png',
+        ...(registeredRender?.status==='completed'&&registeredRender.sha256&&viewerOrigin
+          ?{renderPngUrl:viewerOrigin+'/renders/'+j.project_id+'/'+j.id+'.png',
             requiresGoogleLogin:true}:{}),
         ...(diagnostic?{failure:diagnostic}:{})});
     } catch(e){return failure(e);}
