@@ -124,7 +124,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
                     pngAvailable:manifest.artifacts.some(a=>a.name==='scene.png')}:r)};
              }catch{/* Display native-only on broken/legacy preview manifests. */}
            }
-           return {project,renders:recentRenders.filter(r=>r.project_id===project.id),revisions:revisions.map(r=>({...r,glbAvailable:false}))};
+           return {project,renders:recentRenders.filter(r=>r.project_id===project.id),revisions:revisions.map(r=>({...r,glbAvailable:false,pngAvailable:false}))};
          }));
          const message=(request.query as {message?:string}).message;
          reply.header('content-security-policy',"default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
@@ -260,12 +260,12 @@ button{padding:10px 16px;margin:12px 8px 0 0}</style></head><body>
          if(!project)return reply.code(404).send('Projektet hittades inte');
          const revisions=await services!.projects.revisions(session.ownerKey,projectId);
          const previews=await Promise.all(revisions.map(async revision=>{
-           if(!revision.artifact_prefix||!services!.artifacts)return {...revision,glbAvailable:false};
+           if(!revision.artifact_prefix||!services!.artifacts)return {...revision,glbAvailable:false,pngAvailable:false};
            try{
              const manifest=await services!.artifacts.inspect(projectId,revision.revision,false);
              return {...revision,glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb'),
                 pngAvailable:manifest.artifacts.some(a=>a.name==='scene.png')};
-           }catch{return {...revision,glbAvailable:false};}
+           }catch{return {...revision,glbAvailable:false,pngAvailable:false};}
          }));
          const message=(request.query as {message?:string}).message;
          const renderJobs=services!.renderJobs
