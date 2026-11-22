@@ -59,7 +59,8 @@ export class JobDispatcher {
     }catch(error){
       // Log only allowlisted diagnostics, never provider exception strings or credentials.
       const diagnostic=error instanceof JobExecutionError
-        ? {phase:error.phase,code:error.code,...(error.reason?{reason:error.reason}:{})}
+        ? {phase:error.phase,code:error.code,...(error.reason?{reason:error.reason}:{}),
+             ...(error.exitCode!==undefined?{exitCode:error.exitCode}:{})}
         : {phase:'setup',code:'initialization_failed'};
       console.error(JSON.stringify({event:'blender_job_failed',jobId:job.id,...diagnostic}));
       return {state:'failed',jobId:job.id};
