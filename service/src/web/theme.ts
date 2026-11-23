@@ -94,8 +94,7 @@ export function themedCss(css:string):string{
   .replace(/(background(?:-color)?\s*:\s*)white\b/gi,'$1var(--surface)')
   .replace(/(background(?:-color)?\s*:\s*)#ffffff\b/gi,'$1var(--surface)')
   // Text on active accents must respond to the matching accent shade.
-  .replace(/(\.button\{[^}]*color:)white\b/g,'$1var(--button-text)')
-  .replace(/(\.viewer-toolbar \.primary\{[^}]*color:)white\b/g,'$1var(--button-text)')
+  .replace(/(color\s*:\s*)white\b/gi,'$1var(--button-text)')
   // Default form fields need a coherent foreground when color-scheme changes.
   +'\ninput,textarea,select{background-color:var(--surface);color:var(--text);border-color:var(--border-strong)}'+
   '\n:focus-visible{outline-color:var(--focus)}';
