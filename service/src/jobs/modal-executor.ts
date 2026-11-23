@@ -24,7 +24,8 @@ export class ModalPythonExecutor implements BlenderExecutor {
   }
   async runPythonScript(outDir:string,owner:string,revision:number,
       spec:PythonScriptSpec,inputBlend?:string,assets:BlenderAssetInput[]=[],
-      resources:RevisionResourceInput[]=[]):Promise<void> {
+      resources:RevisionResourceInput[]=[],
+      onProgress?:(phase:string,blenderSignal:boolean)=>Promise<void>):Promise<void> {
     if(!Number.isInteger(revision)||revision<1||revision>99999999||
       (revision===1&&inputBlend!==undefined)||(revision>1&&!inputBlend))
       throw new RangeError('Invalid Python scene revision');
@@ -59,7 +60,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
       }
       const script=path.join(this.repoRoot,'modal_provider','runner.py');
       await new Promise<void>((resolve,reject)=>{
-        const args=[script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib',String(memoryMiB),
+        const args=['-u',script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib',String(memoryMiB),
           '--revision',String(revision),'--python-file',filename];
         if(safe.inlineRender)args.push('--inline-render');
         if(resources.length)args.push('--resource-manifest',path.join(folder,'revision-resources.json'));
@@ -75,7 +76,18 @@ export class ModalPythonExecutor implements BlenderExecutor {
         // scripts, Modal SDK exceptions and paths may contain sensitive content.
         const append=(old:string,chunk:Buffer)=> (old+chunk.toString('utf8')).slice(-8192);
         const timer=setTimeout(()=>{timedOut=true;proc.kill('SIGKILL');},this.timeoutMs);
-        proc.stdout.on('data',(chunk:Buffer)=>{stdout=append(stdout,chunk);});
+        // The trusted runner emits only a finite phase vocabulary. Untrusted
+        // Blender stdout is never forwarded by runner.py as a progress source.
+        let markerBuffer='';
+        proc.stdout.on('data',(chunk:Buffer)=>{
+          stdout=append(stdout,chunk);
+          markerBuffer=(markerBuffer+chunk.toString('utf8')).slice(-1024);
+          const lines=markerBuffer.split('\n');markerBuffer=lines.pop()??'';
+          for(const line of lines){
+            const m=/^BW_PROGRESS phase=(modal_start|blender_execution|artifact_transfer|artifact_validation)( alive=1)?$/.exec(line.trim());
+            if(m && onProgress)void onProgress(m[1],Boolean(m[2])).catch(()=>{});
+          }
+        });
         proc.stderr.on('data',(chunk:Buffer)=>{stderr=append(stderr,chunk);});
         proc.once('error',()=>{if(ended)return;ended=true;clearTimeout(timer);
           reject(new JobExecutionError('setup','worker_spawn_failed'));});

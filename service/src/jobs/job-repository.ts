@@ -9,6 +9,8 @@ export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed
 export interface Job {
   id:string; project_id:string;owner_key:string; expected_revision:number;source_revision:number|null;asset_sources:AssetSource[];
   requested_revision:number;status:JobStatus;note:string;error_message:string|null;created_at:Date;updated_at:Date;finished_at:Date|null;edit_spec:unknown|null;operation_spec:PythonScriptSpec|null;
+  started_at:Date|null;worker_heartbeat_at:Date|null;blender_heartbeat_at:Date|null;
+  progress_phase:string|null;deadline_at:Date|null;
 }
 export class JobConflict extends Error {
   constructor(message:string) {super(message);this.name='JobConflict';}
@@ -101,7 +103,8 @@ export class JobRepository {
       ORDER BY j.created_at,j.id
       FOR UPDATE OF j SKIP LOCKED LIMIT 1
     )
-    UPDATE bw_jobs j SET status='running',updated_at=now()
+    UPDATE bw_jobs j SET status='running',updated_at=now(),started_at=now(),
+      worker_heartbeat_at=now(),progress_phase='preparing',deadline_at=now()+interval '19 minutes'
     FROM next WHERE j.id=next.id AND j.status='pending'
     RETURNING j.*`);
     return r.rows[0]??null;
@@ -111,12 +114,28 @@ export class JobRepository {
     if(!Number.isInteger(minAgeMinutes)||minAgeMinutes<20||minAgeMinutes>10080)
       throw new RangeError('Invalid stale-job interval');
     const r=await this.pool.query(`UPDATE bw_jobs
-      SET status='needs_recovery',error_message='Worker stopped unexpectedly; inspect artifacts before recovery',
+      SET status='needs_recovery',error_message='BW_JOB_ERROR phase=setup code=worker_timeout',
         updated_at=now()
-      WHERE status='running' AND updated_at < now()-($1::integer * interval '1 minute')
+      WHERE status='running' AND (
+        (COALESCE(worker_heartbeat_at,updated_at) < now()-($1::integer * interval '1 minute'))
+        OR (deadline_at IS NOT NULL AND deadline_at < now()))
       RETURNING id`,[minAgeMinutes]);
     return r.rowCount??0;
   }
+  /** A live worker periodically renews this lease; terminal/recovery jobs cannot be revived. */
+  async heartbeat(owner:string,id:string,phase?:string,blenderSignal=false):Promise<boolean> {
+    const safePhases=['preparing','modal_start','blender_execution','artifact_transfer',
+      'artifact_validation','artifact_storage','revision_commit'];
+    if(phase!==undefined&&!safePhases.includes(phase))throw new RangeError('Invalid progress phase');
+    const result=await this.pool.query(`UPDATE bw_jobs SET
+      worker_heartbeat_at=now(),updated_at=now(),
+      progress_phase=COALESCE($3,progress_phase),
+      blender_heartbeat_at=CASE WHEN $4::boolean THEN now() ELSE blender_heartbeat_at END
+      WHERE id=$1 AND owner_key=$2 AND status='running'
+      RETURNING id`,[id,owner,phase??null,blenderSignal]);
+    return (result.rowCount??0)===1;
+  }
+  /** Watchdog never claims a job has stopped at Modal; ambiguous jobs need recovery. */
   /** Bounded, owner-scoped history for the web portal; never returns Python source. */
   async list(owner:string,projectId?:string,limit=50):Promise<Job[]> {
     if(!owner.trim()||owner.length>200||!Number.isInteger(limit)||limit<1||limit>100)
@@ -154,7 +173,8 @@ export class JobRepository {
     return r.rows[0]??null;
   }
   async claim(owner:string,id:string):Promise<Job> {
-    const r=await this.pool.query<Job>(`UPDATE bw_jobs SET status='running', updated_at=now()
+    const r=await this.pool.query<Job>(`UPDATE bw_jobs SET status='running', updated_at=now(),started_at=now(),
+      worker_heartbeat_at=now(),progress_phase='preparing',deadline_at=now()+interval '19 minutes'
       WHERE id=$1 AND owner_key=$2 AND status='pending' RETURNING *`,[id,owner]);
     if (!r.rowCount) throw new JobConflict('Job is not pending');
     return r.rows[0];
@@ -170,7 +190,7 @@ export class JobRepository {
       updated_at=now() WHERE id=$1 AND owner_key=$2
       AND status IN ('running','needs_recovery')`,[id,owner,safeStoredJobError(error)]);
   }
-  async finalize(owner:string,jobId:string,artifactPrefix:string):Promise<Job> {
+  async finalize(owner:string,jobId:string,artifactPrefix:string,explicitRecovery=false):Promise<Job> {
     const c=await this.pool.connect();
     try {
       await c.query('BEGIN');
@@ -181,7 +201,10 @@ export class JobRepository {
       if(!jr.rowCount)throw new JobConflict('Job not found or unauthorized');
       const job=jr.rows[0];
       if(job.status==='completed'){await c.query('COMMIT');return job;}
-      if(!['running','needs_recovery'].includes(job.status))throw new JobConflict('Job not finalizable');
+      if(job.status!=='running' && !(explicitRecovery && job.status==='needs_recovery'))
+        throw new JobConflict('Job not finalizable');
+      if(!explicitRecovery && job.deadline_at && new Date(job.deadline_at).getTime()<Date.now())
+        throw new JobConflict('Job execution deadline elapsed');
       const updated=await c.query(
         `UPDATE bw_projects SET current_revision=$3,updated_at=now()
          WHERE id=$1 AND owner_key=$2 AND current_revision=$4 AND deleted_at IS NULL

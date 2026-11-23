@@ -19,7 +19,8 @@ export interface BlenderAssetInput {
 export interface RevisionResourceInput extends RevisionResource { path:string; }
 export interface BlenderExecutor {
   runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,
-    inputBlend?:string,assets?:BlenderAssetInput[],resources?:RevisionResourceInput[]):Promise<void>;
+    inputBlend?:string,assets?:BlenderAssetInput[],resources?:RevisionResourceInput[],
+    onProgress?:(phase:string,blenderSignal:boolean)=>Promise<void>):Promise<void>;
 }
 
 const SCENE_ARTIFACTS=['scene.blend','scene.json'] as const;
@@ -86,7 +87,11 @@ export class JobOrchestrator {
           }
         }
       }
-      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets,resources);
+      const onProgress=async(phase:string,blenderSignal:boolean)=>{
+        await this.jobs.heartbeat?.(owner,jobId,phase,blenderSignal);
+      };
+      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets,resources,onProgress);
+      await onProgress('artifact_validation',false);
       // GLB is a disposable preview, never a prerequisite for the native
       // Blender revision. Only publish one if the trusted worker declared it.
       const artifacts:IncomingArtifact[]=SCENE_ARTIFACTS.map(name=>({
@@ -132,6 +137,7 @@ export class JobOrchestrator {
             throw new Error('Generated resource checksum mismatch');
           resources.push({name:record.name,...stored});
         }
+        await onProgress('artifact_storage',false);
         await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
           expectedPreviousRevision:job.expected_revision,artifacts,resources});
       }catch{
@@ -141,6 +147,7 @@ export class JobOrchestrator {
       // Never replay a potentially billed job after publication. The journal
       // and checksum-verified artifacts permit an explicit metadata recovery.
       try{
+        await onProgress('revision_commit',false);
         const committed=await this.jobs.finalize(owner,jobId,
           `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`);
         // Optional derived preview must never invalidate a committed BLEND.
@@ -167,7 +174,7 @@ export class JobOrchestrator {
       throw new Error('Job is not recoverable');
     await this.files.inspect(job.project_id,job.requested_revision,true);
     const committed=await this.jobs.finalize(owner,jobId,
-      `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`);
+      `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`,true);
     await this.registerSavedInlineRender(committed);
     return committed;
   }

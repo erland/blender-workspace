@@ -10,6 +10,7 @@ import signal
 import struct
 import traceback
 import time
+import threading
 from pathlib import Path
 import bpy
 
@@ -84,6 +85,20 @@ def main():
         raise ValueError('Invalid Python source length or content')
     code=compile(data,'<blender-workspace-user-code>','exec')
     timing_start=time.monotonic()
+    # Best-effort, non-sensitive Blender-side heartbeat. A blocked native C
+    # operation can also starve this Python thread, so silence is not proof of death.
+    def heartbeat_loop():
+        sequence=0
+        heartbeat=Path('/workspace/out/bw-heartbeat')
+        while True:
+            try:
+                heartbeat.parent.mkdir(parents=True,exist_ok=True)
+                heartbeat.write_text(str(sequence),encoding='ascii')
+            except OSError:
+                pass
+            sequence+=1
+            time.sleep(15)
+    threading.Thread(target=heartbeat_loop,daemon=True,name='bw-blender-heartbeat').start()
     if source=='NEW':
         if revision!=1:
             raise ValueError('Initial scene requires revision 1')

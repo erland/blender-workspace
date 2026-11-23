@@ -50,8 +50,16 @@ function safeProject(p: {id:string;name:string;description:string;current_revisi
   return {id:p.id,name:p.name,description:p.description,currentRevision:p.current_revision,
     createdAt:p.created_at,updatedAt:p.updated_at};
 }
-function safeJob(j: {id:string;project_id:string;status:string;requested_revision:number;created_at?:Date}) {
-  return {id:j.id,projectId:j.project_id,status:j.status,requestedRevision:j.requested_revision};
+function safeJob(j: {id:string;project_id:string;status:string;requested_revision:number;created_at?:Date;
+  started_at?:Date|null;worker_heartbeat_at?:Date|null;blender_heartbeat_at?:Date|null;
+  progress_phase?:string|null;deadline_at?:Date|null}) {
+  return {id:j.id,projectId:j.project_id,status:j.status,requestedRevision:j.requested_revision,
+    ...(j.started_at?{startedAt:j.started_at}:{}),
+    ...(j.worker_heartbeat_at?{workerHeartbeatAt:j.worker_heartbeat_at}:{}),
+    // A Blender phase marker is a milestone, not proof that Blender is still alive.
+    ...(j.blender_heartbeat_at?{lastBlenderPhaseAt:j.blender_heartbeat_at}:{}),
+    ...(j.progress_phase?{phase:j.progress_phase}:{}),
+    ...(j.deadline_at?{deadlineAt:j.deadline_at}:{})};
 }
 /** Registers owner-scoped tools. OAuth scopes and owner identity come only from verified request context. */
 export function registerProjectTools(server:McpServer,deps:ProjectServices,
