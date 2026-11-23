@@ -43,8 +43,9 @@ assert image is not None
 assert image.packed_file is None
 assert image.filepath=='//'+records[0]['name']
 image.reload()
-assert image.has_data
+assert Path(bpy.path.abspath(image.filepath)).is_file()
 assert image.size[:]==(8,8)
+assert abs(image.pixels[1]-0.7)<0.05
 # A subsequent modeling revision can reopen the same image and preserve it.
 assert bpy.data.objects['Cube'].data.materials[0].node_tree.nodes.get('Image Texture').image==image
 print('BW_DEV060_EXTERNAL_IMAGE_RELOAD PASS',flush=True)
