@@ -154,7 +154,7 @@ test('DEV-063 cloned textured revision preserves immutable external resources, i
  await x.artifacts.deleteProject(textured.id);
  assert.deepEqual((await x.artifacts.inspect(copy.id,1,true)).resources,[resource]);
  const copiedBlend=await x.artifacts.verifiedArtifactPath(copy.id,1,'scene.blend');
- assert.match((await readFile(copiedBlend)).toString(),/resources\\//);
+ assert.ok((await readFile(copiedBlend)).toString().includes('resources/'));
 });
 test('DEV-063 cloning fails closed if a referenced texture has been corrupted',
  {skip:!process.env.TEST_DATABASE_URL},async t=>{
