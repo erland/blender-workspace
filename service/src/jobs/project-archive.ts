@@ -4,21 +4,23 @@ import {mkdtemp,readFile,writeFile,rm,stat} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type {ProjectRepository} from '../db/projects.js';
-import type {LocalArtifactStore} from '../storage/artifact-store.js';
+import type {LocalArtifactStore,RevisionResource} from '../storage/artifact-store.js';
 
 const exec=promisify(execFile);
 const MAX_ARCHIVE_BYTES=256*1024*1024;
 export interface ArchiveData {
-  formatVersion:1;
+  formatVersion:1|2;
+  resources?:{sha256:string;sizeBytes:number}[];
   project:{originalId:string;name:string;description:string;currentRevision:number};
   revisions:{revision:number;note:string;createdAt:string;artifacts:
-    {name:string;sizeBytes:number;sha256:string}[]}[];
+    {name:string;sizeBytes:number;sha256:string}[];resources?:RevisionResource[]}[];
 }
 export class ProjectArchiveService {
   constructor(private projects:Pick<ProjectRepository,
     'get'|'revisions'|'beginImport'|'finishImport'|'cancelImport'>,
     private artifacts:Pick<LocalArtifactStore,
-      'archiveDirectory'|'inspect'|'publish'|'deleteProject'>){}
+      'archiveDirectory'|'inspect'|'publish'|'deleteProject'|
+       'verifiedRevisionResources'|'storeResource'>){}
   private async run(mode:'import'|'export',source:string,projectDir:string,output:string){
     // Python is used only for ZIP byte processing. No Blender or user code executes.
     await exec('python3',[path.join(process.cwd(),'archive_tool.py'),mode,source,projectDir,output],
@@ -37,22 +39,40 @@ export class ProjectArchiveService {
         currentRevision:project.current_revision},
       revisions:[],
     };
+    // File content is shared once even if many revisions use it.
+    const unique=new Map<string,{sha256:string;sizeBytes:number;path:string}>();
     for(let index=0;index<revisions.length;index++){
       const r=revisions[index];
       if(r.revision!==index+1||!r.artifact_prefix)throw new RangeError('Revision is incomplete');
       // Validates all SHA-256 hashes before the archive is issued.
       const manifest=await this.artifacts.inspect(id,r.revision,true);
-      if(manifest.resources?.length)
-        throw new RangeError('External-resource project archive is not yet portable');
+      const scoped=await this.artifacts.verifiedRevisionResources(id,r.revision);
+      for(const resource of scoped){
+        const previous=unique.get(resource.sha256);
+        if(previous&&previous.sizeBytes!==resource.sizeBytes)
+          throw new Error('Conflicting content hash metadata');
+        unique.set(resource.sha256,{sha256:resource.sha256,
+          sizeBytes:resource.sizeBytes,path:resource.path});
+      }
       metadata.revisions.push({
         revision:r.revision,note:r.note,createdAt:new Date(r.created_at).toISOString(),
-        artifacts:manifest.artifacts});
+        artifacts:manifest.artifacts,resources:manifest.resources??[]});
+    }
+    if(unique.size){
+      metadata.formatVersion=2;
+      metadata.resources=[...unique.values()].map(({sha256,sizeBytes})=>({sha256,sizeBytes}));
+    }else{
+      // Keep the original v1 wire format for models without resources.
+      for(const entry of metadata.revisions)delete entry.resources;
     }
     const directory=await mkdtemp(path.join(os.tmpdir(),'bw-export-'));
     const archive=path.join(directory,'project.bwproject.zip');
     try{
       const data=path.join(directory,'metadata.json');
-      await writeFile(data,JSON.stringify(metadata),{mode:0o600});
+      // Absolute private storage paths are consumed by the trusted exporter
+      // and must never appear in project.json inside the ZIP.
+      await writeFile(data,JSON.stringify({...metadata,resourceSources:
+        Object.fromEntries([...unique].map(([sha,r])=>[sha,r.path]))}),{mode:0o600});
       await this.run('export',data,this.artifacts.archiveDirectory(id),archive);
       const size=(await stat(archive)).size;
       if(size>MAX_ARCHIVE_BYTES)throw new RangeError('Archive is too large');
@@ -70,7 +90,14 @@ export class ProjectArchiveService {
       await writeFile(incoming,archiveBytes,{mode:0o600});
       await this.run('import',incoming,output,output);
       const data=JSON.parse(await readFile(path.join(output,'project.json'),'utf8')) as ArchiveData;
-      // Python verified each member against project.json before anything is staged.
+      // Python has verified every member and checksum before a DB row is
+      // created. Ingest unique images once, then bind every revision by hash.
+      for(const resource of data.resources??[]){
+        const filename=path.join(output,'resources',resource.sha256);
+        const stored=await this.artifacts.storeResource(filename);
+        if(stored.sha256!==resource.sha256||stored.sizeBytes!==resource.sizeBytes)
+          throw new Error('Archive resource integrity mismatch');
+      }
       const project=await this.projects.beginImport(owner,data.project.name,data.project.description);
       createdId=project.id;
       for(const r of data.revisions){
@@ -78,7 +105,8 @@ export class ProjectArchiveService {
           projectId:createdId,revision:r.revision,expectedPreviousRevision:r.revision-1,
           artifacts:r.artifacts.map(a=>({
             name:a.name,sourcePath:path.join(output,String(r.revision).padStart(8,'0'),a.name)
-          }))
+          })),
+          resources:r.resources??[]
         });
       }
       await this.projects.finishImport(owner,createdId,
