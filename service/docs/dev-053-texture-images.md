@@ -38,8 +38,8 @@ source in the same `assetSources` list as BLEND/GLB models:
 
 The exact asset ID must be taken from the owner's own uploaded asset listing;
 do not invent one. The caller must still provide valid `projectId`,
-`expectedRevision`, and modeling code. The texture assignment happens before
-the custom Python script, allowing additional Blender-specific adjustments.
+`expectedRevision`, and modeling code. The texture assignment happens after the custom Python script, so newly
+created meshes in the same modeling job may also receive an image.
 The format is verified when reserving and immediately before running, while
 the image bytes are checksum-verified by the upload store.
 
