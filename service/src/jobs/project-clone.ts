@@ -8,7 +8,7 @@ export class ProjectCloneService {
  constructor(private readonly projects:Pick<ProjectRepository,
   'get'|'revisions'|'beginImport'|'finishClone'|'cancelImport'>,
   private readonly artifacts:Pick<LocalArtifactStore,
-  'inspect'|'verifiedArtifactPath'|'publish'|'deleteProject'>){}
+  'inspect'|'verifiedArtifactPath'|'verifiedRevisionResources'|'publish'|'deleteProject'>){}
  async clone(owner:string,sourceProjectId:string,sourceRevision:number,name:string,
   description=''):Promise<Project>{
   if(!Number.isSafeInteger(sourceRevision)||sourceRevision<1||sourceRevision>99999999)
@@ -25,17 +25,25 @@ export class ProjectCloneService {
   try{
    const destination=await this.projects.beginImport(owner,name,description);
    id=destination.id;
+   // Clone must retain the exact revision-bound resource graph. Native BLEND
+   // may refer to //resources/<sha>.png rather than embedded image bytes.
+   const resources=await this.artifacts.verifiedRevisionResources(sourceProjectId,sourceRevision);
    const sources=[] as {name:string;sourcePath:string}[];
    for(const a of manifest.artifacts)
     sources.push({name:a.name,sourcePath:await this.artifacts.verifiedArtifactPath(
      sourceProjectId,sourceRevision,a.name)});
    const copied=await this.artifacts.publish({projectId:id,revision:1,
-    expectedPreviousRevision:0,artifacts:sources});
+    expectedPreviousRevision:0,artifacts:sources,
+    resources:resources.map(({name,sha256,sizeBytes})=>({name,sha256,sizeBytes}))});
    if(copied.artifacts.length!==manifest.artifacts.length||
       copied.artifacts.some(a=>{
        const expected=manifest.artifacts.find(x=>x.name===a.name);
        return !expected||expected.sha256!==a.sha256||expected.sizeBytes!==a.sizeBytes;
       }))throw new Error('Cloned artifact checksum mismatch');
+   if(copied.resources?.length!==resources.length||
+      copied.resources?.some(a=>!resources.some(r=>r.name===a.name&&
+        r.sha256===a.sha256&&r.sizeBytes===a.sizeBytes)))
+     throw new Error('Cloned resource manifest mismatch');
    await this.projects.finishClone(owner,id,sourceProjectId,sourceRevision);
    const visible=await this.projects.get(owner,id);
    if(!visible||visible.current_revision!==1)throw new Error('Clone finalize uncertain');
