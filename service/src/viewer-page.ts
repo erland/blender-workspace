@@ -1,3 +1,4 @@
+import {themeStyles,themedCss} from './web/theme.js';
 /** Static, token-free viewer shell. The model is fetched separately through an
  * authenticated, same-origin request tied to the HttpOnly Google session.
  */
@@ -6,7 +7,7 @@ export function viewerPage(projectId:string,revision:number):string{
 <html lang="sv"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Blender Workspace – 3D-visare</title>
-<style>
+<style>${themeStyles}${themedCss(`
 *{box-sizing:border-box}
 body{margin:0;background:#eef2f7;color:#172033;font:16px system-ui,sans-serif;line-height:1.45}
 button,select,input{font:inherit}
@@ -97,7 +98,7 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
    height:clamp(220px,30dvh,390px);min-height:0
  }
 }
-</style></head><body>
+`)}</style></head><body>
 <header>
  <a class="back-link" href="/projects/${projectId}" aria-label="Tillbaka till projektet">← Projekt</a>
  <h1 class="header-title">3D-visare · revision ${revision}</h1>

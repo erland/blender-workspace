@@ -1,3 +1,4 @@
+import {themeStyles,themedCss} from './theme.js';
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
 export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;portableStatus?:'complete'|'external'|'unknown';externalCount?:number;resourceCount?:number}
@@ -122,7 +123,7 @@ const style=[
 ].join('');
 function layout(title:string,body:string,liveUpdates=false):string {
  return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
- '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+'<style>'+style+'</style></head><body>'+
+ '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+'<style>'+themeStyles+themedCss(style)+'</style></head><body>'+
  '<header><div class="bar"><a class="logo" href="/">◈ Blender Workspace</a>'+
  '<nav aria-label="Huvudnavigering"><a href="/">Projekt</a><a href="/jobs">Jobb</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
  '<main>'+body+'</main>'+(liveUpdates?'<script src="/portal/assets/live-status.js" defer></script>':'')+'</body></html>';
