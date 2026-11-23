@@ -868,7 +868,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          }
        }
        return reply.type('text/html; charset=utf-8')
-         .send(publicSharePage(token,share.project_name,share.revision,publicImages));
+         .send(publicSharePage(token,share.project_name,share.revision,publicImages,share.allow_download===true));
      }catch{return reply.code(404).send('Delningen hittades inte');}
    });
    // Public PNG is always checked against the current active share's
