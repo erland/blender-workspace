@@ -26,7 +26,7 @@ jobs:
       - name: Build production pages
         working-directory: service
         run: |
-          npm ci --no-audit --no-fund
+          npm install --no-audit --no-fund
           npm run build
       - name: Install Chromium for isolated visual tests
         working-directory: service
