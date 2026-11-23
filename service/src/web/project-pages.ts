@@ -89,6 +89,9 @@ const style=[
 '.job-link:hover{background:#f1f5ff;text-decoration:none}.job-link:focus-visible{outline:3px solid #215dd5;outline-offset:-3px;border-radius:8px}',
 '.job-main{display:flex;flex-direction:column;min-width:0;gap:2px;overflow-wrap:anywhere}',
 '.job-detail{display:block}.job-end{display:flex;align-items:center;gap:10px;flex-shrink:0}',
+'.job-progress{display:flex;gap:4px 12px;flex-wrap:wrap;margin-top:7px;font-size:.82rem;line-height:1.4;color:var(--muted,#57667b)}',
+'.job-progress span{display:inline-flex;max-width:100%;overflow-wrap:anywhere}',
+
 '.job-arrow{font-size:1.6rem;line-height:1;color:#64748b}',
 '.job-archive>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:1.1rem;font-weight:700}',
 '.job-archive>summary::marker{color:#64748b}.refresh-link{min-height:44px;display:inline-flex;align-items:center}',
@@ -173,12 +176,14 @@ export function jobProgress(job:PortalJobItem,now=new Date()):string {
  }
  const deadlineText=deadline!==null
    ?'<span>Tidsgräns: '+(current>deadline?'passerad':formatDuration(deadline-current)+' kvar')+'</span>':'';
+ const signalAge=(milliseconds:number)=>milliseconds<60000
+   ?Math.floor(milliseconds/1000)+' s sedan':formatDuration(milliseconds)+' sedan';
  const workerText=worker!==null
-   ?'<span>Worker: '+(age(worker)>60000?'ingen färsk signal':formatDuration(age(worker))+' sedan')+'</span>'
+   ?'<span>Worker: '+(age(worker)>60000?'ingen färsk signal':signalAge(age(worker)))+'</span>'
    :'<span>Worker: ingen signal ännu</span>';
  // Blender's last successful numeric pulse is not equivalent to job percentage.
  const blenderText=blender!==null
-   ?'<span>Blender: '+(age(blender)>60000?'ingen färsk signal':formatDuration(age(blender))+' sedan')+'</span>'
+   ?'<span>Blender: '+(age(blender)>60000?'ingen färsk signal':signalAge(age(blender)))+'</span>'
    :'<span>Blender: ingen signal ännu</span>';
  return '<div class="job-progress" aria-label="Körinformation">'+
    stageText+elapsedText+deadlineText+workerText+blenderText+'</div>';
