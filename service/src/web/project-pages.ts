@@ -59,6 +59,7 @@ const style=[
 '.revision-icon{width:44px;height:44px;display:grid;place-items:center;flex:none;background:#eef2fa;border-radius:9px;font-size:1.3rem}',
 '.revision-info{min-width:0;flex:1}.revision-info strong{display:block}.revision-info .muted{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}',
 '.revision-chevron{font-size:1.6rem;color:#64748b}.revision-actions-menu{position:relative;flex:none}',
+'.revision-actions-menu[open]{z-index:25}.history-panel{overflow:visible}',
 '.revision-actions-menu summary{display:grid;place-items:center;cursor:pointer;list-style:none;min-height:44px;min-width:44px;border:1px solid #c9d6e5;border-radius:9px;background:#fff;font-size:1.3rem}',
 '.revision-actions-menu summary::-webkit-details-marker{display:none}.revision-actions-menu summary:hover{background:#f1f5ff}',
 '.revision-actions-menu summary:focus-visible{outline:3px solid #215dd5;outline-offset:2px}',
@@ -343,7 +344,7 @@ export function projectDetailPage(
    '<section class="panel" style="margin-top:16px"><div class="project-section-heading">'+
    '<h2>Senaste renderingar</h2><a href="'+imagesUrl+'">Visa alla bilder</a></div>'+
    previews+'</section>';
- const modelHistory='<section class="panel"><h2>Revisionshistorik</h2>'+
+ const modelHistory='<section class="panel history-panel"><h2>Revisionshistorik</h2>'+
    (history?'<ul class="history">'+history+'</ul>':
      '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+
    '</section><section class="panel" style="margin-top:16px">'+
