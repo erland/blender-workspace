@@ -29,6 +29,13 @@ jobs:
             -b --factory-startup --python /workspace/tests/blender_portable_resources_smoke.py \
             | tee blender-portable-resources.log
           grep -q 'BW_DEV052_PORTABLE_BLENDER PASS' blender-portable-resources.log
+      - name: DEV-053 verify staged image maps to targeted material and packed BLEND
+        run: |
+          set -o pipefail
+          docker run --rm --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/tests/blender_texture_asset_smoke.py \
+            | tee blender-texture-asset.log
+          grep -q 'BW_DEV053_TEXTURE_PACK PASS' blender-texture-asset.log
       - name: Create Python model and edit saved revision inside Blender
         run: |
           set -eu
