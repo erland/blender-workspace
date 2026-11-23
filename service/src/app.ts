@@ -334,7 +334,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          const status=share&&!share.revoked_at&&
            (!share.expires_at||new Date(share.expires_at)>new Date())?'active':
            share?'revoked':'none';
-         const completed=services!.renderJobs&&status==='active'
+         const completed=services!.renderJobs&&services!.renderedImages&&status==='active'
            ?(await services!.renderJobs.list(session.ownerKey,projectId,Number(revision)))
              .filter(j=>j.status==='completed'&&j.sha256&&j.size_bytes)
            :[];
@@ -411,7 +411,20 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          await services!.artifacts!.verifiedArtifactPath(projectId,Number(revision),'scene.glb');
          const created=await services!.publicShares.create(session.ownerKey,projectId,Number(revision));
          const publicUrl=config.publicOrigin+'/share/'+created.token;
-         return ownerSharePage(projectId,Number(revision),session.csrf,'active',publicUrl);
+         const completed=services!.renderJobs&&services!.renderedImages
+           ?(await services!.renderJobs.list(session.ownerKey,projectId,Number(revision)))
+             .filter(j=>j.status==='completed'&&j.sha256&&j.size_bytes)
+           :[];
+         const candidates=[];
+         for(const image of completed){
+           try{
+             await services!.renderedImages!.verifiedPath(
+               projectId,image.id,image.sha256!,image.size_bytes!);
+             candidates.push(image);
+           }catch{/* Do not offer inaccessible files. */}
+         }
+         return ownerSharePage(projectId,Number(revision),session.csrf,'active',
+           publicUrl,candidates);
        }catch{return reply.code(404).send('Revisionen hittades inte eller GLB saknas');}
      });
 
