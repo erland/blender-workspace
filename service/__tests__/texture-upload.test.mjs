@@ -12,7 +12,7 @@ const png=Buffer.alloc(45);
 Buffer.from([137,80,78,71,13,10,26,10]).copy(png,0);
 png.writeUInt32BE(13,8);png.write('IHDR',12);
 png.writeUInt32BE(32,16);png.writeUInt32BE(16,20);png[24]=8;png[25]=6;
-const jpeg=Buffer.concat([Buffer.from([255,216,255,192,0,17,8,0,16,0,32,3,1,17,0,2,17,0,3,17,0,255,217]),Buffer.alloc(15)]);
+const jpeg=Buffer.concat([Buffer.from([255,216,255,192,0,17,8,0,16,0,32,3,1,17,0,2,17,0,3,17,0]),Buffer.alloc(15),Buffer.from([255,217])]);
 
 test('DEV-053 image upload validates PNG/JPEG signature, dimensions and names',()=>{
  assert.equal(validateUpload(png,'albedo.png').format,'png');
