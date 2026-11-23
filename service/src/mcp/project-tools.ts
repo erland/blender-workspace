@@ -24,7 +24,7 @@ export interface ProjectServices {
   projects: ProjectRepository;
   jobs: JobRepository;
   modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'|'memoryMiB'|'setMemoryMiB'>;
-  artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'> & Partial<Pick<LocalArtifactStore,'readVerifiedSmallArtifact'>>;
+  artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'|'verifiedRevisionResources'> & Partial<Pick<LocalArtifactStore,'readVerifiedSmallArtifact'>>;
   projectClone?:Pick<ProjectCloneService,'clone'>;
   uploads?:Pick<UploadedAssets,'list'|'get'|'verifiedPath'> & Partial<Pick<UploadedAssets,'upload'>>;
   viewerOrigin?:string;
