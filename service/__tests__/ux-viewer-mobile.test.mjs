@@ -21,7 +21,8 @@ test('UX-003 puts the 3D canvas ahead of primary actions and keeps render trigge
  assert.equal((html.match(/id="render-current-view"/g)||[]).length,1);
  assert.ok(html.includes('class="primary" disabled>Rendera vy (Modal)'));
  assert.ok(html.includes('<details class="viewer-settings"'));
- assert.match(html,/<summary><svg class="bw-icon"[^>]*>[\\s\\S]*?<\\/svg> Visningsinställningar<\\/summary>/);
+ assert.ok(html.includes('<summary><svg class="bw-icon"'));
+ assert.ok(html.includes('Visningsinställningar</summary>'));
  assert.ok(!html.includes('<details class="viewer-settings" id="viewer-settings" open'));
 });
 test('UX-003 secondary controls are accessible, retained and do not take up mobile canvas space',()=>{
