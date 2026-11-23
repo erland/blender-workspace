@@ -537,6 +537,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
                }catch{/* Older, oversized or tampered reports remain unknown. */}
              }
              return {...revision,portableStatus,externalCount,
+               resourceCount:manifest.resources?.length??0,
                glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb'),
                pngAvailable:manifest.artifacts.some(a=>a.name==='scene.png')};
            }catch{return {...revision,portableStatus:'unknown' as const,
