@@ -113,3 +113,40 @@ test('dispatcher stops cleanly during idle polling',async()=>{
   assert.ok(scanned>=1);
   assert.throws(()=>new JobDispatcher(fakeJobs,{}, {pollMs:10}),RangeError);
 });
+
+test('DEV-049: independent worker heartbeat prevents a healthy long-running job from quarantine',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
+  const j=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Alive',undefined,
+    {kind:'python_script',code:'import bpy'});
+  await x.jobs.claimNext();
+  await x.pool.query(`UPDATE bw_jobs SET updated_at=now()-interval '60 minutes',
+    worker_heartbeat_at=now()-interval '60 minutes' WHERE id=$1`,[j.id]);
+  assert.equal(await x.jobs.heartbeat(x.ownerA,j.id,'blender_execution',true),true);
+  const active=await x.jobs.get(x.ownerA,j.id);
+  assert.equal(active.progress_phase,'blender_execution');
+  assert.ok(active.worker_heartbeat_at);
+  assert.ok(active.blender_heartbeat_at);
+  assert.equal(await x.jobs.quarantineStaleRunning(30),0);
+  assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'running');
+  await x.jobs.markFailed(x.ownerA,j.id,'failure');
+  assert.equal(await x.jobs.heartbeat(x.ownerA,j.id,'modal_start',true),false,
+    'late heartbeat must never revive a terminal job');
+  assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'failed');
+  await assert.rejects(()=>x.jobs.heartbeat(x.ownerA,j.id,'untrusted',true),RangeError);
+});
+
+test('DEV-049: watchdog quarantines expired deadline even with recent heartbeat',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
+  const j=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Deadline',undefined,
+    {kind:'python_script',code:'import bpy'});
+  await x.jobs.claimNext();
+  await x.pool.query(`UPDATE bw_jobs SET deadline_at=now()-interval '1 second',
+    worker_heartbeat_at=now() WHERE id=$1`,[j.id]);
+  assert.equal(await x.jobs.quarantineStaleRunning(30),1);
+  assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'needs_recovery');
+  assert.equal(await x.jobs.heartbeat(x.ownerA,j.id,'blender_execution',true),false);
+});
