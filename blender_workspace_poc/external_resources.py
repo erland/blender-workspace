@@ -48,7 +48,8 @@ def externalize_image_textures():
         # leaving the packed file would duplicate the image in every revision.
         image.unpack(method='REMOVE')
         image.filepath='//'+name
-        image.reload()
+        # Do not reload before scene.blend exists: // paths are relative
+        # to the not-yet-saved scene. The caller saves immediately after.
         if image.packed_file is not None:
             raise ValueError('Image remained packed after externalization')
         references[name]={'name':name,'sha256':sha,'sizeBytes':len(data)}
