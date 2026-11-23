@@ -1,4 +1,5 @@
 import {JobExecutionError} from './job-diagnostics.js';
+import {JobCancelledConfirmed} from './job-cancellation.js';
 import {setTimeout as sleep} from 'node:timers/promises';
 import type {JobRepository} from './job-repository.js';
 import type {JobOrchestrator} from './orchestrator.js';
@@ -8,7 +9,7 @@ import type {GlbPreviewRepository} from './glb-preview-repository.js';
 import type {GlbPreviewOrchestrator} from './glb-preview-orchestrator.js';
 
 export interface DispatchOptions {pollMs?:number;graceMinutes?:number;}
-export interface DispatchOutcome {state:'idle'|'completed'|'failed';jobId?:string;}
+export interface DispatchOutcome {state:'idle'|'completed'|'failed'|'cancelled';jobId?:string;}
 /** Bounded, separate worker process. No Modal execution in the MCP HTTP request.
  * Atomic claiming in PostgreSQL supports independent dispatcher replicas.
  * Ambiguous jobs are quarantined for recovery, not replayed.
@@ -77,6 +78,7 @@ export class JobDispatcher {
       await this.workflow.executeClaimed(job,controller.signal);
       return {state:'completed',jobId:job.id};
     }catch(error){
+      if(error instanceof JobCancelledConfirmed)return {state:'cancelled',jobId:job.id};
       // Log only allowlisted diagnostics, never provider exception strings or credentials.
       const diagnostic=error instanceof JobExecutionError
         ? {phase:error.phase,code:error.code,...(error.reason?{reason:error.reason}:{}),
