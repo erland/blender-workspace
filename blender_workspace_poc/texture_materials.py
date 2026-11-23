@@ -66,10 +66,10 @@ def apply_staged_textures(manifest):
         if entry.get('format') not in ('png','jpg'):
             continue
         metadata=entry['texture']
-        if not isinstance(metadata,dict) or set(metadata)!={'objectName','channel'} or
-           not isinstance(metadata['objectName'],str) or
-           not 1<=len(metadata['objectName'])<=200 or
-           metadata['channel'] not in CHANNELS:
+        if (not isinstance(metadata,dict) or set(metadata)!={'objectName','channel'} or
+            not isinstance(metadata['objectName'],str) or
+            not 1<=len(metadata['objectName'])<=200 or
+            metadata['channel'] not in CHANNELS):
             raise ValueError('Invalid texture mapping')
         path=ROOT/('source-%02d.%s' % (index,entry['format']))
         if not path.is_file() or path.is_symlink():
