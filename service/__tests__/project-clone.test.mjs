@@ -112,6 +112,7 @@ test('DEV-039 failed publication cleans up hidden project, leaving source unchan
  const broken={...x.artifacts,
    inspect:x.artifacts.inspect.bind(x.artifacts),
    verifiedArtifactPath:x.artifacts.verifiedArtifactPath.bind(x.artifacts),
+   verifiedRevisionResources:x.artifacts.verifiedRevisionResources.bind(x.artifacts),
    async publish(){attempted=true;throw new Error('Injected copy failure');},
    deleteProject:x.artifacts.deleteProject.bind(x.artifacts)
  };
@@ -121,4 +122,59 @@ test('DEV-039 failed publication cleans up hidden project, leaving source unchan
  assert.ok(attempted);
  assert.equal((await x.projects.list(x.owner)).length,before);
  assert.deepEqual(await x.artifacts.listRevisions(x.src.id),[1,2,3]);
+});
+
+test('DEV-063 cloned textured revision preserves immutable external resources, including after source deletion',
+ {skip:!process.env.TEST_DATABASE_URL},async t=>{
+ const x=await fixture(t);
+ const texture=path.join(x.root,'clone-original-texture.png');
+ const bytes=Buffer.from('PNG independently reused texture '+randomUUID());
+ await writeFile(texture,bytes);
+ const stored=await x.artifacts.storeResource(texture);
+ const resource={name:'resources/'+stored.sha256+'.png',...stored};
+ const scene=path.join(x.root,'external-model.blend');
+ await writeFile(scene,'BLENDER native references //'+resource.name);
+ const textured=await x.projects.create(x.owner,'Textured source');
+ x.ids.push(textured.id);
+ await x.artifacts.publish({projectId:textured.id,revision:1,
+   expectedPreviousRevision:0,artifacts:[{name:'scene.blend',sourcePath:scene}],
+   resources:[resource]});
+ await x.projects.addRevision(x.owner,textured.id,'Original with texture',
+   textured.id+'/00000001');
+ const copy=await x.clones.clone(x.owner,textured.id,1,'Independent textured copy');
+ x.ids.push(copy.id);
+ const original=await x.artifacts.inspect(textured.id,1,true);
+ const cloned=await x.artifacts.inspect(copy.id,1,true);
+ assert.deepEqual(cloned.resources,original.resources);
+ assert.deepEqual(cloned.artifacts,original.artifacts);
+ const [resolved]=await x.artifacts.verifiedRevisionResources(copy.id,1);
+ assert.deepEqual(await readFile(resolved.path),bytes);
+ // Deleting source must not invalidate clone, since the shared blob has
+ // independent revision references and is not deleted with project files.
+ await x.artifacts.deleteProject(textured.id);
+ assert.deepEqual((await x.artifacts.inspect(copy.id,1,true)).resources,[resource]);
+ const copiedBlend=await x.artifacts.verifiedArtifactPath(copy.id,1,'scene.blend');
+ assert.match((await readFile(copiedBlend)).toString(),/resources\\//);
+});
+test('DEV-063 cloning fails closed if a referenced texture has been corrupted',
+ {skip:!process.env.TEST_DATABASE_URL},async t=>{
+ const x=await fixture(t);
+ const image=path.join(x.root,'corruptable-texture.png');
+ await writeFile(image,'texture original bytes');
+ const stored=await x.artifacts.storeResource(image);
+ const resource={name:'resources/'+stored.sha256+'.png',...stored};
+ const scene=path.join(x.root,'corruptable.blend');
+ await writeFile(scene,'BLENDER model');
+ const project=await x.projects.create(x.owner,'Resource corrupt source');
+ x.ids.push(project.id);
+ await x.artifacts.publish({projectId:project.id,revision:1,
+  expectedPreviousRevision:0,artifacts:[{name:'scene.blend',sourcePath:scene}],
+  resources:[resource]});
+ await x.projects.addRevision(x.owner,project.id,'First',project.id+'/00000001');
+ const [bound]=await x.artifacts.verifiedRevisionResources(project.id,1);
+ await writeFile(bound.path,'changed texture bytes');
+ const before=(await x.projects.list(x.owner)).length;
+ await assert.rejects(()=>x.clones.clone(x.owner,project.id,1,'Must not clone'),
+  /checksum|mismatch|corrupt|unsafe/i);
+ assert.equal((await x.projects.list(x.owner)).length,before);
 });
