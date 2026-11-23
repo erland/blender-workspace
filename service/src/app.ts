@@ -811,7 +811,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
    });
    app.get('/share/:token',async(request,reply)=>{
      publicHeaders(reply).header('content-security-policy',
-       "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
+       "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
      const {token}=request.params as {token:string};
      if(!validShareToken(token)||!services!.publicShares)
        return reply.code(404).send('Delningen hittades inte');
