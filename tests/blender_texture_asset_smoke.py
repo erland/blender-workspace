@@ -1,7 +1,9 @@
 """DEV-053: real Blender texture source -> PBR material -> packed native BLEND."""
 import json
+import sys
 from pathlib import Path
 import bpy
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.compose_sources import compose_sources
 from blender_workspace_poc.portable_scene import pack_scene_resources
 
