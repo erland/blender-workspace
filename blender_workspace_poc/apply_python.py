@@ -112,6 +112,12 @@ def main():
                 print('BW_USER_PYTHON_ERROR type=%s line=%d' % (kind,line),
                       file=sys.stderr,flush=True)
         raise
+    # Run user code first, then apply uploaded image textures to the final
+    # mesh names. This also supports models created in this very revision.
+    manifest_path=Path('/workspace/out/asset-sources.json')
+    if manifest_path.is_file():
+        from blender_workspace_poc.texture_materials import apply_staged_textures
+        apply_staged_textures(json.loads(manifest_path.read_text(encoding='utf8')))
     modeling_seconds=round(time.monotonic()-timing_start,3)
     ensure_object_ids(bpy.data.objects)
     # Scene detail is bounded by Sandbox memory/time and artifact size, not
