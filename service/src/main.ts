@@ -17,6 +17,7 @@ import {GlbPreviewRepository} from './jobs/glb-preview-repository.js';
 import {GlbPreviewArtifactStore} from './storage/glb-preview-artifacts.js';
 import {UploadedAssetStore} from './storage/uploaded-assets.js';
 import {UploadedAssets} from './jobs/uploaded-assets.js';
+import {PublicShareRepository} from './jobs/public-shares.js';
 
 const config=loadConfig();
 const databaseConfig=databasePoolConfig();
@@ -43,7 +44,7 @@ const app=createApp(config,pool?{
   artifacts:artifacts!,projectDeletion:projectDeletion!,projectArchive:projectArchive!,projectClone:projectClone!,
   renderJobs:renderJobs!,renderedImages:renderedImages!,
   glbPreviews:glbPreviews!,glbPreviewFiles:glbPreviewFiles!,
-  uploads:uploads!,
+  uploads:uploads!,publicShares:new PublicShareRepository(pool),
   ...(modalAccounts?{modalAccounts}:{})
 }:undefined,google?{google}:undefined);
 if(pool)app.addHook('onClose',async()=>{await pool.end();});
