@@ -1,0 +1,46 @@
+name: CI - Design visual QA
+on:
+  pull_request:
+    paths:
+      - 'service/src/web/**'
+      - 'service/src/viewer-page.ts'
+      - 'service/src/app.ts'
+      - 'service/scripts/design-004-browser-qa.mjs'
+      - '.github/workflows/design-visual.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: design-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  browser:
+    name: Chrome responsive and color-theme QA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build production pages
+        working-directory: service
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Install Chromium for isolated visual tests
+        working-directory: service
+        run: |
+          npm install --no-save --no-package-lock --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Check responsive geometry, themes and capture screenshots
+        working-directory: service
+        run: node scripts/design-004-browser-qa.mjs
+      - name: Publish screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-004-screenshots
+          path: service/design-qa-output/
+          if-no-files-found: warn
+          retention-days: 14
