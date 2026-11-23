@@ -447,9 +447,8 @@ export function modelImportPage(csrf:string,
   '<p class="muted small">Uppladdningen är kostnadsfri och startar inget Blender-jobb. Max 32 MiB.</p>'+
   '<form id="upload-model-form"><input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
   '<label for="model-file">'+(texture?'Välj bildtextur (PNG eller JPEG)':'Välj 3D-modell (BLEND eller GLB)')+'</label>'+
-  '<input id="model-file" name="model" type="file" accept="'+(texture?'.png,.jpg,.jpeg':'.blend,.glb')+
-   '" required aria-describedby="model-file-help">'+
-  '<p id="model-file-help" class="muted small">Välj en fil i Filer på iPhone, iPad eller dator.</p>'+
+  '<input id="model-file" name="model" type="file" required aria-describedby="model-file-help">'+
+  '<p id="model-file-help" class="muted small">Välj en .blend-, .glb-, .png-, .jpg- eller .jpeg-fil via Filer på iPhone, iPad eller dator. Filtypen kontrolleras efter valet.</p>'+
   '<button class="button" type="submit">Ladda upp fil</button>'+
   '<p id="model-upload-result" role="status" aria-live="polite"></p></form></section>';
  const modelSection='<section class="panel"><h2>2. Importera modellen</h2>'+
