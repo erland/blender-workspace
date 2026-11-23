@@ -30,9 +30,13 @@ export class ModalPythonExecutor implements BlenderExecutor {
     if(inputBlend&&!path.isAbsolute(inputBlend))
       throw new RangeError('Invalid source path');
     if(!Array.isArray(assets)||assets.length>4||assets.some(a=>
-      !path.isAbsolute(a.path)||!['blend','glb'].includes(a.format)||
+      !path.isAbsolute(a.path)||!['blend','glb','png','jpg'].includes(a.format)||
       !Array.isArray(a.offset)||a.offset.length!==3||
-      a.offset.some(n=>!Number.isFinite(n)||Math.abs(n)>100000)))
+      a.offset.some(n=>!Number.isFinite(n)||Math.abs(n)>100000)||
+      (['png','jpg'].includes(a.format)
+        ? !a.texture||!a.texture.objectName||a.texture.objectName.length>200||
+          !['baseColor','roughness','metallic','normal'].includes(a.texture.channel)
+        : a.texture!==undefined)))
       throw new RangeError('Invalid model asset inputs');
     const safe=parsePythonScript(spec);
     if(!owner?.trim())throw new Error('Missing job owner');
@@ -45,7 +49,8 @@ export class ModalPythonExecutor implements BlenderExecutor {
       const filename=path.join(folder,'model.py');
       await writeFile(filename,safe.code,{mode:0o600,flag:'wx'});
       if(assets.length)await writeFile(path.join(folder,'asset-sources.json'),
-        JSON.stringify(assets.map((a,i)=>({index:i,offset:a.offset,format:a.format}))),
+        JSON.stringify(assets.map((a,i)=>({index:i,offset:a.offset,format:a.format,
+          ...(a.texture?{texture:a.texture}:{})}))),
         {mode:0o600,flag:'wx'});
       const script=path.join(this.repoRoot,'modal_provider','runner.py');
       await new Promise<void>((resolve,reject)=>{

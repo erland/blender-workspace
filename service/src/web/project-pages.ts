@@ -270,6 +270,7 @@ export function projectDetailPage(
    (p.description?'<p class="muted project-description">'+escapeHtml(p.description)+'</p>':'')+
    '<p class="muted small">Senaste revision '+p.current_revision+' · Ändrad '+when(p.updated_at)+'</p>'+
    (message==='import_queued'?'<p role="status">Importjobbet har lagts i kö. Modellen visas när den nya revisionen är klar.</p>':'')+
+   (message==='texture_queued'?'<p role="status">Texturen har lagts i modelleringskön. Den nya revisionen visas här när jobbet är klart.</p>':'')+
    '</div>';
  const latestImages=renders.filter(r=>r.status==='completed').slice(0,3);
  const previews=latestImages.length
@@ -371,7 +372,9 @@ export function projectDeletePage(p:PortalProject,csrf:string,message?:string):s
 export function modelImportPage(csrf:string,
  uploads:{id:string;filename:string;format:string;size_bytes:number}[],
  projects:{id:string;name:string;current_revision:number}[],message?:string):string{
- const options=uploads.map(u=>'<option value="'+escapeHtml(u.id)+'">'+
+ const modelUploads=uploads.filter(u=>u.format==='blend'||u.format==='glb');
+ const textureUploads=uploads.filter(u=>u.format==='png'||u.format==='jpg');
+ const options=modelUploads.map(u=>'<option value="'+escapeHtml(u.id)+'">'+
    escapeHtml(u.filename)+' ('+u.format.toUpperCase()+', '+
    (u.size_bytes/1048576).toFixed(1)+' MiB)</option>').join('');
  const destinations=projects.map(p=>'<option value="'+escapeHtml(p.id)+'">'+
@@ -380,16 +383,16 @@ export function modelImportPage(csrf:string,
    message==='error'?'<p role="alert">Importen kunde inte beställas. Kontrollera Modal och projektets revision.</p>':'';
  return layout('Importera 3D-modell',
   '<div class="breadcrumb"><a href="/">← Mina projekt</a></div>'+
-  '<h1>Importera 3D-modell</h1><p class="muted">Ladda upp BLEND eller GLB (max 32 MiB). Uppladdningen startar inget Modal-jobb.</p>'+
+  '<h1>Importera 3D-modell</h1><p class="muted">Ladda upp BLEND, GLB, PNG eller JPEG (max 32 MiB). Uppladdningen startar inget Modal-jobb.</p>'+
   notification+
   '<section class="panel" style="padding:20px;margin-top:20px"><h2>1. Ladda upp fil</h2>'+
   '<form id="upload-model-form"><input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
-  '<label for="model-file">BLEND eller GLB</label> <input id="model-file" name="model" type="file" required aria-describedby="model-file-help">' +
-  '<p id="model-file-help" class="muted small">Välj en .blend- eller .glb-fil via Filer. Filtypen kontrolleras efter valet för att även fungera på iPad och iPhone.</p>' +
+  '<label for="model-file">Modell eller textur (BLEND, GLB, PNG, JPEG)</label> <input id="model-file" name="model" type="file" required aria-describedby="model-file-help">' +
+  '<p id="model-file-help" class="muted small">Välj en .blend-, .glb-, .png-, .jpg- eller .jpeg-fil via Filer. Filtypen kontrolleras efter valet för att även fungera på iPad och iPhone.</p>' +
   '<button class="button" type="submit">Ladda upp</button>'+
   '<p id="model-upload-result" role="status" aria-live="polite"></p></form></section>'+
   '<section class="panel" style="padding:20px;margin-top:20px"><h2>2. Importera till en scen</h2>'+
-  (uploads.length?'<form method="post" action="/models/compose">'+
+  (modelUploads.length?'<form method="post" action="/models/compose">'+
    '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
    '<label for="uploaded-model">Sparad modell</label><select id="uploaded-model" name="uploadId" required>'+options+'</select>'+
    '<label for="target-project">Målprojekt</label><select id="target-project" name="projectId">'+
@@ -400,5 +403,26 @@ export function modelImportPage(csrf:string,
    '<label><input type="checkbox" name="confirm" value="yes" required> Jag godkänner en betald Modal-körning för att importera modellen.</label>'+
    '<button class="button" type="submit">Starta import</button></form>':
    '<p class="muted">Ladda upp en modell för att fortsätta.</p>')+
+  '</section>'+
+  '<section class="panel" style="padding:20px;margin-top:20px"><h2>3. Använd bildtextur på en modell</h2>'+
+  '<p class="muted small">Välj en uppladdad PNG/JPEG, befintligt projekt och exakt namn på ett mesh-objekt. En ny revision skapas; texturen packas i BLEND-filen. Objektens namn kan hämtas via sceninspektion.</p>'+
+  (textureUploads.length&&projects.some(p=>p.current_revision>0)?
+   '<form method="post" action="/models/textures/apply">'+
+   '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
+   '<label for="texture-upload">Texturbild</label><select id="texture-upload" name="uploadId" required>'+
+   textureUploads.map(u=>'<option value="'+escapeHtml(u.id)+'">'+escapeHtml(u.filename)+'</option>').join('')+
+   '</select><label for="texture-project">Målprojekt</label><select id="texture-project" name="projectId" required>'+
+   projects.filter(p=>p.current_revision>0).map(p=>'<option value="'+escapeHtml(p.id)+'">'+
+     escapeHtml(p.name)+' – rev '+p.current_revision+'</option>').join('')+
+   '</select><label for="texture-object">Mesh-objektets exakta namn</label>'+
+   '<input id="texture-object" name="objectName" type="text" maxlength="200" required placeholder="Exempel: Body">'+
+   '<label for="texture-channel">Materialkanal</label><select id="texture-channel" name="channel">'+
+   '<option value="baseColor">Färg (Base Color)</option>'+
+   '<option value="roughness">Ytråhet (Roughness)</option>'+
+   '<option value="metallic">Metallic</option>'+
+   '<option value="normal">Normal Map</option></select>'+
+   '<label><input type="checkbox" name="confirm" value="yes" required> Jag godkänner en betald Modal-körning för att skapa en texturerad revision.</label>'+
+   '<button class="button" type="submit">Applicera textur i ny revision</button></form>':
+   '<p class="muted">Ladda upp en PNG/JPEG och skapa eller välj ett projekt med sparad revision först.</p>')+
   '</section><script src="/models/assets/upload.js" defer></script>');
 }

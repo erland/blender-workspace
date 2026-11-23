@@ -12,8 +12,9 @@ import type {RenderArtifactStore} from '../storage/render-artifacts.js';
 
 export interface BlenderAssetInput {
   path:string;
-  format:'blend'|'glb';
+  format:'blend'|'glb'|'png'|'jpg';
   offset:[number,number,number];
+  texture?:{objectName:string;channel:'baseColor'|'roughness'|'metallic'|'normal'};
 }
 export interface BlenderExecutor {
   runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,
@@ -60,8 +61,17 @@ export class JobOrchestrator {
           if('uploadId' in item){
             if(!this.uploads)throw new Error('Uploaded asset service unavailable');
             const source=await this.uploads.verifiedPath(owner,item.uploadId);
-            assets.push({path:source.path,format:source.format,
-              offset:item.offset as [number,number,number]});
+            if('texture' in item){
+              if(!['png','jpg'].includes(source.format))
+                throw new Error('Invalid uploaded texture');
+              assets.push({path:source.path,format:source.format,offset:[0,0,0],
+                texture:item.texture});
+            }else{
+              if(!['blend','glb'].includes(source.format))
+                throw new Error('Invalid uploaded model');
+              assets.push({path:source.path,format:source.format,
+                offset:item.offset as [number,number,number]});
+            }
           }else{
             assets.push({path:await this.files.verifiedArtifactPath(
               item.projectId,item.revision,'scene.blend'),format:'blend',

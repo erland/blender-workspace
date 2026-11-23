@@ -86,7 +86,7 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
 
   if(uploads){
     server.registerTool('workspace_list_uploaded_models',{
-      description:'List verified BLEND/GLB files uploaded by your account; can be used as assetSources uploadId inputs in workspace_queue_python_script.',
+      description:'List verified BLEND, GLB, PNG and JPEG files uploaded by your account. Use BLEND/GLB as model assetSources; for PNG/JPEG use assetSources {uploadId,texture:{objectName,channel}} to apply an image to a named mesh PBR channel.',
       inputSchema:{limit:z.number().int().min(1).max(100).optional()},
       annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
     },async({limit})=>{

@@ -20,7 +20,9 @@ def compose_sources():
         raise ValueError('Invalid asset source manifest')
     provenance=[]
     for index,entry in enumerate(spec):
-        if not isinstance(entry,dict) or set(entry)!={'index','offset','format'}:
+        if not isinstance(entry,dict) or set(entry)!=(
+                {'index','offset','format','texture'} if entry.get('format') in ('png','jpg')
+                else {'index','offset','format'}):
             raise ValueError('Invalid source specification')
         if entry['index']!=index:
             raise ValueError('Nonsequential asset index')
@@ -29,6 +31,12 @@ def compose_sources():
                 any(type(v) not in (int,float) or not -100000<=v<=100000 for v in offset)):
             raise ValueError('Invalid source offset')
         fmt=entry['format']
+        if fmt in ('png','jpg'):
+            # Images are staged alongside model sources. They are applied only
+            # after all model imports, so the object target is unambiguous.
+            if offset!=[0,0,0] or not isinstance(entry['texture'],dict):
+                raise ValueError('Invalid texture source')
+            continue
         if fmt not in ('blend','glb'):
             raise ValueError('Unsupported model format')
         filename=SOURCE_DIR/('source-%02d.%s' % (index,fmt))
@@ -76,4 +84,6 @@ def compose_sources():
         group['bw_imported_source_index']=index
         group['bw_imported_object_count']=len(objects)
         provenance.append({'sourceIndex':index,'objectsImported':len(objects)})
+    # Texture assignment happens after user Python, so a new mesh created in
+    # the same modeling job can also receive an uploaded image.
     return provenance

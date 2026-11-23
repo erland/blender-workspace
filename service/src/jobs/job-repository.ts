@@ -65,10 +65,14 @@ export class JobRepository {
     db:Pick<Pool,'query'>,owner:string,sources:AssetSource[]):Promise<void>{
     for(const source of sources){
       if('uploadId' in source){
-        const result=await db.query(
-          'SELECT 1 FROM bw_uploaded_assets WHERE id=$1 AND owner_key=$2',
+        const result=await db.query<{format:string}>(
+          'SELECT format FROM bw_uploaded_assets WHERE id=$1 AND owner_key=$2',
           [source.uploadId,owner]);
-        if(!result.rowCount)throw new JobConflict('Uploaded model is unavailable');
+        if(!result.rowCount||!(
+          'texture' in source
+            ?['png','jpg'].includes(result.rows[0].format)
+            :['blend','glb'].includes(result.rows[0].format)
+        ))throw new JobConflict('Uploaded asset is unavailable or has wrong type');
         continue;
       }
       const res=await db.query(

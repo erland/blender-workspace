@@ -12,9 +12,9 @@ if(form){
  event.preventDefault();
  const file=document.getElementById('model-file').files[0];
  const status=document.getElementById('model-upload-result');
- if(!file){status.textContent='Välj en BLEND- eller GLB-fil först.';return;}
- if(!/\.(?:blend|glb)$/i.test(file.name)){
-   status.textContent='Filen måste ha ändelsen .blend eller .glb.';return;
+ if(!file){status.textContent='Välj en BLEND-, GLB-, PNG- eller JPEG-fil först.';return;}
+ if(!/\.(?:blend|glb|png|jpe?g)$/i.test(file.name)){
+   status.textContent='Filen måste ha ändelsen .blend, .glb, .png, .jpg eller .jpeg.';return;
  }
  if(file.size<20||file.size>32*1024*1024){
    status.textContent='Välj en fil mellan 20 byte och 32 MiB.';return;
@@ -31,10 +31,11 @@ if(form){
    try{const body=await response.json();code=body.error||code;}catch{}
    const messages={
     invalid_blend_format:'BLEND-filen känns inte igen. Komprimerade BLEND-filer från Blender stöds.',
-    invalid_filename:'Filnamnet måste sluta på .blend eller .glb och får inte innehålla sökvägar.',
+    invalid_filename:'Filnamnet måste sluta på .blend, .glb, .png, .jpg eller .jpeg och får inte innehålla sökvägar.',
     invalid_size:'Filen måste vara mellan 20 byte och 32 MiB.',
     library_full:'Ditt filbibliotek är fullt (max 50 filer eller 512 MiB).',
-    invalid_model:'Filen kunde inte valideras. Kontrollera att det är en riktig BLEND- eller GLB-fil.',
+    invalid_texture:'Bildtexturen är ogiltig. Använd en PNG eller JPEG med högst 8192 pixlar per sida.',
+    invalid_model:'Filen kunde inte valideras. Kontrollera att det är en riktig BLEND-, GLB-, PNG- eller JPEG-fil.',
     forbidden:'Inloggningen behöver förnyas. Ladda om sidan och försök igen.',
     unauthorized:'Du behöver logga in på nytt.',
     uploads_unavailable:'Uppladdningstjänsten är inte tillgänglig just nu.'
