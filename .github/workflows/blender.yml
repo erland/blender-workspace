@@ -36,6 +36,15 @@ jobs:
             -b --factory-startup --python /workspace/tests/blender_texture_asset_smoke.py \
             | tee blender-texture-asset.log
           grep -q 'BW_DEV053_TEXTURE_PACK PASS' blender-texture-asset.log
+      - name: DEV-060 verify externalized Blender texture reloads without original upload
+        run: |
+          set -o pipefail
+          mkdir -p dev060-out
+          chmod 777 dev060-out
+          docker run --rm -v "$PWD/dev060-out:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python /workspace/tests/blender_external_resources_smoke.py \
+            | tee blender-dev060.log
+          grep -q 'BW_DEV060_EXTERNAL_IMAGE_RELOAD PASS' blender-dev060.log
       - name: Create Python model and edit saved revision inside Blender
         run: |
           set -eu
