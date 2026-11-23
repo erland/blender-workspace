@@ -20,6 +20,7 @@ import type {ProjectDeletionService} from './jobs/project-deletion.js';
 import {projectIndexPage,projectImportPage,modelImportPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
 import {safeOwnerJobError,describeJobFailure} from './jobs/job-diagnostics.js';
 import {blendDownloadFilename,portableResourceInfo} from './web/blend-download.js';
+import {buildPortableRevisionZip} from './jobs/portable-revision.js';
 import type {PublicShareRepository} from './jobs/public-shares.js';
 import {validShareToken} from './jobs/public-shares.js';
 import {publicSharePage,ownerSharePage} from './web/public-share-page.js';
@@ -389,9 +390,6 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            if(enabled){
              if(!services!.artifacts)return reply.code(404).send('BLEND saknas');
              try{
-               if((await services!.artifacts.verifiedRevisionResources(
-                 projectId,Number(revision))).length)
-                 return reply.code(409).send('Portabel nedladdning för externa resurser är inte tillgänglig ännu');
                await services!.artifacts.verifiedArtifactPath(
                  projectId,Number(revision),'scene.blend');
              }catch{return reply.code(422).send('BLEND saknas eller är skadad');}
@@ -475,13 +473,39 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            return reply.code(404).send('Revisionen hittades inte');
          if((await services!.artifacts.verifiedRevisionResources(
            projectId,Number(revision))).length)
-           return reply.code(409).send('Portabel nedladdning för resurser är inte tillgänglig ännu');
+           return reply.redirect('/projects/'+projectId+'/revisions/'+revision+'/download.zip');
          const native=await services!.artifacts.verifiedArtifactPath(
            projectId,Number(revision),'scene.blend');
          const filename=blendDownloadFilename(project.name,Number(revision));
          return reply.header('content-disposition','attachment; filename="'+filename+'"')
            .type('application/octet-stream').send(createReadStream(native));
        }catch{return reply.code(404).send('Revisionen hittades inte');}
+     });
+     // A verified, extracted-folder portable revision. Never send an
+     // incomplete raw BLEND when its image bytes are held externally.
+     app.get('/projects/:projectId/revisions/:revision/download.zip',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').header('cache-control','private, no-store')
+         .header('content-security-policy',"default-src 'none'")
+         .header('x-frame-options','DENY');
+       if(!session)return reply.redirect('/settings/login');
+       const {projectId,revision}=request.params as {projectId:string;revision:string};
+       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(projectId)||
+          !/^[1-9][0-9]{0,7}$/.test(revision)||!services!.artifacts)
+         return reply.code(404).send('Revisionen hittades inte');
+       try{
+         const project=await services!.projects.get(session.ownerKey,projectId);
+         if(!project)return reply.code(404).send('Revisionen hittades inte');
+         const revisions=await services!.projects.revisions(session.ownerKey,projectId);
+         if(!revisions.some(r=>r.revision===Number(revision)&&r.artifact_prefix))
+           return reply.code(404).send('Revisionen hittades inte');
+         const {archive,directory}=await buildPortableRevisionZip(services!.artifacts,
+           projectId,Number(revision));
+         reply.raw.once('close',()=>{void rm(directory,{recursive:true,force:true});});
+         const filename=blendDownloadFilename(project.name,Number(revision)).replace(/\.blend$/,'.zip');
+         return reply.header('content-disposition','attachment; filename="'+filename+'"')
+           .type('application/zip').send(createReadStream(archive));
+       }catch{return reply.code(404).send('Revisionen eller dess resurser kunde inte exporteras');}
      });
      app.get('/projects/:projectId',async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
@@ -873,8 +897,11 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            }catch{/* Broken images are not offered in the gallery. */}
          }
        }
+       const needsZip=share.allow_download===true&&
+         (await services!.artifacts!.verifiedRevisionResources(share.project_id,share.revision)).length>0;
        return reply.type('text/html; charset=utf-8')
-         .send(publicSharePage(token,share.project_name,share.revision,publicImages,share.allow_download===true));
+         .send(publicSharePage(token,share.project_name,share.revision,publicImages,
+           share.allow_download===true,needsZip));
      }catch{return reply.code(404).send('Delningen hittades inte');}
    });
    // Public PNG is always checked against the current active share's
@@ -915,6 +942,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
        const share=await services!.publicShares.resolve(token);
        if(!share||share.allow_download!==true)
          return reply.code(404).send({error:'not_found'});
+       // Raw BLEND is never portable when the revision has external blobs.
        if((await services!.artifacts.verifiedRevisionResources(
          share.project_id,share.revision)).length)
          return reply.code(404).send({error:'not_found'});
@@ -923,6 +951,33 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
        const filename=blendDownloadFilename(share.project_name,share.revision);
        return reply.header('content-disposition','attachment; filename="'+filename+'"')
          .type('application/octet-stream').send(createReadStream(file));
+     }catch{return reply.code(404).send({error:'not_found'});}
+   });
+   // Public ZIP uses the SAME verified packager as owner downloads.
+   // Only explicit opt-in shares with active token may reach the packager.
+   app.get('/share/:token/scene.zip',async(request,reply)=>{
+     publicHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const {token}=request.params as {token:string};
+     if(!validShareToken(token)||!services!.publicShares||!services!.artifacts)
+       return reply.code(404).send({error:'not_found'});
+     try{
+       const share=await services!.publicShares.resolve(token);
+       if(!share||share.allow_download!==true)
+         return reply.code(404).send({error:'not_found'});
+       const {archive,directory}=await buildPortableRevisionZip(services!.artifacts,
+         share.project_id,share.revision);
+       // A share can expire or be revoked while ZIP bytes are prepared.
+       // Check once more before sending a response body.
+       const current=await services!.publicShares.resolve(token);
+       if(!current||current.allow_download!==true||
+          current.project_id!==share.project_id||current.revision!==share.revision){
+         await rm(directory,{recursive:true,force:true});
+         return reply.code(404).send({error:'not_found'});
+       }
+       reply.raw.once('close',()=>{void rm(directory,{recursive:true,force:true});});
+       const filename=blendDownloadFilename(share.project_name,share.revision).replace(/\.blend$/,'.zip');
+       return reply.header('content-disposition','attachment; filename="'+filename+'"')
+         .type('application/zip').send(createReadStream(archive));
      }catch{return reply.code(404).send({error:'not_found'});}
    });
    app.get('/share/:token/scene.glb',async(request,reply)=>{

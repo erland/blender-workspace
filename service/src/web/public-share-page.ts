@@ -4,7 +4,7 @@ export interface ShareRenderImage {
  id:string;engine:string;width:number;height:number;created_at:Date;
 }
 export function publicSharePage(token:string,projectName:string,revision:number,
- renders:ShareRenderImage[]=[],allowDownload=false):string {
+ renders:ShareRenderImage[]=[],allowDownload=false,needsZip=false):string {
   const title=escapeHtml(projectName);
   // Called only after token has been verified by the repository.
   return `<!doctype html><html lang="sv"><head><meta charset="utf-8">
@@ -54,9 +54,8 @@ ${renders.length?`<section class="public-gallery" aria-label="Renderade bilder f
 </div></section>`:''}
 ${allowDownload?`<section class="public-gallery" aria-label="Ladda ned originalmodell">
 <h2>Ladda ned Blender-modellen</h2>
-<p>Ägaren tillåter nedladdning av den sparade BLEND-filen för revision ${revision}.
-Inpackade texturer och andra resurser ingår i originalfilen.</p>
-<a href="/share/${token}/scene.blend" download>Ladda ned BLEND · revision ${revision}</a>
+<p>${needsZip?'Den här revisionen har separat lagrade texturer. Ladda ned ZIP och packa upp hela katalogen innan scene.blend öppnas i Blender.':'Den här revisionen har inga separat lagrade resurser och kan laddas ned direkt som BLEND.'}</p>
+<a href="/share/${token}/scene.${needsZip?'zip':'blend'}" download>Ladda ned ${needsZip?'BLEND + resurser (ZIP)':'BLEND'} · revision ${revision}</a>
 </section>`:''}
 <p class="note">Rotera med fingret eller musen, zooma med två fingrar eller mushjulet.
 Den här länken ger endast visningsåtkomst till revision ${revision} och de renderade
@@ -115,7 +114,7 @@ ${status==='active'?`<form action="${base}" method="post">
 ${status==='active'?`<section class="gallery-select" aria-label="Delning av BLEND-original">
 <h2>Nedladdning av BLEND-original</h2>
 <p>Avstängt som standard. Den här inställningen gäller bara revision ${revision}.
-Texturer som packats i BLEND ingår, men externa beroenden som inte kunde packas gör det inte.
+Revisioner med externa bildtexturer erbjuds som ZIP med BLEND och tillhörande resurser. Andra otillgängliga externa beroenden ingår inte.
 Avstängning eller återkallning blockerar nya nedladdningar.</p>
 <form action="${base}" method="post">
 <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
