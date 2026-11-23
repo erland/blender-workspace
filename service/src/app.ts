@@ -1,4 +1,4 @@
-import {themeStyles,themedCss} from './web/theme.js';
+import {themeStyles,themedCss,componentStyles} from './web/theme.js';
 import Fastify from 'fastify';
 import {createReadStream} from 'node:fs';
 import {rm} from 'node:fs/promises';
@@ -102,7 +102,7 @@ button{padding:10px 16px;margin:12px 8px 0 0}
 body{background:var(--page);color:var(--text)}section{background:var(--surface);border-color:var(--border)}
 button{background:var(--accent);color:var(--button-text);border:1px solid var(--accent);border-radius:9px;min-height:44px}
 input{background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:8px}
-`)}</style></head><body>
+`)}${componentStyles}</style></head><body>
 <section><p><a href="/">← Mina projekt</a></p><h1>Modal – Blender Workspace</h1><p>Kontostatus: ${escape(status)}</p>
 <p>${escape(message)}</p><p>Dina Modal-uppgifter lagras krypterat och visas aldrig i ChatGPT.</p>
 <section style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px">
@@ -128,7 +128,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
      app.get('/',async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
        secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
-       if(!session)return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blender Workspace</title><style>'+themeStyles+themedCss('body{font:16px system-ui,sans-serif;background:#f4f7fb;color:#19263b;display:grid;place-items:center;min-height:90vh;margin:0;padding:24px}main{background:white;padding:32px;border-radius:14px;border:1px solid #d8e2ed;max-width:480px}a{display:inline-block;background:#215dd5;color:white;text-decoration:none;padding:12px 18px;border-radius:9px}a{color:var(--button-text)}')+'</style></head><body><main><h1>Blender Workspace</h1><p>Logga in med Google för att visa dina projekt och sparade 3D-modeller.</p><a href="/settings/login">Logga in med Google</a></main></body></html>';
+       if(!session)return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blender Workspace</title><style>'+themeStyles+themedCss('body{font:16px system-ui,sans-serif;background:#f4f7fb;color:#19263b;display:grid;place-items:center;min-height:90vh;margin:0;padding:24px}main{background:white;padding:32px;border-radius:14px;border:1px solid #d8e2ed;max-width:480px}a{display:inline-block;background:#215dd5;color:white;text-decoration:none;padding:12px 18px;border-radius:9px}a{color:var(--button-text)}')+componentStyles+'</style></head><body><main><h1>Blender Workspace</h1><p>Logga in med Google för att visa dina projekt och sparade 3D-modeller.</p><a href="/settings/login">Logga in med Google</a></main></body></html>';
        try{
          // Bound the number of owner-scoped queries on each request.
          const projects=await services!.projects.list(session.ownerKey,50);
