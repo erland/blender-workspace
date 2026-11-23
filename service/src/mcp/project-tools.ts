@@ -10,6 +10,7 @@ import {PythonScriptSchema} from '../jobs/python-script.js';
 import {preflightPython,PythonSyntaxError} from '../jobs/python-preflight.js';
 import {AssetSourcesSchema,parseAssetSources} from '../jobs/asset-sources.js';
 import type {UploadedAssets} from '../jobs/uploaded-assets.js';
+import {NativeTextureDownloader,decodeTextureBase64} from './texture-file-transfer.js';
 import type {LocalArtifactStore} from '../storage/artifact-store.js';
 import type {RenderArtifactStore} from '../storage/render-artifacts.js';
 import type {GlbPreviewRepository} from '../jobs/glb-preview-repository.js';
@@ -25,7 +26,7 @@ export interface ProjectServices {
   modalAccounts?: Pick<ModalAccountManager,'status'|'test'|'disconnect'|'saveAndTest'|'memoryMiB'|'setMemoryMiB'>;
   artifacts?:Pick<LocalArtifactStore,'inspect'|'verifiedArtifactPath'> & Partial<Pick<LocalArtifactStore,'readVerifiedSmallArtifact'>>;
   projectClone?:Pick<ProjectCloneService,'clone'>;
-  uploads?:Pick<UploadedAssets,'list'|'get'|'verifiedPath'>;
+  uploads?:Pick<UploadedAssets,'list'|'get'|'verifiedPath'> & Partial<Pick<UploadedAssets,'upload'>>;
   viewerOrigin?:string;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'get'|'list'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
@@ -84,6 +85,45 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
   };
   const schemes=(scope:string)=>oauth?{_meta:{securitySchemes:[{type:'oauth2' as const,scopes:[scope]}]}}:{};
 
+  if(uploads?.upload){
+    const nativeFile=z.object({
+      download_url:z.string().url().max(4096),
+      file_id:z.string().min(1).max(512),
+      mime_type:z.string().max(128).optional(),
+      file_name:z.string().min(1).max(255).optional()
+    }).strict();
+    server.registerTool('workspace_upload_texture',{
+      title:'Upload image texture',
+      description:'Upload a PNG/JPEG texture as a private file, without starting Modal. Prefer the ChatGPT native file parameter (file_id and download_url); use textureBase64 only for small MCP clients without native file inputs. Returns an uploadId for assetSources {uploadId,texture:{objectName,channel}} in workspace_queue_python_script.',
+      inputSchema:{
+        file:nativeFile.optional().describe('Native file parameter supplied by the MCP client; download_url is short-lived and fetched by the server.'),
+        filename:z.string().min(1).max(200).optional().describe('PNG/JPG/JPEG filename; defaults to file.file_name when provided.'),
+        textureBase64:z.string().min(1).max(240000).optional().describe('Small-file fallback only (about 180 KiB); larger images must use native file input.')
+      },...schemes(WRITE_SCOPE)
+    },async({file,filename,textureBase64})=>{
+      const block=denied(WRITE_SCOPE);if(block)return block;
+      if(Boolean(file)===Boolean(textureBase64))
+        return {isError:true,content:[{type:'text' as const,
+          text:'Provide exactly one of file or textureBase64'}]};
+      const name=filename??file?.file_name;
+      if(!name||!/^[^/\\\0-\x1f\x7f]+\.(?:png|jpe?g)$/i.test(name))
+        return {isError:true,content:[{type:'text' as const,
+          text:'A PNG or JPEG filename is required'}]};
+      try{
+        const bytes=file?await new NativeTextureDownloader().download(file):
+          decodeTextureBase64(textureBase64!);
+        const saved=await uploads.upload!(ownerKey,name,bytes);
+        if(!['png','jpg'].includes(saved.format))
+          throw new Error('Unexpected asset category');
+        return result({uploadId:saved.id,filename:saved.filename,
+          format:saved.format,sizeBytes:saved.size_bytes,modalExecution:false});
+      }catch{
+        // Never return signed file URLs, private paths or upstream error bodies.
+        return {isError:true,content:[{type:'text' as const,
+          text:'Texture upload failed. Check PNG/JPEG file type, max 32 MiB, expiry and public HTTPS file link.'}]};
+      }
+    });
+  }
   if(uploads){
     server.registerTool('workspace_list_uploaded_models',{
       description:'List verified BLEND, GLB, PNG and JPEG files uploaded by your account. Use BLEND/GLB as model assetSources; for PNG/JPEG use assetSources {uploadId,texture:{objectName,channel}} to apply an image to a named mesh PBR channel.',
