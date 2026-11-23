@@ -17,6 +17,7 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY archive_tool.py ./archive_tool.py
+COPY revision_zip.py ./revision_zip.py
 COPY migrations ./migrations
 RUN mkdir -p /data/blender-workspace && chown node:node /data/blender-workspace
 USER node
