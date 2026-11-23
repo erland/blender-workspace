@@ -1,6 +1,6 @@
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
-export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;portableStatus?:'complete'|'external'|'unknown';externalCount?:number}
+export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;portableStatus?:'complete'|'external'|'unknown';externalCount?:number;resourceCount?:number}
 export interface PortalModelJob {id:string;project_id:string;requested_revision:number;status:string;note:string;error_message:string|null;created_at:Date}
 export interface PortalJobItem {id:string;project_id:string;project_name:string;type:'model'|'render';revision:number;status:string;created_at:Date;detail:string;error:string|null}
 export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null}
@@ -53,6 +53,30 @@ const style=[
 '.panel{padding:22px}.history{list-style:none;padding:0;margin:0}.history li{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-top:1px solid #d8e2ed;padding:14px 0}',
 '.history li:first-child{border-top:0}.history p{margin:0}.history .muted{overflow-wrap:anywhere}',
 '.revision-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.revision-actions .button{min-height:44px;display:inline-flex;align-items:center}',
+'.history li.revision-item{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;padding:0}',
+'.revision-open{display:flex;flex:1;min-width:0;align-items:center;gap:11px;padding:14px 3px;text-decoration:none;color:inherit;min-height:72px}',
+'.revision-open:hover{background:#f7faff;text-decoration:none}.revision-open:focus-visible{outline:3px solid #215dd5;outline-offset:-3px;border-radius:8px}',
+'.revision-icon{width:44px;height:44px;display:grid;place-items:center;flex:none;background:#eef2fa;border-radius:9px;font-size:1.3rem}',
+'.revision-info{min-width:0;flex:1}.revision-info strong{display:block}.revision-info .muted{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}',
+'.revision-chevron{font-size:1.6rem;color:#64748b}.revision-actions-menu{position:relative;flex:none}',
+'.revision-actions-menu[open]{z-index:25}.history-panel{overflow:visible}',
+'.revision-actions-menu summary{display:grid;place-items:center;cursor:pointer;list-style:none;min-height:44px;min-width:44px;border:1px solid #c9d6e5;border-radius:9px;background:#fff;font-size:1.3rem}',
+'.revision-actions-menu summary::-webkit-details-marker{display:none}.revision-actions-menu summary:hover{background:#f1f5ff}',
+'.revision-actions-menu summary:focus-visible{outline:3px solid #215dd5;outline-offset:2px}',
+'.revision-menu-items{position:absolute;z-index:15;right:0;top:calc(100% + 5px);min-width:220px;max-width:min(280px,85vw);background:#fff;box-shadow:0 8px 24px #182b4840;border:1px solid #c9d6e5;border-radius:10px;padding:6px}',
+'.revision-menu-items a{display:flex;align-items:center;padding:11px;border-radius:7px;min-height:44px;text-decoration:none;color:#19263b}',
+'.revision-menu-items a:hover,.revision-menu-items a:focus-visible{background:#edf3fe;text-decoration:none}',
+'.revision-unavailable{display:flex;align-items:center;flex:1;gap:11px;padding:14px 3px;min-height:72px}',
+'.model-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(250px,1fr);gap:18px;align-items:stretch}',
+'.model-preview{display:block;position:relative;min-height:220px;background:#edf2f8;overflow:hidden;border-radius:12px;text-decoration:none;color:#19263b}',
+'.model-preview img{display:block;width:100%;height:100%;min-height:220px;max-height:340px;object-fit:contain}',
+'.model-preview-placeholder{min-height:220px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#57667b}',
+'.model-preview-mark{font-size:3.1rem;line-height:1}.model-preview-label{position:absolute;left:12px;bottom:12px;background:#fff;border:1px solid #d8e2ed;padding:5px 10px;border-radius:8px;font-size:.88rem;font-weight:700}',
+'.model-summary{display:flex;flex-direction:column;justify-content:center;gap:12px;min-width:0}.model-summary h2{font-size:1.25rem;margin:0}',
+'.model-status{margin:0;color:#57667b}.model-actions{display:flex;gap:9px;flex-wrap:wrap}',
+'.model-actions .button{min-height:44px;display:inline-flex;align-items:center;justify-content:center}',
+'.model-secondary{display:flex;gap:4px 16px;flex-wrap:wrap}.model-secondary a{display:inline-flex;align-items:center;min-height:44px;font-weight:600}',
+'@media(max-width:680px){.model-hero{grid-template-columns:minmax(0,1fr)}.model-preview,.model-preview-placeholder{min-height:175px}.model-preview img{height:210px;min-height:175px}.model-summary{gap:8px}.history li.revision-item{gap:6px}}',
 '.job-list li{display:block;padding:0}.job-list li:first-child{border-top:0}',
 '.job-link{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:76px;padding:12px 6px;color:inherit;text-decoration:none}',
 '.job-link:hover{background:#f1f5ff;text-decoration:none}.job-link:focus-visible{outline:3px solid #215dd5;outline-offset:-3px;border-radius:8px}',
@@ -235,25 +259,30 @@ export function projectDetailPage(
  const imagesUrl=base+'?view=images',historyUrl=base+'?view=history',settingsUrl=base+'?view=settings';
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
    const saved=Boolean(r.artifact_prefix);
-   const status=saved?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
-   const open=saved&&r.glbAvailable!==false?
-     '<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa GLB</a>':'';
-   const share=saved&&r.glbAvailable!==false?
-     '<a class="button alt" href="'+base+'/revisions/'+r.revision+
-     '/share">Dela revision</a>':'';
+   const available=saved&&r.glbAvailable!==false;
+   const title='Revision '+r.revision;
+   const note=escapeHtml(r.note||'Ingen beskrivning');
+   const caption=note+' · '+when(r.created_at);
+   const resourceInfo=(r.resourceCount??0)>0
+     ?'ZIP med texturer':'BLEND';
    const download=saved?
-     '<a class="button alt" href="'+base+'/revisions/'+r.revision+
-     '/download" download>⬇ Ladda ned BLEND</a>':'';
-   const portability=!saved?'':r.portableStatus==='complete'
-     ?'<span class="muted small">Kända externa resurser inpackade</span>':
-     r.portableStatus==='external'
-       ?'<span class="muted small" role="note">⚠ '+(r.externalCount??0)+
-        ' externa filberoenden återstår – lokal rendering kan sakna resurser</span>'
-       :'<span class="muted small">Externa resurser ej verifierade för denna revision</span>';
-   return '<li><div><p><strong>Revision '+r.revision+'</strong> '+status+'</p>'+
-     '<p class="muted small">'+escapeHtml(r.note||'Ingen beskrivning')+' · '+when(r.created_at)+
-     '</p>'+portability+'</div>'+
-     (saved?'<div class="revision-actions">'+open+download+share+'</div>':'')+'</li>';
+     '<a href="'+base+'/revisions/'+r.revision+'/download">⬇ Ladda ned modell ('+resourceInfo+')</a>':'';
+   const share=available?
+     '<a href="'+base+'/revisions/'+r.revision+'/share">Dela revision</a>':'';
+   const actions=saved?'<details class="revision-actions-menu"><summary aria-label="Fler val för '+title+'" title="Fler val">⋯</summary>'+
+      '<div class="revision-menu-items">'+
+      (available?'<a href="'+viewerUrl(p.id,r.revision)+'">Öppna 3D-modell</a>':'')+
+      download+share+'</div></details>':'';
+   const text='<span class="revision-icon" aria-hidden="true">⬡</span>'+
+     '<span class="revision-info"><strong>'+title+
+     (r.revision===p.current_revision?' · Senaste':'')+'</strong>'+
+     '<span class="muted small">'+caption+'</span></span>';
+   const main=available?
+     '<a class="revision-open" href="'+viewerUrl(p.id,r.revision)+'" aria-label="Öppna 3D-modell för '+title+'">'+
+     text+'<span class="revision-chevron" aria-hidden="true">›</span></a>':
+     '<div class="revision-unavailable">'+text+
+     '<span class="tag empty">'+(saved?'3D saknas':'Ej sparad')+'</span></div>';
+   return '<li class="revision-item">'+main+actions+'</li>';
  }).join('');
  const tab=(title:string,icon:string,url:string,selected:boolean)=>
    '<a class="project-tab" href="'+url+'"'+(selected?' aria-current="page"':'')+'>'+
@@ -285,12 +314,37 @@ export function projectDetailPage(
        ' alt="Rendering för revision '+r.source_revision+'"></a>';
    }).join('')+'</div>'
    :'<p class="muted">Inga sparade renderingar ännu.</p>';
- const overview='<section class="panel"><div class="project-section-heading">'+
+ const modelPreview=latestImages.length
+   ?'<a class="model-preview" href="'+imagesUrl+'" aria-label="Visa sparade renderingar">'+
+     '<img loading="eager" decoding="async" src="'+renderUrl(p.id,latestImages[0])+
+     '" alt="Senaste rendering av modellen"><span class="model-preview-label">Visa bilder</span></a>'
+   :latestView
+     ?'<a class="model-preview" href="'+latestView+'" aria-label="Öppna modellen i 3D">'+
+       '<span class="model-preview-placeholder"><span class="model-preview-mark" aria-hidden="true">⬡</span>'+
+       '3D-modell tillgänglig</span><span class="model-preview-label">Öppna 3D</span></a>'
+     :'<div class="model-preview"><span class="model-preview-placeholder">'+
+       '<span class="model-preview-mark" aria-hidden="true">⬡</span>'+
+       'Ingen 3D-förhandsvisning ännu</span></div>';
+ const latestDownload=latest?base+'/revisions/'+latest.revision+'/download':null;
+ const latestShare=latestView&&latest?base+'/revisions/'+latest.revision+'/share':null;
+ const fileDescription=latest&&(latest.resourceCount??0)>0?'ZIP med texturer':'BLEND';
+ const overview='<section class="panel" aria-label="Aktuell modell">'+
+   '<div class="model-hero">'+modelPreview+
+   '<div class="model-summary"><div><h2>Aktuell modell</h2>'+
+   '<p class="model-status">'+(latest?'Revision '+latest.revision+' · Sparad':'Ingen sparad revision')+'</p></div>'+
+   '<div class="model-actions">'+
+   (latestView?'<a class="button" href="'+latestView+'">Öppna 3D-modell</a>':'')+
+   (latest?'<a class="button alt" href="'+imagesUrl+'">Visa renderingar</a>':'')+
+   '</div><div class="model-secondary">'+
+   (latestDownload?'<a href="'+latestDownload+'">⬇ Ladda ned modell ('+fileDescription+')</a>':'')+
+   (latestShare?'<a href="'+latestShare+'">Dela revision</a>':'')+
+   '<a href="'+historyUrl+'">Revisionshistorik</a></div>'+
+   (latestView?'<p class="muted small">3D-vyn är en förenklad GLB-förhandsvisning. Blender-originalet kan innehålla ytterligare detaljer.</p>':'')+
+   '</div></div></section>'+
+   '<section class="panel" style="margin-top:16px"><div class="project-section-heading">'+
    '<h2>Senaste renderingar</h2><a href="'+imagesUrl+'">Visa alla bilder</a></div>'+
-   previews+'</section>'+
-   (latestView?'<p class="muted small" style="margin-top:14px">GLB är en förenklad förhandsvisning.'+
-      ' Blender-originalet kan innehålla hår, material och detaljer som inte syns i 3D-visaren.</p>':'');
- const modelHistory='<section class="panel"><h2>Revisionshistorik</h2>'+
+   previews+'</section>';
+ const modelHistory='<section class="panel history-panel"><h2>Revisionshistorik</h2>'+
    (history?'<ul class="history">'+history+'</ul>':
      '<p class="muted">Projektet har ännu ingen sparad modell. Skapa en revision via ChatGPT.</p>')+
    '</section><section class="panel" style="margin-top:16px">'+

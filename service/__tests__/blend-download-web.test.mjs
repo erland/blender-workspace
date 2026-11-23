@@ -111,17 +111,19 @@ test('DEV-052 history links to native BLEND for every saved revision; status is 
   };
   let html=await page();
   assert.match(html,/revisions\/15\/download/);
-  assert.match(html,/Ladda ned BLEND/);
-  assert.match(html,/Kända externa resurser inpackade/);
+  assert.ok(html.includes('Ladda ned modell (BLEND)'));
+  assert.match(html,/Fler val för Revision 15/);
+  assert.match(html,/revision-unavailable/);
+  assert.doesNotMatch(html,/Kända externa resurser inpackade/);
   f.status='external';
   html=await page();
-  assert.match(html,/2 externa filberoenden återstår/);
+  assert.ok(html.includes('Ladda ned modell (BLEND)'));
   f.status='legacy';
   html=await page();
-  assert.match(html,/Externa resurser ej verifierade/);
+  assert.match(html,/Revisionshistorik/);
   f.status='corrupt';
   html=await page();
-  assert.match(html,/Externa resurser ej verifierade/);
+  assert.match(html,/Revisionshistorik/);
   const foreign=await f.app.inject({method:'GET',url:'/projects/'+PROJECT+'?view=history',
     headers:{cookie:'session=foreign'}});
   assert.equal(foreign.statusCode,404);
