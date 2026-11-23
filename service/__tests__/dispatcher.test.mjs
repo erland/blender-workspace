@@ -38,7 +38,8 @@ async function fixture(t) {
     assert.equal(revision,1);
     await new Promise(resolve=>setTimeout(resolve,15));
     for(const name of ['scene.blend','scene.glb','scene.json'])
-      await writeFile(path.join(dir,name),'fake-'+name);
+      await writeFile(path.join(dir,name),name==='scene.json'?
+        JSON.stringify({resourceFiles:[]}):'fake-'+name);
   }};
   const workflow=new JobOrchestrator(jobs,new LocalArtifactStore(root),executor);
   const dispatcher=new JobDispatcher(jobs,workflow,{pollMs:250,graceMinutes:30});
