@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 import time
 import threading
+import signal
 
 
 def _is_native_blend_magic(path):
@@ -51,6 +52,11 @@ def blender_image_reference(value=None):
         raise ValueError("MODAL_BLENDER_IMAGE must be a pinned GHCR release version, sha-commit tag or sha256 digest")
     return ref
 
+
+
+class RequestedCancellation(BaseException):
+    """Interrupted by the trusted Node controller. Must still terminate Sandbox."""
+    pass
 
 
 class RunnerDiagnostic(Exception):
@@ -197,6 +203,10 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
               "cpu_physical_cores": cpu, "memory_mib": memory_mib,
               "sandbox_timeout_seconds": timeout, "status": "FAILED", "artifacts": [],
               "blender_image": image_ref}
+    def cancelled(_signum, _frame):
+        raise RequestedCancellation()
+    original_sigterm=signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGTERM,cancelled)
     phase = "modal_start"
     print("BW_PROGRESS phase=modal_start", flush=True)
     try:
@@ -205,6 +215,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
         sandbox = sdk.Sandbox.create(
             "sleep", str(timeout), app=app, image=image, cpu=cpu, memory=memory_mib,
             timeout=timeout, workdir="/workspace", block_network=True)
+        report['sandbox_created'] = True
         created = time.monotonic()
         sandbox.filesystem.copy_from_local(str(python_source), "/workspace/out/model.py")
         transfer_resources(sandbox,resources)
@@ -374,6 +385,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
         report["cost_note"] = (
             "Estimate, not actual invoice; excludes image build, storage and network transfer.")
         (out / "modal_run_report.json").write_text(json.dumps(report, indent=2) + "\n")
+        signal.signal(signal.SIGTERM,original_sigterm)
 
 
 def main():
@@ -407,6 +419,19 @@ def main():
                      resource_manifest=args.resource_manifest)
         if report["status"] != "PASS" or not report["sandbox_terminated"]:
             raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
+    except RequestedCancellation:
+        # A marker is emitted only when the sandbox was created and its
+        # termination was positively acknowledged. Other cases remain uncertain.
+        try:
+            state=json.loads((Path(args.out)/'modal_run_report.json').read_text())
+            if state.get('sandbox_created') is True and state.get('sandbox_terminated') is True:
+                print("BW_CANCELLED",file=sys.stderr,flush=True)
+                raise SystemExit(2) from None
+        except (OSError,ValueError):
+            pass
+        print("BW_DIAGNOSTIC phase=cleanup code=sandbox_cleanup_failed",
+              file=sys.stderr,flush=True)
+        raise SystemExit(1) from None
     except RunnerDiagnostic as exc:
         detail = f" reason={exc.reason}" if exc.reason else ""
         if type(exc.exit_code) is int and -99999 <= exc.exit_code <= 99999:
