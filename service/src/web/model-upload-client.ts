@@ -46,7 +46,7 @@ if(form){
   }
   const result=await response.json();
   if(!result.uploadId)throw new Error('Ogiltigt svar från servern.');
-  window.location.assign('/models/import');
+  window.location.assign('/models/import?task='+(result.format==='png'||result.format==='jpg'?'texture':'model'));
  }catch(error){status.textContent=error.message||'Uppladdningen misslyckades.';
   submit.disabled=false;}
  });
