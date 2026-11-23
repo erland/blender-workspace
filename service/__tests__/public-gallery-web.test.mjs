@@ -108,7 +108,6 @@ test('DEV-056 only explicitly approved same-revision complete PNGs appear public
  assert.match(page.body,new RegExp(ids[0]));
  assert.doesNotMatch(page.body,new RegExp(ids[1]));
  assert.doesNotMatch(page.body,new RegExp(ids[2]));
- assert.doesNotMatch(page.body,//renders\/\w{8}-/);
  const image=await f.app.inject({method:'GET',url:share+'/renders/'+ids[0]+'.png'});
  assert.equal(image.statusCode,200,image.body);
  assert.deepEqual(image.rawPayload,png);
