@@ -6,6 +6,8 @@ import type {ProjectCloneService} from './jobs/project-clone.js';
 import type {UploadedAssets} from './jobs/uploaded-assets.js';
 import {MAX_UPLOAD_BYTES} from './storage/uploaded-assets.js';
 import {modelUploadScript} from './web/model-upload-client.js';
+import {textureObjectPickerScript} from './web/texture-object-picker.js';
+import {inspectSavedScene} from './scene/scene-contract.js';
 import {validateRenderOptions,type RenderJobRepository,type RenderEngine} from './jobs/render-repository.js';
 import {validateViewerCamera,viewerDimensions} from './jobs/viewer-camera.js';
 import type {RenderArtifactStore} from './storage/render-artifacts.js';
@@ -186,9 +188,34 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          reply.header('content-security-policy',
            "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
          return modelImportPage(session.csrf,uploads,projects,
-           (request.query as {message?:string}).message);
+           (request.query as {message?:string}).message,
+           (request.query as {task?:string}).task);
        }catch{return reply.code(503).send('Kunde inte visa uppladdade modeller.');}
      });
+     // Owner-scoped, read-only source for a real mesh-object picker.
+     // No Modal execution: only the verified saved scene report is read.
+     app.get('/models/api/projects/:projectId/mesh-objects',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').header('cache-control','private, no-store')
+         .header('content-security-policy',"default-src 'none'");
+       if(!session)return reply.code(401).send({error:'unauthorized'});
+       const {projectId}=request.params as {projectId:string};
+       if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(projectId))
+         return reply.code(404).send({error:'not_found'});
+       if(!services!.artifacts)return reply.code(503).send({error:'unavailable'});
+       const project=await services!.projects.get(session.ownerKey,projectId);
+       if(!project||project.current_revision<1)return reply.code(404).send({error:'not_found'});
+       try{
+         const scene=await inspectSavedScene(services!.artifacts,projectId,project.current_revision);
+         const objects=scene.objects.filter(object=>object.type==='MESH'&&
+           object.name.length<=200).map(object=>object.name).sort((a,b)=>a.localeCompare(b,'sv'));
+         return reply.type('application/json; charset=utf-8')
+           .send({revision:project.current_revision,objects});
+       }catch{return reply.code(409).send({error:'scene_unavailable'});}
+     });
+     app.get('/models/assets/texture-picker.js',async(_request,reply)=>
+       secure(reply).header('content-security-policy',"default-src 'none'")
+         .type('application/javascript; charset=utf-8').send(textureObjectPickerScript));
      app.get('/models/assets/upload.js',async(_request,reply)=>
        secure(reply).header('content-security-policy',"default-src 'none'")
          .type('application/javascript; charset=utf-8').send(modelUploadScript));
@@ -298,13 +325,23 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            return reply.code(404).send('Projekt eller bildtextur hittades inte');
          if(!account.connected)return reply.code(409).send('Anslut Modal i Inställningar');
          if(project.current_revision<1)return reply.code(409).send('Modellen saknar revision');
+         // Do not accept a stale or guessed mesh name. Always resolve the
+         // currently committed scene from verified, owner-scoped artifacts.
+         if(!services!.artifacts)return reply.code(503).send('Sceninspektion saknas');
+         const scene=await inspectSavedScene(services!.artifacts,id,project.current_revision);
+         if(!scene.objects.some(object=>object.type==='MESH'&&object.name===objectName))
+           return reply.code(409).send('Objektet finns inte i den aktuella revisionen. Välj objekt igen.');
+         const selectedRevision=Number(form.get('sourceRevision'));
+         if(!Number.isSafeInteger(selectedRevision)||
+           selectedRevision!==project.current_revision)
+           return reply.code(409).send('Modellen har fått en ny revision. Välj objekt igen.');
          await services!.jobs.reserve(session.ownerKey,id,project.current_revision,
            'Applicera bildtextur på '+objectName,undefined,{kind:'python_script',code:'pass'},
            undefined,[{uploadId,texture:{objectName,
              channel:channel as 'baseColor'|'roughness'|'metallic'|'normal'}}]);
          return reply.code(303).header('location',
            '/projects/'+id+'?view=history&message=texture_queued').send();
-       }catch{return reply.code(303).header('location','/models/import?message=error').send();}
+       }catch{return reply.code(303).header('location','/models/import?task=texture&message=error').send();}
      });
      // Dedicated secondary import workflow: the project list stays the first content on mobile.
      app.get('/projects/import',async(request,reply)=>{
