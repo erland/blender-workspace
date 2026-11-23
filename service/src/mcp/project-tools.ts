@@ -521,6 +521,18 @@ export function registerProjectTools(server:McpServer,deps:ProjectServices,
       catch{return failure(new Error('Modal account disconnect failed'));}
     });
   }
+  server.registerTool('workspace_cancel_job',{
+    description:'Request owner-scoped cancellation of a pending or running Blender modeling job. Pending jobs become cancelled immediately. Running jobs enter cancelling until the worker confirms Modal Sandbox termination; otherwise recovery is required. Does not start Modal or change saved revisions.',
+    inputSchema:{jobId:uuid},...schemes(WRITE_SCOPE)
+  },async({jobId})=>{
+    const block=denied(WRITE_SCOPE);if(block)return block;
+    try{
+      const job=await jobs.requestCancellation(ownerKey,jobId);
+      if(!job)return failure(new JobConflict('Job not found'));
+      return result({jobId:job.id,projectId:job.project_id,status:job.status,
+        ...(job.status==='cancelling'?{terminationConfirmed:false}:{})});
+    }catch(e){return failure(e);}
+  });
   server.registerTool('workspace_get_job', {
     description: 'Check the status of a Blender job owned by this workspace.',
     inputSchema: {jobId:uuid},annotations:{readOnlyHint:true},...schemes(READ_SCOPE)
