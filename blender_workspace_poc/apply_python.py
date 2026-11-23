@@ -143,8 +143,11 @@ def main():
     for image in bpy.data.images:
         if image.source=='FILE' and image.filepath.startswith('//resources/'):
             image.reload()
-            if not image.has_data:
-                raise ValueError('Externalized texture could not be reloaded')
+            resource=Path(bpy.path.abspath(image.filepath))
+            if not resource.is_file() or resource.stat().st_size==0:
+                raise ValueError('Externalized texture file missing')
+            if image.size[0]<1 or image.size[1]<1:
+                raise ValueError('Externalized texture could not be decoded')
     save_seconds=round(time.monotonic()-save_start,3)
     preview={'format':'glb','status':'unavailable','reason':'export_failed'}
     files=[blend]
