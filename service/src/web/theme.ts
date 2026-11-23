@@ -99,3 +99,61 @@ export function themedCss(css:string):string{
   +'\ninput,textarea,select{background-color:var(--surface);color:var(--text);border-color:var(--border-strong)}'+
   '\n:focus-visible{outline-color:var(--focus)}';
 }
+
+
+/** DESIGN-002: common visual components appended *after* view-local CSS.
+ * Shared styling stays static and CSP-compatible. View-specific layout,
+ * canvas height, and responsive controls remain owned by each view.
+ */
+export const componentStyles = `
+:root{
+ --radius-sm:8px;--radius-md:12px;--radius-lg:16px;
+ --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;
+ --space-5:20px;--space-6:24px;
+ --font-sm:.875rem;--font-xs:.8rem;
+ --elevation:0 8px 28px -16px var(--shadow);
+}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+h1,h2,h3{font-weight:700;letter-spacing:-.025em;color:var(--text)}
+h1{line-height:1.18}h2,h3{line-height:1.3}
+a{color:var(--accent-text);text-underline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+:is(a,button,select,input,textarea,summary):focus-visible{
+ outline:3px solid var(--focus);outline-offset:3px
+}
+:is(button,.button){font-family:inherit;font-weight:650;transition:background-color .15s ease,
+ border-color .15s ease,box-shadow .15s ease}
+:is(.button,button[type="submit"]){min-height:44px;border-radius:var(--radius-sm)}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+ padding:10px 15px;text-align:center;background:var(--accent);color:var(--button-text);
+ text-decoration:none;border:1px solid transparent}
+.button:hover{background:var(--accent-hover);color:var(--button-text);text-decoration:none}
+.button.alt,.button.secondary{background:var(--accent-soft);color:var(--accent-text);
+ border-color:var(--border)}
+.button.alt:hover,.button.secondary:hover{background:var(--surface-hover);color:var(--text)}
+button:not([disabled]){cursor:pointer}
+button:disabled,.button[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+:is(.card,.panel,.render-tile,.render-card,.public-gallery a){
+ border-color:var(--border);border-radius:var(--radius-lg);background:var(--surface)
+}
+.card{transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+.card:hover{border-color:var(--border-strong);box-shadow:var(--elevation)}
+.card:focus-within{box-shadow:0 0 0 2px var(--focus)}
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea){
+ border:1px solid var(--border-strong);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--text);font:inherit;min-height:44px
+}
+input[type="checkbox"],input[type="radio"],input[type="range"]{accent-color:var(--accent)}
+label{color:var(--text)}
+:where(.muted,.small,.card-meta){color:var(--text-muted)}
+:is(.revision-menu-items,.header-menu){background:var(--surface-raised);
+ border-color:var(--border);box-shadow:var(--elevation);border-radius:var(--radius-md)}
+:is(.tag,.status){font-variant-numeric:tabular-nums}
+.bw-icon{display:inline-block;flex:none;width:1.15em;height:1.15em;vertical-align:-.15em;
+ fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@media(prefers-reduced-motion:reduce){
+ .card,:is(button,.button){transition:none!important}
+}
+`;
