@@ -32,6 +32,7 @@ if __package__ in (None, "") and str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from modal_provider.app_config import modal_app_name
 from modal_provider.memory_config import DEFAULT_MEMORY_MIB,validate_memory_mib
+from modal_provider.resource_transfer import validated_resources,transfer_resources
 ARTIFACT_NAMES = ("scene.blend", "scene.json")  # required; GLB is optional
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
@@ -123,7 +124,8 @@ def estimate_usd(seconds, cpu=2, memory_mib=8192):
 
 def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
         revision=1, input_blend=None, python_file=None,
-        assets_manifest=None, asset_files=None, inline_render=False):
+        assets_manifest=None, asset_files=None, inline_render=False,
+        resource_manifest=None):
     """Run only a validated Python script inside an owner-billed isolated Sandbox."""
     validate_memory_mib(memory_mib)
     if not 1 <= revision <= 99999999:
@@ -179,6 +181,8 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 len(entry['offset'])!=3 or
                 any(type(x) not in (int,float) or not -100000<=x<=100000 for x in entry['offset'])):
                 raise ValueError('Unsafe model source')
+    # Verify every referenced content-addressed resource before billing.
+    resources=validated_resources(resource_manifest)
     # Validate the pinned image before any chargeable Modal API call.
     try:
         image_ref = blender_image_reference()
@@ -201,6 +205,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
             timeout=timeout, workdir="/workspace", block_network=True)
         created = time.monotonic()
         sandbox.filesystem.copy_from_local(str(python_source), "/workspace/out/model.py")
+        transfer_resources(sandbox,resources)
         if revision >= 2:
             sandbox.filesystem.copy_from_local(str(Path(input_blend).resolve()),
                 "/workspace/out/input.blend")
@@ -243,6 +248,31 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 "name": name, "bytes": local.stat().st_size,
                 "sha256": _sha256_file(local)})
         metadata=json.loads((out / "scene.json").read_text(encoding="utf8"))
+        # Verify all worker-declared externalized PNG/JPEG bytes before
+        # returning; do not trust arbitrary paths from the Blender report.
+        resource_files=metadata.get('resourceFiles',[])
+        if not isinstance(resource_files,list) or len(resource_files)>128:
+            raise ValueError('Invalid generated resource manifest')
+        seen=set()
+        for entry in resource_files:
+            if not isinstance(entry,dict) or set(entry)!={'name','sha256','sizeBytes'}:
+                raise ValueError('Invalid generated resource')
+            name=entry['name']
+            if (not isinstance(name,str) or not re.fullmatch(
+                    r'resources/[0-9a-f]{64}\.(?:png|jpg)',name) or name in seen):
+                raise ValueError('Invalid generated resource name')
+            seen.add(name)
+            checksum=entry['sha256']
+            size=entry['sizeBytes']
+            if (not isinstance(checksum,str) or not re.fullmatch(r'[0-9a-f]{64}',checksum)
+                    or type(size) is not int or not 20<=size<=256*1024*1024
+                    or name.split('/')[1].split('.')[0]!=checksum):
+                raise ValueError('Invalid generated resource descriptor')
+            local=out/name
+            local.parent.mkdir(parents=True,exist_ok=True)
+            sandbox.filesystem.copy_to_local('/workspace/out/'+name,str(local))
+            if local.is_symlink() or not local.is_file() or local.stat().st_size!=size or _sha256_file(local)!=checksum:
+                raise ValueError('Corrupt generated resource')
         entries=metadata.get("artifacts",[])
         if isinstance(entries,list) and any(
                 isinstance(item,dict) and item.get("path")=="scene.glb" for item in entries):
@@ -325,6 +355,7 @@ def main():
     p.add_argument("--assets-manifest")
     p.add_argument("--asset-file", action="append", default=[])
     p.add_argument("--inline-render", action="store_true")
+    p.add_argument("--resource-manifest")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--cpu", type=float, default=2)
     p.add_argument("--memory-mib", type=int, default=DEFAULT_MEMORY_MIB)
@@ -342,7 +373,8 @@ def main():
                      timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
                      python_file=args.python_file,
                      assets_manifest=args.assets_manifest,asset_files=args.asset_file,
-                     inline_render=args.inline_render)
+                     inline_render=args.inline_render,
+                     resource_manifest=args.resource_manifest)
         if report["status"] != "PASS" or not report["sandbox_terminated"]:
             raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
     except RunnerDiagnostic as exc:

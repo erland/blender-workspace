@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from modal_provider.runner import blender_image_reference
 from modal_provider.app_config import modal_app_name
 from modal_provider.memory_config import DEFAULT_MEMORY_MIB,validate_memory_mib
+from modal_provider.resource_transfer import validated_resources,transfer_resources
 
 PNG_SIGNATURE=b'\x89PNG\r\n\x1a\n'
 MAX_PNG=16*1024*1024
@@ -27,7 +28,8 @@ def validate_png(path, width, height):
     if (w,hgt)!=(width,height) or h[24]!=8 or h[25] not in (2,6):
         raise ValueError('invalid_png_dimensions')
 
-def render(sdk, out_dir, input_blend, engine, width, height, samples, camera_json=None, memory_mib=DEFAULT_MEMORY_MIB):
+def render(sdk, out_dir, input_blend, engine, width, height, samples, camera_json=None, memory_mib=DEFAULT_MEMORY_MIB,
+           resource_manifest=None):
     validate_memory_mib(memory_mib)
     if engine not in ('CYCLES','BLENDER_EEVEE_NEXT') or width<128 or height<128:
         raise ValueError('Invalid render options')
@@ -42,6 +44,7 @@ def render(sdk, out_dir, input_blend, engine, width, height, samples, camera_jso
     source=Path(input_blend)
     if source.is_symlink() or not source.is_file() or source.stat().st_size>256*1024*1024:
         raise ValueError('Invalid source model')
+    resources=validated_resources(resource_manifest)
     image_ref=blender_image_reference()
     sandbox=None
     out=Path(out_dir)
@@ -52,6 +55,7 @@ def render(sdk, out_dir, input_blend, engine, width, height, samples, camera_jso
         sandbox=sdk.Sandbox.create('sleep','360',app=app,image=image,cpu=2,
                                    memory=memory_mib,timeout=360,workdir='/workspace',
                                    block_network=True)
+        transfer_resources(sandbox,resources)
         sandbox.filesystem.copy_from_local(str(source.resolve()),'/workspace/out/input.blend')
         render_args=['--source','/workspace/out/input.blend','--output','/workspace/out/render.png',
                      '--engine',engine,'--width',str(width),'--height',str(height),'--samples',str(samples)]
@@ -81,10 +85,12 @@ if __name__=='__main__':
     p.add_argument('--samples',required=True,type=int)
     p.add_argument('--camera-json',default=None)
     p.add_argument('--memory-mib',type=int,default=DEFAULT_MEMORY_MIB)
+    p.add_argument('--resource-manifest')
     a=p.parse_args()
     try:
         import modal
-        render(modal,a.out,a.input_blend,a.engine,a.width,a.height,a.samples,a.camera_json,a.memory_mib)
+        render(modal,a.out,a.input_blend,a.engine,a.width,a.height,a.samples,a.camera_json,a.memory_mib,
+               a.resource_manifest)
     except Exception:
         # Credentials, Blender output and Modal exceptions must never leak.
         print('BW_RENDER_ERROR',file=sys.stderr)

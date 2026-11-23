@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes,randomUUID} from 'node:crypto';
 import pg from 'pg';
+import {writeFile} from 'node:fs/promises';
+import path from 'node:path';
 import {applyMigrations} from '../dist/db/migrations.js';
 import {ModalAccountManager} from '../dist/modal/modal-accounts.js';
 import {modalJobEnv,ModalPythonExecutor} from '../dist/jobs/modal-executor.js';
@@ -79,7 +81,9 @@ test('orchestrator passes claimed Python job owner to executor, never caller ove
     expected_revision:0,requested_revision:1,status:'running',edit_spec:null,operation_spec:spec};},
     async finalize(){return {status:'completed'};}};
   let calledOwner;
-  const executor={async runPythonScript(_dir,owner){calledOwner=owner;}};
+  const executor={async runPythonScript(dir,owner){calledOwner=owner;
+    await writeFile(path.join(dir,'scene.json'),JSON.stringify({resourceFiles:[]}));
+  }};
   const artifacts={async publish(){}};
   const orch=new JobOrchestrator(fakeJobs,artifacts,executor);
   await orch.execute('owner-from-job','job');

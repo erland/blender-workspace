@@ -38,6 +38,7 @@ function fixture(t){
     async list(){return [];},
   };
   const artifacts={
+    async verifiedRevisionResources(){return [];},
     async inspect(){return {artifacts:[
       {name:'scene.blend',sizeBytes:nativeBytes.length},
       {name:'scene.json',sizeBytes:128}

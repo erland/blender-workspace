@@ -249,6 +249,10 @@ export class LocalArtifactStore {
     }
     return {...manifest,resources};
   }
+  /** Trusted worker-only ingestion. The content store deduplicates globally. */
+  async storeResource(sourcePath:string):Promise<StoredResource>{
+    return this.resources.put(sourcePath);
+  }
   /** Resolve only resources belonging to an existing, verified revision.
    * An arbitrary user-provided hash is never sufficient authorization.
    * This internal API deliberately does not materialize arbitrary paths.

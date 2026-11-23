@@ -8,7 +8,7 @@ import type {ModalRenderExecutor} from './modal-render.js';
 
 export class RenderOrchestrator {
  constructor(private readonly queue:Pick<RenderJobRepository,'complete'|'fail'|'get'>,
-   private readonly native:Pick<LocalArtifactStore,'verifiedArtifactPath'>,
+   private readonly native:Pick<LocalArtifactStore,'verifiedArtifactPath'|'verifiedRevisionResources'>,
    private readonly previews:Pick<RenderArtifactStore,'publish'|'inspectUncommitted'>,
    private readonly executor:Pick<ModalRenderExecutor,'run'>){}
  async executeClaimed(job:RenderJob):Promise<void>{
@@ -17,10 +17,11 @@ export class RenderOrchestrator {
    let published=false;
    try{
      const source=await this.native.verifiedArtifactPath(job.project_id,job.source_revision,'scene.blend');
+     const resources=await this.native.verifiedRevisionResources(job.project_id,job.source_revision);
      await this.executor.run(dir,job.owner_key,source,{
        engine:job.engine,width:job.width,height:job.height,samples:job.samples,
        ...(job.requested_from==='viewer'&&job.camera_override?
-         {requestedFrom:'viewer' as const,camera:job.camera_override}:{})});
+         {requestedFrom:'viewer' as const,camera:job.camera_override}:{})},resources);
      const saved=await this.previews.publish(job.project_id,job.id,path.join(dir,'render.png'));
      published=true;
      await this.queue.complete(job.owner_key,job.id,saved.sha256,saved.sizeBytes);

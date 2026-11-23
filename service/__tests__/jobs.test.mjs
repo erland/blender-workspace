@@ -34,7 +34,8 @@ async function fixture(t,run){
     executions++;
     if(run)return run({dir,who,revision,source,input});
     for(const filename of ['scene.blend','scene.glb','scene.json'])
-      await writeFile(path.join(dir,filename),'mock-'+revision+'-'+filename);
+      await writeFile(path.join(dir,filename),filename==='scene.json'?
+        JSON.stringify({resourceFiles:[]}):'mock-'+revision+'-'+filename);
   }};
   const workflow=new JobOrchestrator(jobs,store,executor);
   return {pool,owner,other,projects,jobs,project,store,workflow,
@@ -65,7 +66,8 @@ test('Python worker failure leaves no revision and can be retried as a new job',
   const x=await fixture(t,async({dir,revision})=>{
     if(fails){fails=false;throw Error('Blender unavailable');}
     for(const ext of ['blend','glb','json'])
-      await writeFile(path.join(dir,'scene.'+ext),'mock-'+revision+'-'+ext);
+      await writeFile(path.join(dir,'scene.'+ext),ext==='json'?
+        JSON.stringify({resourceFiles:[]}):'mock-'+revision+'-'+ext);
   });
   const first=await x.jobs.reserve(x.owner,x.project.id,0,'Attempt 1',undefined,spec);
   await assert.rejects(()=>x.workflow.execute(x.owner,first.id),/Blender unavailable/);

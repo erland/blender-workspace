@@ -389,6 +389,9 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            if(enabled){
              if(!services!.artifacts)return reply.code(404).send('BLEND saknas');
              try{
+               if((await services!.artifacts.verifiedRevisionResources(
+                 projectId,Number(revision))).length)
+                 return reply.code(409).send('Portabel nedladdning för externa resurser är inte tillgänglig ännu');
                await services!.artifacts.verifiedArtifactPath(
                  projectId,Number(revision),'scene.blend');
              }catch{return reply.code(422).send('BLEND saknas eller är skadad');}
@@ -470,6 +473,9 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          const revisions=await services!.projects.revisions(session.ownerKey,projectId);
          if(!revisions.some(r=>r.revision===Number(revision)&&r.artifact_prefix))
            return reply.code(404).send('Revisionen hittades inte');
+         if((await services!.artifacts.verifiedRevisionResources(
+           projectId,Number(revision))).length)
+           return reply.code(409).send('Portabel nedladdning för resurser är inte tillgänglig ännu');
          const native=await services!.artifacts.verifiedArtifactPath(
            projectId,Number(revision),'scene.blend');
          const filename=blendDownloadFilename(project.name,Number(revision));
@@ -908,6 +914,9 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
      try{
        const share=await services!.publicShares.resolve(token);
        if(!share||share.allow_download!==true)
+         return reply.code(404).send({error:'not_found'});
+       if((await services!.artifacts.verifiedRevisionResources(
+         share.project_id,share.revision)).length)
          return reply.code(404).send({error:'not_found'});
        const file=await services!.artifacts.verifiedArtifactPath(
          share.project_id,share.revision,'scene.blend');
