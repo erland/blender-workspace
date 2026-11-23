@@ -19,6 +19,7 @@ import {viewerPage} from './viewer-page.js';
 import type {ProjectDeletionService} from './jobs/project-deletion.js';
 import {projectIndexPage,projectImportPage,modelImportPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
 import {safeOwnerJobError,describeJobFailure} from './jobs/job-diagnostics.js';
+import {blendDownloadFilename,portableResourceInfo} from './web/blend-download.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -268,6 +269,34 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
        return projectImportPage(session.csrf);
      });
+     // Native Blender file download is read-only, owner scoped and SHA-256
+     // verified. No Blender or Modal job is started and project data is not
+     // modified. Do not return an artifact from an uncommitted revision.
+     app.get('/projects/:projectId/revisions/:revision/download',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').header('cache-control','private, no-store')
+         .header('content-security-policy',"default-src 'none'")
+         .header('x-frame-options','DENY')
+         .header('cross-origin-resource-policy','same-origin');
+       if(!session)return reply.redirect('/settings/login');
+       const {projectId,revision}=request.params as {projectId:string;revision:string};
+       const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+       if(!idPattern.test(projectId)||!/^[1-9][0-9]{0,7}$/.test(revision))
+         return reply.code(404).send('Revisionen hittades inte');
+       if(!services!.artifacts)return reply.code(404).send('Revisionen hittades inte');
+       try{
+         const project=await services!.projects.get(session.ownerKey,projectId);
+         if(!project)return reply.code(404).send('Revisionen hittades inte');
+         const revisions=await services!.projects.revisions(session.ownerKey,projectId);
+         if(!revisions.some(r=>r.revision===Number(revision)&&r.artifact_prefix))
+           return reply.code(404).send('Revisionen hittades inte');
+         const native=await services!.artifacts.verifiedArtifactPath(
+           projectId,Number(revision),'scene.blend');
+         const filename=blendDownloadFilename(project.name,Number(revision));
+         return reply.header('content-disposition','attachment; filename="'+filename+'"')
+           .type('application/octet-stream').send(createReadStream(native));
+       }catch{return reply.code(404).send('Revisionen hittades inte');}
+     });
      app.get('/projects/:projectId',async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
        secure(reply).header('vary','Cookie').type('text/html; charset=utf-8');
@@ -283,9 +312,25 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            if(!revision.artifact_prefix||!services!.artifacts)return {...revision,glbAvailable:false,pngAvailable:false};
            try{
              const manifest=await services!.artifacts.inspect(projectId,revision.revision,false);
-             return {...revision,glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb'),
-                pngAvailable:manifest.artifacts.some(a=>a.name==='scene.png')};
-           }catch{return {...revision,glbAvailable:false,pngAvailable:false};}
+             let portableStatus:'complete'|'external'|'unknown'='unknown';
+             let externalCount=0;
+             if(manifest.artifacts.some(a=>a.name==='scene.json')&&
+                services!.artifacts.readVerifiedSmallArtifact){
+               try{
+                 const report=await services!.artifacts.readVerifiedSmallArtifact(
+                   projectId,revision.revision,'scene.json');
+                 const summary=report?portableResourceInfo(JSON.parse(report)):undefined;
+                 if(summary){
+                   portableStatus=summary.status;
+                   externalCount=summary.externalCount;
+                 }
+               }catch{/* Older, oversized or tampered reports remain unknown. */}
+             }
+             return {...revision,portableStatus,externalCount,
+               glbAvailable:manifest.artifacts.some(a=>a.name==='scene.glb'),
+               pngAvailable:manifest.artifacts.some(a=>a.name==='scene.png')};
+           }catch{return {...revision,portableStatus:'unknown' as const,
+                glbAvailable:false,pngAvailable:false};}
          }));
          const message=(request.query as {message?:string}).message;
          const renderJobs=services!.renderJobs
