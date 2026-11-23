@@ -88,7 +88,7 @@ export class JobOrchestrator {
         }
       }
       const onProgress=async(phase:string,blenderSignal:boolean)=>{
-        await this.jobs.heartbeat(owner,jobId,phase,blenderSignal);
+        await this.jobs.heartbeat?.(owner,jobId,phase,blenderSignal);
       };
       await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets,resources,onProgress);
       await onProgress('artifact_validation',false);
