@@ -68,7 +68,7 @@ test('DEV-057 anonymous native download is explicit, verified and immediately re
  assert.doesNotMatch(page.body,/href="\/share\/[^"]+\/scene.blend"/);
  const ownerPage=await f.app.inject({method:'GET',url:base,
    headers:{cookie:'owner-session'}});
- assert.match(ownerPage.body,/Tillåt BLEND-nedladdning/);
+ assert.match(ownerPage.body,/Kan mottagaren ladda ned modellen/);
  assert.match(ownerPage.body,/value="no" selected/);
  assert.equal((await f.change('yes')).statusCode,303);
  assert.equal(f.enabled,true);
