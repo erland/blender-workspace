@@ -1,6 +1,10 @@
 import {escapeHtml} from './project-pages.js';
 
-export function publicSharePage(token:string,projectName:string,revision:number):string {
+export interface ShareRenderImage {
+ id:string;engine:string;width:number;height:number;created_at:Date;
+}
+export function publicSharePage(token:string,projectName:string,revision:number,
+ renders:ShareRenderImage[]=[]):string {
   const title=escapeHtml(projectName);
   // Called only after token has been verified by the repository.
   return `<!doctype html><html lang="sv"><head><meta charset="utf-8">
@@ -23,6 +27,12 @@ button:disabled,select:disabled{opacity:.5}
 #animation-controls[hidden]{display:none}
 #public-status{display:block;color:#475569;min-height:24px}
 .note{color:#475569;font-size:.9rem;margin:12px 2px 0}
+.public-gallery{margin-top:16px}
+.public-gallery h2{font-size:1.15rem;margin:0 0 12px}
+.public-gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:12px}
+.public-gallery a{display:block;padding:7px;border:1px solid #cbd5e1;border-radius:10px;text-decoration:none;color:inherit}
+.public-gallery img{display:block;max-width:100%;width:100%;height:175px;object-fit:contain;background:#eef2f7;border-radius:6px}
+.public-gallery small{display:block;color:#475569;margin-top:7px}
 footer{margin-top:18px;color:#64748b;font-size:.82rem}
 </style></head><body>
 <header><h1>${title}</h1><p>Delad Blender-modell · revision ${revision}</p></header>
@@ -35,15 +45,24 @@ footer{margin-top:18px;color:#64748b;font-size:.82rem}
 </div>
 <p id="public-status" role="status" aria-live="polite">Laddar modell…</p>
 </section>
+${renders.length?`<section class="public-gallery" aria-label="Renderade bilder från revision ${revision}">
+<h2>Renderade bilder · revision ${revision}</h2><div class="public-gallery-grid">${renders.map(r=>
+  `<a href="/share/${token}/renders/${r.id}.png" target="_blank" rel="noopener noreferrer">
+<img loading="lazy" decoding="async" src="/share/${token}/renders/${r.id}.png"
+ alt="Rendering ${escapeHtml(r.engine)} från revision ${revision}">
+<small>${escapeHtml(r.engine)} · ${r.width} × ${r.height}</small></a>`).join('')}
+</div></section>`:''}
 <p class="note">Rotera med fingret eller musen, zooma med två fingrar eller mushjulet.
-Den här länken ger endast visningsåtkomst till revision ${revision}. Renderade bilder
-och nedladdning av Blender-originalet publiceras inte i denna version.</p>
+Den här länken ger endast visningsåtkomst till revision ${revision} och de renderade
+bilder som ägaren uttryckligen har valt. Nedladdning av Blender-originalet
+är ännu inte tillgänglig för besökare.</p>
 <footer>Blender Workspace · Publik, skrivskyddad förhandsvisning</footer>
 </main><script type="module" src="/share/assets/public-viewer.js"></script></body></html>`;
 }
 
 export function ownerSharePage(projectId:string,revision:number,csrf:string,
-  status:'none'|'active'|'revoked',newLink?:string):string {
+  status:'none'|'active'|'revoked',newLink?:string,
+  candidates:ShareRenderImage[]=[],selectedIds:string[]=[],message?:string):string {
   const base='/projects/'+encodeURIComponent(projectId)+'/revisions/'+revision+'/share';
   // Only the freshly generated link is displayed, never stored in plaintext.
   const link=newLink?`<div class="link"><a href="${escapeHtml(newLink)}" rel="noreferrer noopener"
@@ -60,7 +79,14 @@ button{min-height:44px;padding:10px 16px;border:1px solid #2563eb;border-radius:
 button.secondary{background:white;color:#2054b8}
 .link{padding:12px;border:1px solid #b9cbe7;border-radius:9px;overflow-wrap:anywhere}
 p{color:#4b5563}a{color:#2054b8}
-form{display:inline-block;margin:8px 12px 8px 0}
+form.action-form{display:inline-block;margin:8px 12px 8px 0}
+.image-choice{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #d8e2ed;border-radius:10px;margin:8px 0;cursor:pointer}
+.image-choice img{width:96px;height:80px;object-fit:contain;background:#eef2f7;border-radius:6px}
+.image-choice input{width:24px;height:24px;flex:0 0 auto}
+.gallery-select{border-top:1px solid #d8e2ed;margin-top:20px;padding-top:14px}
+.gallery-select h2{font-size:1.15rem}
+.image-choice span{flex:1}
+.status{padding:8px 12px;background:#edf5ff;border-radius:8px}
 </style></head><body><main>
 <p><a href="/projects/${encodeURIComponent(projectId)}?view=history">← Till revisionshistoriken</a></p>
 <h1>Dela revision ${revision}</h1>
@@ -68,14 +94,33 @@ form{display:inline-block;margin:8px 12px 8px 0}
 status==='revoked'?'Den tidigare delningslänken är återkallad.':
 'Den här revisionen är ännu inte publicerad.'}</p>
 ${link}
-<p>Delningen är skrivskyddad och visar enbart GLB-modellen och dess animationer.
-Ingen kan starta en rendering, se andra revisioner eller ladda ned BLEND via denna länk.</p>
-<form action="${base}" method="post"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+<p>Delningen är skrivskyddad och visar GLB-modellen, dess animationer och
+de färdiga renderingar du själv väljer. Ingen besökare kan starta en rendering,
+se andra revisioner eller ladda ned BLEND via denna länk.</p>
+${message==='images_saved'?'<p role="status" class="status">De publika bilderna har uppdaterats. Länken är oförändrad.</p>':
+message==='images_error'?'<p role="alert" class="status">Bildurvalet kunde inte sparas. Kontrollera att bilderna är färdiga och tillhör revisionen.</p>':''}
+<form class="action-form" action="${base}" method="post"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
 <input type="hidden" name="action" value="publish">
 <button type="submit">${status==='active'?'Skapa ny delningslänk':'Skapa publik delningslänk'}</button></form>
 ${status==='active'?`<form action="${base}" method="post">
 <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
 <input type="hidden" name="action" value="revoke">
 <button class="secondary" type="submit">Återkalla delningslänken</button></form>`:''}
+${status==='active'?`<section class="gallery-select">
+<h2>Publika renderade bilder</h2>
+<p>Välj högst 12 färdiga bilder från revision ${revision}. Bara markerade bilder blir
+synliga för mottagaren. Nya renderingar publiceras aldrig automatiskt.</p>
+<form action="${base}" method="post">
+<input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+<input type="hidden" name="action" value="images">
+${candidates.length?candidates.map(r=>`<label class="image-choice">
+<input type="checkbox" name="imageId" value="${escapeHtml(r.id)}"
+ ${selectedIds.includes(r.id)?'checked':''}>
+<img loading="lazy" src="/renders/${encodeURIComponent(projectId)}/${r.id}.png"
+ alt="Rendering ${escapeHtml(r.engine)} från revision ${revision}">
+<span><strong>${escapeHtml(r.engine)}</strong> · ${r.width} × ${r.height}</span>
+</label>`).join(''):'<p>Inga färdiga renderingar tillgängliga för revisionen ännu.</p>'}
+<button type="submit">Spara publika bilder</button>
+</form></section>`:''}
 </main></body></html>`;
 }
