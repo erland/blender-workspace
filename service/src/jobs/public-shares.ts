@@ -105,6 +105,26 @@ export class PublicShareRepository {
       [projectId,owner,revision,selected]);
     return Boolean(result.rowCount);
   }
+  /** Enable public native download only for an active, owner-controlled share.
+   * Updating an existing share preserves its token and selected image whitelist.
+   * Revocation and expiration cannot be bypassed.
+   */
+  async setDownloadPermission(owner:string,projectId:string,revision:number,enabled:boolean):Promise<boolean>{
+    validProject(projectId,revision);
+    if(!owner||owner.length>200||typeof enabled!=='boolean')
+      throw new RangeError('Invalid public download permission');
+    const res=await this.pool.query(
+      `UPDATE bw_public_shares s SET allow_download=$4
+       FROM bw_projects p JOIN bw_project_revisions r
+         ON r.project_id=p.id AND r.revision=$3
+       WHERE s.project_id=$1 AND s.owner_key=$2 AND s.revision=$3
+         AND p.id=s.project_id AND p.owner_key=$2 AND p.deleted_at IS NULL
+         AND r.artifact_prefix IS NOT NULL
+         AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at>now())
+       RETURNING s.project_id`,
+      [projectId,owner,revision,enabled]);
+    return Boolean(res.rowCount);
+  }
   async revoke(owner:string,projectId:string,revision:number):Promise<boolean>{
     validProject(projectId,revision);
     const res=await this.pool.query(
@@ -127,7 +147,7 @@ export class PublicShareRepository {
        JOIN bw_project_revisions r ON r.project_id=s.project_id AND r.revision=s.revision
        WHERE s.token_sha256=$1 AND s.revoked_at IS NULL
          AND (s.expires_at IS NULL OR s.expires_at>now())
-         AND s.allow_glb=true AND s.allow_download=false
+         AND s.allow_glb=true
          AND (
            (s.allow_renders=false AND cardinality(s.selected_render_ids)=0)
            OR (s.allow_renders=true AND cardinality(s.selected_render_ids) BETWEEN 1 AND 12)
