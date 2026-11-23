@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild viewer/client.js --bundle --format=esm --target=es2022 --outfile=dist/viewer.js",
+    "build": "tsc -p tsconfig.json && esbuild viewer/client.js --bundle --format=esm --target=es2022 --outfile=dist/viewer.js && esbuild viewer/public-client.js --bundle --format=esm --target=es2022 --outfile=dist/public-viewer.js",
     "start": "node dist/main.js",
     "test": "node --test __tests__/*.test.mjs",
     "check": "npm run build && npm test",

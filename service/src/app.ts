@@ -20,6 +20,9 @@ import type {ProjectDeletionService} from './jobs/project-deletion.js';
 import {projectIndexPage,projectImportPage,modelImportPage,projectDetailPage,projectDeletePage,jobsOverviewPage,type PortalJobItem} from './web/project-pages.js';
 import {safeOwnerJobError,describeJobFailure} from './jobs/job-diagnostics.js';
 import {blendDownloadFilename,portableResourceInfo} from './web/blend-download.js';
+import type {PublicShareRepository} from './jobs/public-shares.js';
+import {validShareToken} from './jobs/public-shares.js';
+import {publicSharePage,ownerSharePage} from './web/public-share-page.js';
 import {McpServer} from '@modelcontextprotocol/server';
 import {GoogleOAuthServer} from './auth/google-server.js';
 import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
@@ -35,6 +38,7 @@ export function createApp(config:ServiceConfig,
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
    projectClone?:Pick<ProjectCloneService,'clone'>;
   uploads?:Pick<UploadedAssets,'upload'|'list'|'get'|'verifiedPath'>;
+  publicShares?:Pick<PublicShareRepository,'create'|'owned'|'revoke'|'resolve'>;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
   glbPreviews?:Pick<GlbPreviewRepository,'latest'|'get'|'reserve'>;
@@ -310,6 +314,65 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
        return projectImportPage(session.csrf);
      });
+     // Share management never responds to unauthenticated callers. Only
+     // the owner can publish/revoke, with exact revision ownership and CSRF.
+     app.get('/projects/:projectId/revisions/:revision/share',async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').header('cache-control','private, no-store')
+         .header('referrer-policy','no-referrer').type('text/html; charset=utf-8');
+       if(!session)return reply.redirect('/settings/login');
+       const {projectId,revision}=request.params as {projectId:string;revision:string};
+       const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+       if(!uuid.test(projectId)||!/^[1-9][0-9]{0,7}$/.test(revision)||!services!.publicShares)
+         return reply.code(404).send('Revisionen hittades inte');
+       try{
+         const project=await services!.projects.get(session.ownerKey,projectId);
+         const revisions=await services!.projects.revisions(session.ownerKey,projectId);
+         if(!project||!revisions.some(r=>r.revision===Number(revision)&&r.artifact_prefix))
+           return reply.code(404).send('Revisionen hittades inte');
+         const share=await services!.publicShares.owned(session.ownerKey,projectId,Number(revision));
+         const status=share&&!share.revoked_at&&
+           (!share.expires_at||new Date(share.expires_at)>new Date())?'active':
+           share?'revoked':'none';
+         return ownerSharePage(projectId,Number(revision),session.csrf,status);
+       }catch{return reply.code(404).send('Revisionen hittades inte');}
+     });
+     app.post('/projects/:projectId/revisions/:revision/share',{bodyLimit:4096},
+       async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie').header('cache-control','private, no-store')
+         .header('referrer-policy','no-referrer').type('text/html; charset=utf-8');
+       if(!session)return reply.code(401).send('Unauthorized');
+       const origin=request.headers.origin;
+       const safari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+       if(origin!==config.publicOrigin&&!safari)return reply.code(403).send('Forbidden');
+       if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+         return reply.code(415).send('Unsupported Media Type');
+       const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
+       if(form.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
+       const action=form.get('action');
+       if(!['publish','revoke'].includes(action??''))return reply.code(400).send('Invalid action');
+       const {projectId,revision}=request.params as {projectId:string;revision:string};
+       const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+       if(!uuid.test(projectId)||!/^[1-9][0-9]{0,7}$/.test(revision)||
+          !services!.publicShares)return reply.code(404).send('Revisionen hittades inte');
+       try{
+         const project=await services!.projects.get(session.ownerKey,projectId);
+         const revisions=await services!.projects.revisions(session.ownerKey,projectId);
+         if(!project||!revisions.some(r=>r.revision===Number(revision)&&r.artifact_prefix))
+           return reply.code(404).send('Revisionen hittades inte');
+         if(action==='revoke'){
+           await services!.publicShares.revoke(session.ownerKey,projectId,Number(revision));
+           return ownerSharePage(projectId,Number(revision),session.csrf,'revoked');
+         }
+         // Publication is impossible unless real, checksum-verified GLB exists.
+         await services!.artifacts!.verifiedArtifactPath(projectId,Number(revision),'scene.glb');
+         const created=await services!.publicShares.create(session.ownerKey,projectId,Number(revision));
+         const publicUrl=config.publicOrigin+'/share/'+created.token;
+         return ownerSharePage(projectId,Number(revision),session.csrf,'active',publicUrl);
+       }catch{return reply.code(404).send('Revisionen hittades inte eller GLB saknas');}
+     });
+
      // Native Blender file download is read-only, owner scoped and SHA-256
      // verified. No Blender or Modal job is started and project data is not
      // modified. Do not return an artifact from an uncommitted revision.
@@ -691,6 +754,45 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
      return (await services!.projects.revisions(owner,projectId))
        .some(v=>v.revision===revision&&v.artifact_prefix);
    }
+   // A separate read-only public viewer never reuses the private viewer's
+   // authenticated APIs. Every asset request validates the revocable token.
+   const publicHeaders=(reply:any)=>reply.header('cache-control','no-store')
+     .header('referrer-policy','no-referrer')
+     .header('x-content-type-options','nosniff')
+     .header('x-robots-tag','noindex, nofollow, noarchive')
+     .header('x-frame-options','DENY')
+     .header('cross-origin-resource-policy','same-origin');
+   app.get('/share/assets/public-viewer.js',async(_request,reply)=>{
+     return publicHeaders(reply).header('content-security-policy',"default-src 'none'")
+       .type('application/javascript; charset=utf-8')
+       .send(createReadStream(fileURLToPath(new URL('./public-viewer.js',import.meta.url))));
+   });
+   app.get('/share/:token',async(request,reply)=>{
+     publicHeaders(reply).header('content-security-policy',
+       "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
+     const {token}=request.params as {token:string};
+     if(!validShareToken(token)||!services!.publicShares)
+       return reply.code(404).send('Delningen hittades inte');
+     try{
+       const share=await services!.publicShares.resolve(token);
+       if(!share)return reply.code(404).send('Delningen hittades inte');
+       await services!.artifacts!.verifiedArtifactPath(share.project_id,share.revision,'scene.glb');
+       return reply.type('text/html; charset=utf-8')
+         .send(publicSharePage(token,share.project_name,share.revision));
+     }catch{return reply.code(404).send('Delningen hittades inte');}
+   });
+   app.get('/share/:token/scene.glb',async(request,reply)=>{
+     publicHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const {token}=request.params as {token:string};
+     if(!validShareToken(token)||!services!.publicShares)
+       return reply.code(404).send({error:'not_found'});
+     try{
+       const share=await services!.publicShares.resolve(token);
+       if(!share)return reply.code(404).send({error:'not_found'});
+       const file=await services!.artifacts!.verifiedArtifactPath(share.project_id,share.revision,'scene.glb');
+       return reply.type('model/gltf-binary').send(createReadStream(file));
+     }catch{return reply.code(404).send({error:'not_found'});}
+   });
    app.get('/viewer/assets/viewer.js',async(_request,reply)=>{
      viewerHeaders(reply).header('content-security-policy',"default-src 'none'");
      return reply.type('application/javascript; charset=utf-8')

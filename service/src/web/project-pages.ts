@@ -238,6 +238,9 @@ export function projectDetailPage(
    const status=saved?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
    const open=saved&&r.glbAvailable!==false?
      '<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa GLB</a>':'';
+   const share=saved&&r.glbAvailable!==false?
+     '<a class="button alt" href="'+base+'/revisions/'+r.revision+
+     '/share">Dela revision</a>':'';
    const download=saved?
      '<a class="button alt" href="'+base+'/revisions/'+r.revision+
      '/download" download>⬇ Ladda ned BLEND</a>':'';
@@ -250,7 +253,7 @@ export function projectDetailPage(
    return '<li><div><p><strong>Revision '+r.revision+'</strong> '+status+'</p>'+
      '<p class="muted small">'+escapeHtml(r.note||'Ingen beskrivning')+' · '+when(r.created_at)+
      '</p>'+portability+'</div>'+
-     (saved?'<div class="revision-actions">'+open+download+'</div>':'')+'</li>';
+     (saved?'<div class="revision-actions">'+open+download+share+'</div>':'')+'</li>';
  }).join('');
  const tab=(title:string,icon:string,url:string,selected:boolean)=>
    '<a class="project-tab" href="'+url+'"'+(selected?' aria-current="page"':'')+'>'+
