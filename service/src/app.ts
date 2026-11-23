@@ -211,6 +211,8 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          if(error instanceof RangeError){
            const reason=error.message;
            const code=reason==='Unrecognized BLEND header'?'invalid_blend_format':
+             reason==='Invalid PNG texture'||reason==='Invalid JPEG texture'||
+             reason==='Invalid texture dimensions'?'invalid_texture':
              reason==='Upload library limit reached'?'library_full':
              reason==='Invalid upload filename'?'invalid_filename':
              reason==='Upload must be 20 bytes to 32 MiB'?'invalid_size':'invalid_model';
@@ -258,6 +260,45 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            undefined,[{uploadId,offset:[0,0,0]}]);
          return reply.code(303).header('location',
            '/projects/'+project.id+'?message=import_queued').send();
+       }catch{return reply.code(303).header('location','/models/import?message=error').send();}
+     });
+     // Applying a private image is an explicit owner-paid modeling job. The
+     // worker validates the stored checksum again immediately before billing.
+     app.post('/models/textures/apply',{bodyLimit:4096},async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       secure(reply).header('vary','Cookie');
+       if(!session)return reply.code(401).send('Unauthorized');
+       const origin=request.headers.origin;
+       const safari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+       if(origin!==config.publicOrigin&&!safari)return reply.code(403).send('Forbidden');
+       if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+         return reply.code(415).send('Unsupported Media Type');
+       const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
+       if(form.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
+       if(form.get('confirm')!=='yes')return reply.code(400).send('Kostnadsbekräftelse saknas');
+       if(!services!.uploads||!services!.modalAccounts)
+         return reply.code(503).send('Texturtjänsten saknas');
+       const id=form.get('projectId')??'',uploadId=form.get('uploadId')??'';
+       const objectName=(form.get('objectName')??'').trim(),channel=form.get('channel')??'';
+       const uid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+       if(!uid.test(id)||!uid.test(uploadId)||!objectName||objectName.length>200||
+          !['baseColor','roughness','metallic','normal'].includes(channel))
+         return reply.code(400).send('Ogiltig texturkoppling');
+       try{
+         const [project,asset,account]=await Promise.all([
+           services!.projects.get(session.ownerKey,id),
+           services!.uploads.get(session.ownerKey,uploadId),
+           services!.modalAccounts.status(session.ownerKey)]);
+         if(!project||!asset||!['png','jpg'].includes(asset.format))
+           return reply.code(404).send('Projekt eller bildtextur hittades inte');
+         if(!account.connected)return reply.code(409).send('Anslut Modal i Inställningar');
+         if(project.current_revision<1)return reply.code(409).send('Modellen saknar revision');
+         await services!.jobs.reserve(session.ownerKey,id,project.current_revision,
+           'Applicera bildtextur på '+objectName,undefined,{kind:'python_script',code:'pass'},
+           undefined,[{uploadId,texture:{objectName,
+             channel:channel as 'baseColor'|'roughness'|'metallic'|'normal'}}]);
+         return reply.code(303).header('location',
+           '/projects/'+id+'?view=history&message=texture_queued').send();
        }catch{return reply.code(303).header('location','/models/import?message=error').send();}
      });
      // Dedicated secondary import workflow: the project list stays the first content on mobile.
