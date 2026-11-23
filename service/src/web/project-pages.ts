@@ -125,7 +125,7 @@ const style=[
 function layout(title:string,body:string,liveUpdates=false):string {
  return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
  '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+'<style>'+themeStyles+themedCss(style)+componentStyles+'</style></head><body>'+
- '<header><div class="bar"><a class="logo" href="/">◈ Blender Workspace</a>'+
+ '<header><div class="bar"><a class="logo" href="/">'+uiIcon('cube')+' Blender Workspace</a>'+
  '<nav aria-label="Huvudnavigering"><a href="/">Projekt</a><a href="/jobs">Jobb</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
  '<main>'+body+'</main>'+(liveUpdates?'<script src="/portal/assets/live-status.js" defer></script>':'')+'</body></html>';
 }
@@ -299,7 +299,7 @@ export function projectDetailPage(
    '<div class="project-header"><div class="project-section-heading"><h1>'+
      escapeHtml(p.name)+'</h1>'+
      (csrf===undefined?'':'<a class="project-settings-link" href="'+settingsUrl+
-       '"'+(view==='settings'?' aria-current="page"':'')+'>⚙ Projektinställningar</a>')+
+       '"'+(view==='settings'?' aria-current="page"':'')+'>'+uiIcon('settings')+' Projektinställningar</a>')+
    '</div>'+
    (p.description?'<p class="muted project-description">'+escapeHtml(p.description)+'</p>':'')+
    '<p class="muted small">Senaste revision '+p.current_revision+' · Ändrad '+when(p.updated_at)+'</p>'+
