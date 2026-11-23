@@ -84,8 +84,8 @@ export class ModalPythonExecutor implements BlenderExecutor {
           markerBuffer=(markerBuffer+chunk.toString('utf8')).slice(-1024);
           const lines=markerBuffer.split('\\n');markerBuffer=lines.pop()??'';
           for(const line of lines){
-            const m=/^BW_PROGRESS phase=(modal_start|blender_execution|artifact_transfer|artifact_validation)$/.exec(line.trim());
-            if(m && onProgress)void onProgress(m[1],m[1]==='blender_execution').catch(()=>{});
+            const m=/^BW_PROGRESS phase=(modal_start|blender_execution|artifact_transfer|artifact_validation)( alive=1)?$/.exec(line.trim());
+            if(m && onProgress)void onProgress(m[1],Boolean(m[2])).catch(()=>{});
           }
         });
         proc.stderr.on('data',(chunk:Buffer)=>{stderr=append(stderr,chunk);});
