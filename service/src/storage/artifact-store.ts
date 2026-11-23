@@ -2,11 +2,17 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, stat, lstat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import {ContentAddressedResourceStore} from './content-addressed-resources.js';
+import type {StoredResource} from './content-addressed-resources.js';
 
 export interface StoredArtifact {
   name: string;
   sizeBytes: number;
   sha256: string;
+}
+/** A stable logical resource path inside an isolated Blender workspace. */
+export interface RevisionResource extends StoredResource {
+  name:string;
 }
 export interface RevisionManifest {
   formatVersion: 1;
@@ -14,6 +20,7 @@ export interface RevisionManifest {
   revision: number;
   createdAt: string;
   artifacts: StoredArtifact[];
+  resources?: RevisionResource[];
 }
 export interface IncomingArtifact {
   name: string;
@@ -23,6 +30,46 @@ export class RevisionConflictError extends Error {
   constructor(message: string) { super(message); this.name = 'RevisionConflictError'; }
 }
 const MAX_ARTIFACTS = 12;
+const MAX_RESOURCES = 128;
+const MAX_RESOURCE_PATH_LENGTH = 220;
+const RESOURCE_SEGMENT = /^[a-zA-Z0-9_-]{1,80}$/;
+const RESOURCE_EXTENSION = /^[a-zA-Z0-9]{1,12}$/;
+/** A logical name must be portable and must never escape the isolated job. */
+function resourceName(name:string):string {
+  if(typeof name!=='string'||name.length<3||name.length>MAX_RESOURCE_PATH_LENGTH||name.includes('\\'))
+    throw new RangeError('Invalid resource path');
+  const components=name.split('/');
+  if(components.length<2||components.length>4||components[0]!=='resources')
+    throw new RangeError('Resource path must be within resources/');
+  const leaf=components.at(-1)!;
+  const dot=leaf.lastIndexOf('.');
+  if(dot<1||!RESOURCE_SEGMENT.test(leaf.slice(0,dot))||
+     !RESOURCE_EXTENSION.test(leaf.slice(dot+1))||
+     components.slice(1,-1).some(v=>!RESOURCE_SEGMENT.test(v)))
+    throw new RangeError('Invalid logical resource path');
+  return name;
+}
+function checkedResources(value:unknown):RevisionResource[] {
+  if(!Array.isArray(value)||value.length>MAX_RESOURCES)
+    throw new RangeError('Invalid revision resources');
+  const names=new Set<string>();
+  return value.map((entry:unknown)=>{
+    if(!entry||typeof entry!=='object'||Array.isArray(entry))
+      throw new RangeError('Invalid resource descriptor');
+    const r=entry as Record<string,unknown>;
+    if(Object.keys(r).sort().join(',')!=='name,sha256,sizeBytes'||
+       typeof r.name!=='string'||typeof r.sha256!=='string'||
+       !/^[0-9a-f]{64}$/.test(r.sha256)||
+       !Number.isSafeInteger(r.sizeBytes)||
+       (r.sizeBytes as number)<1||(r.sizeBytes as number)>256*1024*1024)
+      throw new RangeError('Invalid resource descriptor');
+    resourceName(r.name);
+    const key=r.name.toLowerCase();
+    if(names.has(key))throw new RangeError('Duplicate logical resource path');
+    names.add(key);
+    return {name:r.name,sha256:r.sha256,sizeBytes:r.sizeBytes as number};
+  });
+}
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
 const FILE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,80}\.(?:blend|glb|json|png)$/;
 const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,9 +106,11 @@ async function syncDir(filename: string) {
  */
 export class LocalArtifactStore {
   private readonly root: string;
+  private readonly resources: ContentAddressedResourceStore;
   constructor(root: string) {
     if (!path.isAbsolute(root)) throw new RangeError('Storage root must be absolute');
     this.root = path.resolve(root);
+    this.resources=new ContentAddressedResourceStore(this.root);
   }
   private directory(project: string) {
     return path.join(this.root, projectId(project));
@@ -101,6 +150,7 @@ export class LocalArtifactStore {
   async publish(params: {
     projectId: string; revision: number; expectedPreviousRevision: number;
     artifacts: IncomingArtifact[];
+    resources?:RevisionResource[];
   }): Promise<RevisionManifest> {
     const id = projectId(params.projectId);
     const key = revision(params.revision);
@@ -111,6 +161,10 @@ export class LocalArtifactStore {
     if (!Array.isArray(params.artifacts) || params.artifacts.length < 1 ||
         params.artifacts.length > MAX_ARTIFACTS)
       throw new RangeError('Invalid artifact count');
+    const checked=checkedResources(params.resources??[]);
+    // Revisions may reference existing immutable blobs only: all dependencies
+    // must be present and hash verified before the revision is published.
+    for(const resource of checked)await this.resources.verifiedPath(resource);
     const names = params.artifacts.map(x => artifactName(x.name));
     if (new Set(names).size !== names.length) throw new RangeError('Duplicate artifact name');
     const directory = this.directory(id);
@@ -148,11 +202,14 @@ export class LocalArtifactStore {
       }
       const manifest: RevisionManifest = {
         formatVersion: 1, projectId: id, revision: params.revision,
-        createdAt: new Date().toISOString(), artifacts
+        createdAt: new Date().toISOString(), artifacts, resources:checked
       };
       await writeFile(path.join(stage, 'manifest.json'), JSON.stringify(manifest, null, 2)+'\n', { flag: 'wx', mode: 0o600 });
       await syncFile(path.join(stage, 'manifest.json'));
       await syncDir(stage);
+      // Recheck right before publishing to fail closed if another process
+      // has corrupted or removed an external resource while staging.
+      for(const resource of checked)await this.resources.verifiedPath(resource);
       const final = path.join(directory, key);
       await rename(stage, final);
       stage = undefined;
@@ -171,6 +228,7 @@ export class LocalArtifactStore {
     if (manifest.formatVersion !== 1 || manifest.projectId !== id || manifest.revision !== number ||
         !Array.isArray(manifest.artifacts) || manifest.artifacts.length < 1 || manifest.artifacts.length > MAX_ARTIFACTS)
       throw new Error('Corrupt artifact manifest');
+    const resources=checkedResources(manifest.resources??[]);
     const seen = new Set<string>();
     for (const artifact of manifest.artifacts) {
       artifactName(artifact.name);
@@ -186,7 +244,23 @@ export class LocalArtifactStore {
           throw new Error('Artifact checksum mismatch: ' + artifact.name);
       }
     }
-    return manifest;
+    if(verifyBytes){
+      for(const resource of resources)await this.resources.verifiedPath(resource);
+    }
+    return {...manifest,resources};
+  }
+  /** Resolve only resources belonging to an existing, verified revision.
+   * An arbitrary user-provided hash is never sufficient authorization.
+   * This internal API deliberately does not materialize arbitrary paths.
+   */
+  async verifiedRevisionResources(project:string,number:number):Promise<
+    Array<{name:string;sha256:string;sizeBytes:number;path:string}>>{
+    const manifest=await this.inspect(project,number,true);
+    const result=[];
+    for(const resource of manifest.resources??[]){
+      result.push({...resource,path:await this.resources.verifiedPath(resource)});
+    }
+    return result;
   }
   /** Internal use only: validate entry against manifest before returning path. */
   /** Read only small immutable report bytes, verifying this artifact's SHA-256
