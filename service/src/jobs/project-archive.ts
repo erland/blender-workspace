@@ -42,6 +42,8 @@ export class ProjectArchiveService {
       if(r.revision!==index+1||!r.artifact_prefix)throw new RangeError('Revision is incomplete');
       // Validates all SHA-256 hashes before the archive is issued.
       const manifest=await this.artifacts.inspect(id,r.revision,true);
+      if(manifest.resources?.length)
+        throw new RangeError('External-resource project archive is not yet portable');
       metadata.revisions.push({
         revision:r.revision,note:r.note,createdAt:new Date(r.created_at).toISOString(),
         artifacts:manifest.artifacts});
