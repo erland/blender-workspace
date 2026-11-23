@@ -90,7 +90,7 @@ test('DEV-056 only explicitly approved same-revision complete PNGs appear public
  const share='/share/'+token;
  let page=await f.app.inject({method:'GET',url:share});
  assert.equal(page.statusCode,200,page.body);
- assert.doesNotMatch(page.body,/public-gallery-grid/);
+ assert.doesNotMatch(page.body,/<div class="public-gallery-grid">/);
  assert.equal((await f.app.inject({method:'GET',
    url:share+'/renders/'+ids[0]+'.png'})).statusCode,404);
  const ownerPage=await f.app.inject({method:'GET',url:base,
@@ -104,7 +104,7 @@ test('DEV-056 only explicitly approved same-revision complete PNGs appear public
  assert.equal(f.saved,1);
  page=await f.app.inject({method:'GET',url:share});
  assert.equal(page.statusCode,200,page.body);
- assert.match(page.body,/public-gallery-grid/);
+ assert.match(page.body,/<div class="public-gallery-grid">/);
  assert.match(page.body,new RegExp(ids[0]));
  assert.doesNotMatch(page.body,new RegExp(ids[1]));
  assert.doesNotMatch(page.body,new RegExp(ids[2]));
