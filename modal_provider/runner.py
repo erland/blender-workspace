@@ -32,6 +32,7 @@ if __package__ in (None, "") and str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from modal_provider.app_config import modal_app_name
 from modal_provider.memory_config import DEFAULT_MEMORY_MIB,validate_memory_mib
+from modal_provider.resource_transfer import validated_resources,transfer_resources
 ARTIFACT_NAMES = ("scene.blend", "scene.json")  # required; GLB is optional
 CPU_RATE = 0.00003942  # Modal Sandbox USD per second, physical core
 RAM_RATE = 0.00000667  # Modal Sandbox USD per GiB-second
@@ -123,7 +124,8 @@ def estimate_usd(seconds, cpu=2, memory_mib=8192):
 
 def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
         revision=1, input_blend=None, python_file=None,
-        assets_manifest=None, asset_files=None, inline_render=False):
+        assets_manifest=None, asset_files=None, inline_render=False,
+        resource_manifest=None):
     """Run only a validated Python script inside an owner-billed isolated Sandbox."""
     validate_memory_mib(memory_mib)
     if not 1 <= revision <= 99999999:
@@ -179,6 +181,8 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 len(entry['offset'])!=3 or
                 any(type(x) not in (int,float) or not -100000<=x<=100000 for x in entry['offset'])):
                 raise ValueError('Unsafe model source')
+    # Verify every referenced content-addressed resource before billing.
+    resources=validated_resources(resource_manifest)
     # Validate the pinned image before any chargeable Modal API call.
     try:
         image_ref = blender_image_reference()
@@ -201,6 +205,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
             timeout=timeout, workdir="/workspace", block_network=True)
         created = time.monotonic()
         sandbox.filesystem.copy_from_local(str(python_source), "/workspace/out/model.py")
+        transfer_resources(sandbox,resources)
         if revision >= 2:
             sandbox.filesystem.copy_from_local(str(Path(input_blend).resolve()),
                 "/workspace/out/input.blend")
@@ -325,6 +330,7 @@ def main():
     p.add_argument("--assets-manifest")
     p.add_argument("--asset-file", action="append", default=[])
     p.add_argument("--inline-render", action="store_true")
+    p.add_argument("--resource-manifest")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--cpu", type=float, default=2)
     p.add_argument("--memory-mib", type=int, default=DEFAULT_MEMORY_MIB)
@@ -342,7 +348,8 @@ def main():
                      timeout=args.timeout, revision=args.revision, input_blend=args.input_blend,
                      python_file=args.python_file,
                      assets_manifest=args.assets_manifest,asset_files=args.asset_file,
-                     inline_render=args.inline_render)
+                     inline_render=args.inline_render,
+                     resource_manifest=args.resource_manifest)
         if report["status"] != "PASS" or not report["sandbox_terminated"]:
             raise RunnerDiagnostic("cleanup", "sandbox_cleanup_failed")
     except RunnerDiagnostic as exc:
