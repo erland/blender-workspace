@@ -33,6 +33,7 @@ export interface OwnedRevisionShare {
   allow_glb:boolean;
   allow_renders:boolean;
   allow_download:boolean;
+  selected_render_ids:string[];
 }
 /** All writes are owner scoped; public reads require a full-length random token.
  * No public token ever appears in database records or list responses.
@@ -67,12 +68,42 @@ export class PublicShareRepository {
     validProject(projectId,revision);
     const res=await this.pool.query<OwnedRevisionShare>(
       `SELECT s.project_id,s.revision,s.created_at,s.expires_at,s.revoked_at,
-         s.allow_glb,s.allow_renders,s.allow_download
+         s.allow_glb,s.allow_renders,s.allow_download,s.selected_render_ids
        FROM bw_public_shares s JOIN bw_projects p ON p.id=s.project_id
        WHERE p.id=$1 AND p.owner_key=$2 AND s.owner_key=$2
          AND p.deleted_at IS NULL AND s.revision=$3`,
       [projectId,owner,revision]);
     return res.rows[0]??null;
+  }
+  /** Replaces the explicit public image snapshot without rotating the share
+   * token. Atomic SQL ensures all chosen rows are owner-scoped, from the same
+   * exact revision, completed and backed by a recorded SHA-256 PNG. A
+   * non-existent / revoked share cannot be changed.
+   */
+  async setSelectedRenders(owner:string,projectId:string,revision:number,ids:string[]):Promise<boolean>{
+    validProject(projectId,revision);
+    if(!owner||owner.length>200||!Array.isArray(ids)||ids.length>12||
+      new Set(ids.map(id=>id.toLowerCase())).size!==ids.length||
+      ids.some(id=>typeof id!=='string'||!UUID.test(id)))
+      throw new RangeError('Invalid public render selection');
+    const selected=ids.map(id=>id.toLowerCase());
+    const result=await this.pool.query(
+      `UPDATE bw_public_shares s
+       SET selected_render_ids=$4::uuid[],allow_renders=(cardinality($4::uuid[])>0)
+       FROM bw_projects p
+       WHERE s.project_id=$1 AND s.owner_key=$2 AND s.revision=$3
+         AND p.id=s.project_id AND p.owner_key=$2 AND p.deleted_at IS NULL
+         AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at>now())
+         AND NOT EXISTS (
+           SELECT 1 FROM unnest($4::uuid[]) chosen(id)
+           LEFT JOIN bw_render_jobs j ON j.id=chosen.id AND j.project_id=s.project_id
+             AND j.owner_key=s.owner_key AND j.source_revision=s.revision
+             AND j.status='completed' AND j.sha256 IS NOT NULL
+             AND j.size_bytes IS NOT NULL
+           WHERE j.id IS NULL
+         ) RETURNING s.project_id`,
+      [projectId,owner,revision,selected]);
+    return Boolean(result.rowCount);
   }
   async revoke(owner:string,projectId:string,revision:number):Promise<boolean>{
     validProject(projectId,revision);
@@ -96,8 +127,11 @@ export class PublicShareRepository {
        JOIN bw_project_revisions r ON r.project_id=s.project_id AND r.revision=s.revision
        WHERE s.token_sha256=$1 AND s.revoked_at IS NULL
          AND (s.expires_at IS NULL OR s.expires_at>now())
-         AND s.allow_glb=true AND s.allow_renders=false AND s.allow_download=false
-         AND cardinality(s.selected_render_ids)=0 AND p.deleted_at IS NULL
+         AND s.allow_glb=true AND s.allow_download=false
+         AND (
+           (s.allow_renders=false AND cardinality(s.selected_render_ids)=0)
+           OR (s.allow_renders=true AND cardinality(s.selected_render_ids) BETWEEN 1 AND 12)
+         ) AND p.deleted_at IS NULL
          AND r.artifact_prefix IS NOT NULL`,
       [digest(token)]);
     return res.rows[0]??null;
