@@ -120,7 +120,7 @@ export class NativeTextureDownloader {
 }
 
 export function decodeTextureBase64(encoded:string):Buffer{
- if(encoded.length>Math.ceil(MAX_UPLOAD_BYTES/3)*4+4||
+ if(encoded.length>240000||
    encoded.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded))
    throw new RangeError('Invalid or oversized texture base64');
  const bytes=Buffer.from(encoded,'base64');
