@@ -189,6 +189,30 @@ export class LocalArtifactStore {
     return manifest;
   }
   /** Internal use only: validate entry against manifest before returning path. */
+  /** Read only small immutable report bytes, verifying this artifact's SHA-256
+   * without hashing potentially multi-hundred-MiB BLEND files on every page
+   * view. Oversized or missing reports have unknown portability status.
+   */
+  async readVerifiedSmallArtifact(project: string, number: number, name: string,
+    maxBytes = 4 * 1024 * 1024): Promise<string | null> {
+    artifactName(name);
+    if(name !== 'scene.json' || !Number.isSafeInteger(maxBytes) ||
+       maxBytes < 1 || maxBytes > 4 * 1024 * 1024)
+      throw new RangeError('Invalid small artifact request');
+    const manifest = await this.inspect(project, number, false);
+    const record = manifest.artifacts.find(a => a.name === name);
+    if(!record || record.sizeBytes > maxBytes)return null;
+    const filename = path.join(this.revisionDir(project, number), name);
+    const info = await lstat(filename);
+    if(!info.isFile() || info.isSymbolicLink() || info.size !== record.sizeBytes)
+      throw new Error('Artifact metadata mismatch');
+    const bytes = await readFile(filename);
+    if(bytes.length !== record.sizeBytes ||
+       createHash('sha256').update(bytes).digest('hex') !== record.sha256)
+      throw new Error('Artifact checksum mismatch');
+    return bytes.toString('utf8');
+  }
+
   async verifiedArtifactPath(project: string, number: number, name: string): Promise<string> {
     artifactName(name);
     const manifest = await this.inspect(project, number);
