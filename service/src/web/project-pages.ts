@@ -409,7 +409,10 @@ export function projectDetailPage(
    '<div id="live-project-model-jobs">'+(modelJobs.length?'<ul class="history">'+modelJobs.map(j=>jobRow({
      id:j.id,project_id:p.id,project_name:p.name,type:'model',revision:j.requested_revision,
      status:j.status,created_at:j.created_at,detail:j.note||'Blender Python',
-     error:j.error_message
+     error:j.error_message,started_at:j.started_at,worker_heartbeat_at:j.worker_heartbeat_at,
+     blender_heartbeat_at:j.blender_heartbeat_at,progress_phase:j.progress_phase,
+     deadline_at:j.deadline_at,finished_at:j.finished_at,
+     cancellation_requested_at:j.cancellation_requested_at
    },false,csrf)).join('')+'</ul>':'<p class="muted">Inga modelleringsjobb ännu.</p>')+'</div></section>';
  const renderSection=csrf===undefined?'':'<details class="panel" id="render-settings" style="margin-bottom:16px"'+
    (['render_error','render_open'].includes(message??'')?' open':'')+'><summary style="cursor:pointer;min-height:44px;font-weight:700">Skapa rendering (Modal)</summary>'+
