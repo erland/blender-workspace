@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import os from 'node:os';
-import type {BlenderExecutor,BlenderAssetInput} from './orchestrator.js';
+import type {BlenderExecutor,BlenderAssetInput,RevisionResourceInput} from './orchestrator.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {validateModalMemoryMiB,type ModalCredentials,type ModalAccountManager} from '../modal/modal-accounts.js';
 import {JobExecutionError,parseRunnerDiagnostic} from './job-diagnostics.js';
@@ -23,7 +23,8 @@ export class ModalPythonExecutor implements BlenderExecutor {
     if(!path.isAbsolute(repoRoot))throw new RangeError('Worker root must be absolute');
   }
   async runPythonScript(outDir:string,owner:string,revision:number,
-      spec:PythonScriptSpec,inputBlend?:string,assets:BlenderAssetInput[]=[]):Promise<void> {
+      spec:PythonScriptSpec,inputBlend?:string,assets:BlenderAssetInput[]=[],
+      resources:RevisionResourceInput[]=[]):Promise<void> {
     if(!Number.isInteger(revision)||revision<1||revision>99999999||
       (revision===1&&inputBlend!==undefined)||(revision>1&&!inputBlend))
       throw new RangeError('Invalid Python scene revision');
@@ -52,11 +53,16 @@ export class ModalPythonExecutor implements BlenderExecutor {
         JSON.stringify(assets.map((a,i)=>({index:i,offset:a.offset,format:a.format,
           ...(a.texture?{texture:a.texture}:{})}))),
         {mode:0o600,flag:'wx'});
+      if(resources.length){
+        await writeFile(path.join(folder,'revision-resources.json'),
+          JSON.stringify(resources),{mode:0o600,flag:'wx'});
+      }
       const script=path.join(this.repoRoot,'modal_provider','runner.py');
       await new Promise<void>((resolve,reject)=>{
         const args=[script,'--out',outDir,'--timeout','900','--cpu','2','--memory-mib',String(memoryMiB),
           '--revision',String(revision),'--python-file',filename];
         if(safe.inlineRender)args.push('--inline-render');
+        if(resources.length)args.push('--resource-manifest',path.join(folder,'revision-resources.json'));
         if(inputBlend)args.push('--input-blend',inputBlend);
         if(assets.length){
           args.push('--assets-manifest',path.join(folder,'asset-sources.json'));
