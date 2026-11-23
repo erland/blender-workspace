@@ -270,6 +270,7 @@ export function projectDetailPage(
    (p.description?'<p class="muted project-description">'+escapeHtml(p.description)+'</p>':'')+
    '<p class="muted small">Senaste revision '+p.current_revision+' · Ändrad '+when(p.updated_at)+'</p>'+
    (message==='import_queued'?'<p role="status">Importjobbet har lagts i kö. Modellen visas när den nya revisionen är klar.</p>':'')+
+   (message==='texture_queued'?'<p role="status">Texturen har lagts i modelleringskön. Den nya revisionen visas här när jobbet är klart.</p>':'')+
    '</div>';
  const latestImages=renders.filter(r=>r.status==='completed').slice(0,3);
  const previews=latestImages.length
