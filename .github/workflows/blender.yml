@@ -45,6 +45,57 @@ jobs:
             -b --factory-startup --python /workspace/tests/blender_external_resources_smoke.py \
             | tee blender-dev060.log
           grep -q 'BW_DEV060_EXTERNAL_IMAGE_RELOAD PASS' blender-dev060.log
+      - name: DEV-063 full textured-revision cycle (create, edit, render without original upload)
+        run: |
+          set -eu
+          mkdir -p dev063-out/first dev063-out/second
+          chmod 777 dev063-out/first dev063-out/second
+          cp tests/dev063_texture_model.py dev063-out/first/model.py
+          docker run --rm -v "$PWD/dev063-out/first:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python-exit-code 1 \
+            --python /workspace/blender_workspace_poc/apply_python.py -- \
+            NEW /workspace/out/model.py 1
+          cp dev063-out/first/scene.blend dev063-out/second/input.blend
+          cp -R dev063-out/first/resources dev063-out/second/resources
+          rm -f dev063-out/first/user-upload.png
+          cat > dev063-out/second/model.py <<'PY'
+          import bpy
+          mesh=bpy.data.objects['TexturedModel']
+          mesh.location.x=1
+          assert mesh.data.materials[0].node_tree.nodes.get('Image Texture').image.packed_file is None
+          PY
+          docker run --rm -v "$PWD/dev063-out/second:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python-exit-code 1 \
+            --python /workspace/blender_workspace_poc/apply_python.py -- \
+            /workspace/out/input.blend /workspace/out/model.py 2
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          first=Path('dev063-out/first')
+          second=Path('dev063-out/second')
+          a=json.loads((first/'scene.json').read_text())
+          b=json.loads((second/'scene.json').read_text())
+          assert len(a['resourceFiles'])==len(b['resourceFiles'])==1
+          assert a['resourceFiles']==b['resourceFiles']
+          name=a['resourceFiles'][0]['name']
+          assert (first/name).read_bytes()==(second/name).read_bytes()
+          assert not (first/'user-upload.png').exists()
+          assert (second/'scene.blend').read_bytes()!=(first/'scene.blend').read_bytes()
+          PY
+          cp dev063-out/second/scene.blend dev063-out/second/input.blend
+          docker run --rm -v "$PWD/dev063-out/second:/workspace/out" --entrypoint blender blender-workspace:ci \
+            -b --factory-startup --python-exit-code 1 \
+            --python /workspace/blender_workspace_poc/render_saved.py -- \
+            --source /workspace/out/input.blend --output /workspace/out/render.png \
+            --engine CYCLES --width 128 --height 128 --samples 1
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          image=Path('dev063-out/second/render.png').read_bytes()
+          assert image[:8]==bytes.fromhex('89504e470d0a1a0a')
+          assert struct.unpack('>II',image[16:24])==(128,128)
+          print('BW_DEV063_TEXTURED_REVISION_RENDER PASS')
+          PY
       - name: Create Python model and edit saved revision inside Blender
         run: |
           set -eu
