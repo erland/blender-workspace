@@ -34,7 +34,7 @@ test('UX-002 overview is short, shows preview images and routes to three main ta
 });
 test('UX-002 image view includes shared render jobs and collapsed render form',()=>{
  const html=body('images');
- assert.match(html,/aria-current="page"[^>]*>[^<]*<span class="tab-icon"[^>]*>▧/);
+ assert.match(html,/aria-current="page"[^>]*><span class="tab-icon"[^>]*><svg class="bw-icon"/);
  assert.match(html,/Renderingsjobb och bilder/);
  assert.match(html,/Rendera bild från Blender/);
  assert.match(html,/<details class="panel"/);

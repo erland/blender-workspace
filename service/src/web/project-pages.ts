@@ -1,4 +1,5 @@
-import {themeStyles,themedCss} from './theme.js';
+import {uiIcon} from './icons.js';
+import {themeStyles,themedCss,componentStyles} from './theme.js';
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
 export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;portableStatus?:'complete'|'external'|'unknown';externalCount?:number;resourceCount?:number}
@@ -123,8 +124,8 @@ const style=[
 ].join('');
 function layout(title:string,body:string,liveUpdates=false):string {
  return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
- '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+'<style>'+themeStyles+themedCss(style)+'</style></head><body>'+
- '<header><div class="bar"><a class="logo" href="/">◈ Blender Workspace</a>'+
+ '<title>'+escapeHtml(title)+' – Blender Workspace</title>'+'<style>'+themeStyles+themedCss(style)+componentStyles+'</style></head><body>'+
+ '<header><div class="bar"><a class="logo" href="/">'+uiIcon('cube')+' Blender Workspace</a>'+
  '<nav aria-label="Huvudnavigering"><a href="/">Projekt</a><a href="/jobs">Jobb</a><a href="/settings">Modal-inställningar</a></nav></div></header>'+
  '<main>'+body+'</main>'+(liveUpdates?'<script src="/portal/assets/live-status.js" defer></script>':'')+'</body></html>';
 }
@@ -186,7 +187,7 @@ export function projectIndexPage(items:{project:PortalProject;revisions:PortalRe
        return '<span><img loading="lazy" decoding="async" src="'+src+
          '" alt=""></span>';
      }).join('')+'</div>'
-    :'<div class="illustration" aria-hidden="true">⬡</div>';
+    :'<div class="illustration" aria-hidden="true">'+uiIcon('cube')+'</div>';
   return '<article class="card"><a class="project-card-link" href="'+projectUrl(p.id)+
     '" aria-label="Öppna projekt '+escapeHtml(p.name)+'">'+thumbnails+
     '<div class="card-body"><h2 class="card-title"><span>'+escapeHtml(p.name)+
@@ -274,13 +275,13 @@ export function projectDetailPage(
       '<div class="revision-menu-items">'+
       (available?'<a href="'+viewerUrl(p.id,r.revision)+'">Öppna 3D-modell</a>':'')+
       download+share+'</div></details>':'';
-   const text='<span class="revision-icon" aria-hidden="true">⬡</span>'+
+   const text='<span class="revision-icon" aria-hidden="true">'+uiIcon('cube')+'</span>'+
      '<span class="revision-info"><strong>'+title+
      (r.revision===p.current_revision?' · Senaste':'')+'</strong>'+
      '<span class="muted small">'+caption+'</span></span>';
    const main=available?
      '<a class="revision-open" href="'+viewerUrl(p.id,r.revision)+'" aria-label="Öppna 3D-modell för '+title+'">'+
-     text+'<span class="revision-chevron" aria-hidden="true">›</span></a>':
+     text+'<span class="revision-chevron" aria-hidden="true">'+uiIcon('arrow')+'</span></a>':
      '<div class="revision-unavailable">'+text+
      '<span class="tag empty">'+(saved?'3D saknas':'Ej sparad')+'</span></div>';
    return '<li class="revision-item">'+main+actions+'</li>';
@@ -289,16 +290,16 @@ export function projectDetailPage(
    '<a class="project-tab" href="'+url+'"'+(selected?' aria-current="page"':'')+'>'+
    '<span class="tab-icon" aria-hidden="true">'+icon+'</span>'+title+'</a>';
  const tabs='<nav class="project-tabs" aria-label="Projektets funktioner">'+
-   (latestView?tab('3D-modell','⬡',latestView,false):
+   (latestView?tab('3D-modell',uiIcon('cube'),latestView,false):
     '<span class="project-tab" aria-disabled="true" title="Ingen GLB-modell sparad">'+
-    '<span class="tab-icon" aria-hidden="true">⬡</span>3D saknas</span>')+
-   tab('Bilder','▧',imagesUrl,view==='images')+
-   tab('Historik','◷',historyUrl,view==='history')+'</nav>';
+    '<span class="tab-icon" aria-hidden="true">'+uiIcon('cube')+'</span>3D saknas</span>')+
+   tab('Bilder',uiIcon('image'),imagesUrl,view==='images')+
+   tab('Historik',uiIcon('history'),historyUrl,view==='history')+'</nav>';
  const intro='<div class="breadcrumb"><a href="/">← Mina projekt</a></div>'+
    '<div class="project-header"><div class="project-section-heading"><h1>'+
      escapeHtml(p.name)+'</h1>'+
      (csrf===undefined?'':'<a class="project-settings-link" href="'+settingsUrl+
-       '"'+(view==='settings'?' aria-current="page"':'')+'>⚙ Projektinställningar</a>')+
+       '"'+(view==='settings'?' aria-current="page"':'')+'>'+uiIcon('settings')+' Projektinställningar</a>')+
    '</div>'+
    (p.description?'<p class="muted project-description">'+escapeHtml(p.description)+'</p>':'')+
    '<p class="muted small">Senaste revision '+p.current_revision+' · Ändrad '+when(p.updated_at)+'</p>'+
@@ -324,7 +325,7 @@ export function projectDetailPage(
        '<span class="model-preview-placeholder"><span class="model-preview-mark" aria-hidden="true">⬡</span>'+
        '3D-modell tillgänglig</span><span class="model-preview-label">Öppna 3D</span></a>'
      :'<div class="model-preview"><span class="model-preview-placeholder">'+
-       '<span class="model-preview-mark" aria-hidden="true">⬡</span>'+
+       '<span class="model-preview-mark" aria-hidden="true">'+uiIcon('cube')+'</span>'+
        'Ingen 3D-förhandsvisning ännu</span></div>';
  const latestDownload=latest?base+'/revisions/'+latest.revision+'/download':null;
  const latestShare=latestView&&latest?base+'/revisions/'+latest.revision+'/share':null;
