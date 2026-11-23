@@ -70,3 +70,58 @@ test('DEV-050: only active modeling jobs expose a safe standalone cancel form',(
   assert.doesNotMatch(jobsOverviewPage([{...jobs[0],status:'cancelling'}],'csrf'),/job-cancel-form/);
   assert.doesNotMatch(jobsOverviewPage([jobs[1]],'csrf'),/job-cancel-form/);
 });
+
+test('JOB-PROGRESS: model liveness distinguishes worker and Blender and does not invent completion',async()=>{
+ const {jobProgress}=await import('../dist/web/project-pages.js');
+ const now=new Date('2026-11-23T21:10:00.000Z');
+ const running={...jobs[0],progress_phase:'blender_execution',
+   started_at:new Date('2026-11-23T21:06:00.000Z'),
+   worker_heartbeat_at:new Date('2026-11-23T21:09:50.000Z'),
+   blender_heartbeat_at:new Date('2026-11-23T21:07:00.000Z'),
+   deadline_at:new Date('2026-11-23T21:25:00.000Z')};
+ const text=jobProgress(running,now);
+ assert.match(text,/Kör Blender Python/);
+ assert.match(text,/Körtid: 4 min/);
+ assert.match(text,/Tidsgräns: 15 min kvar/);
+ assert.match(text,/Worker: 10 s sedan/);
+ assert.match(text,/Blender: ingen färsk signal/);
+ assert.doesNotMatch(text,/\d+%|färdig|progress value|<progress/);
+ assert.equal(jobProgress({...running,type:'render'},now),'');
+});
+
+test('JOB-PROGRESS: archival phases are historical, missing and unknown phases are safe',async()=>{
+ const {jobProgress}=await import('../dist/web/project-pages.js');
+ const now=new Date('2026-11-23T21:10:00.000Z');
+ const prior={...jobs[0],status:'completed',progress_phase:'revision_commit',
+   started_at:new Date('2026-11-23T20:00:00.000Z'),
+   finished_at:new Date('2026-11-23T20:07:00.000Z')};
+ assert.match(jobProgress(prior,now),/Senaste körinformation/);
+ assert.match(jobProgress(prior,now),/Sparar revision/);
+ assert.match(jobProgress(prior,now),/Körtid: 7 min/);
+ assert.doesNotMatch(jobProgress(prior,now),/Worker:|Blender:|Tidsgräns:/);
+ assert.equal(jobProgress({...prior,started_at:null,finished_at:null,progress_phase:null},now),'');
+ const injected=jobProgress({...prior,status:'running',progress_phase:'<img src=x onerror=alert(1)>'},now);
+ assert.doesNotMatch(injected,/img|onerror|alert/);
+ assert.match(injected,/Worker: ingen signal ännu/);
+ assert.match(injected,/Blender: ingen signal ännu/);
+});
+
+test('JOB-PROGRESS: overview and project history render stored milestone details',()=>{
+ const now=new Date();
+ const active={...jobs[0],progress_phase:'artifact_transfer',started_at:now,
+   worker_heartbeat_at:now,blender_heartbeat_at:now,
+   deadline_at:new Date(now.getTime()+60000)};
+ const page=jobsOverviewPage([active]);
+ assert.match(page,/Överför resultat/);
+ assert.match(page,/Worker:/);
+ assert.match(page,/Blender:/);
+ assert.match(page,/class="job-progress"/);
+ const project={id,name:'Katt',description:'',current_revision:2,updated_at:date};
+ const history=projectDetailPage(project,[],undefined,undefined,[],[
+  {id:model,project_id:id,requested_revision:2,status:'running',note:'Skapa',
+   error_message:null,created_at:date,progress_phase:'artifact_validation',
+   worker_heartbeat_at:now,blender_heartbeat_at:null,started_at:now}
+ ],'history');
+ assert.match(history,/Verifierar filer/);
+ assert.match(history,/Blender: ingen signal ännu/);
+});
