@@ -259,7 +259,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 raise ValueError('Invalid generated resource')
             name=entry['name']
             if (not isinstance(name,str) or not re.fullmatch(
-                    r'resources/[0-9a-f]{64}\\.(?:png|jpg)',name) or name in seen):
+                    r'resources/[0-9a-f]{64}\.(?:png|jpg)',name) or name in seen):
                 raise ValueError('Invalid generated resource name')
             seen.add(name)
             checksum=entry['sha256']
