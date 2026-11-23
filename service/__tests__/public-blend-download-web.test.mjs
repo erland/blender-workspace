@@ -33,7 +33,9 @@ function fixture(t){
    },
    async revoke(){active=false;return true;}
  };
- const artifacts={async verifiedArtifactPath(p,r,name){
+ const artifacts={async verifiedRevisionResources(p,r){
+   assert.equal(p,projectId);assert.equal(r,revision);return [];
+ },async verifiedArtifactPath(p,r,name){
    assert.equal(p,projectId);assert.equal(r,revision);
    if(!valid&&name==='scene.blend')throw new Error('Checksum mismatch');
    return await file;
