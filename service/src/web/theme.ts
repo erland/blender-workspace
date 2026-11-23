@@ -67,7 +67,7 @@ const legacyColors:Record<string,string>={
  '#566577':'--text-muted','#215dd5':'--accent',
  '#2054b8':'--accent-text','#2563eb':'--focus',
  '#e5ecf8':'--surface-muted','#f6f8fc':'--page',
- '#7890bd':'--text-muted','#eef2f7':'--surface-muted',
+ '#7890bd':'--text-muted',
  '#f7faff':'--surface-hover','#e8eefc':'--accent-soft',
  '#244c9c':'--accent-text','#edf1f5':'--surface-muted',
  '#eaf0fb':'--accent-soft','#eef2fa':'--surface-muted',
