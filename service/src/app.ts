@@ -966,6 +966,14 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          return reply.code(404).send({error:'not_found'});
        const {archive,directory}=await buildPortableRevisionZip(services!.artifacts,
          share.project_id,share.revision);
+       // A share can expire or be revoked while ZIP bytes are prepared.
+       // Check once more before sending a response body.
+       const current=await services!.publicShares.resolve(token);
+       if(!current||current.allow_download!==true||
+          current.project_id!==share.project_id||current.revision!==share.revision){
+         await rm(directory,{recursive:true,force:true});
+         return reply.code(404).send({error:'not_found'});
+       }
        reply.raw.once('close',()=>{void rm(directory,{recursive:true,force:true});});
        const filename=blendDownloadFilename(share.project_name,share.revision).replace(/\.blend$/,'.zip');
        return reply.header('content-disposition','attachment; filename="'+filename+'"')
