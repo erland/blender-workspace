@@ -68,6 +68,8 @@ export function ownerSharePage(projectId:string,revision:number,csrf:string,
   status:'none'|'active'|'revoked',newLink?:string,
   candidates:ShareRenderImage[]=[],selectedIds:string[]=[],message?:string,allowDownload=false):string {
   const base='/projects/'+encodeURIComponent(projectId)+'/revisions/'+revision+'/share';
+  const active=status==='active';
+  const statusLabel=active?'Aktiv publik delning':status==='revoked'?'Delningen är återkallad':'Inte delad ännu';
   // Only the freshly generated link is displayed, never stored in plaintext.
   const link=newLink?`<div class="link"><a href="${escapeHtml(newLink)}" rel="noreferrer noopener"
     target="_blank">${escapeHtml(newLink)}</a></div>
@@ -81,6 +83,12 @@ body{font:16px system-ui,sans-serif;line-height:1.5;background:#f4f7fb;color:#17
 main{padding:22px;border:1px solid #d8e2ed;border-radius:14px;background:white}
 button{min-height:44px;padding:10px 16px;border:1px solid #2563eb;border-radius:9px;background:#215dd5;color:white;font:inherit;cursor:pointer}
 button.secondary{background:white;color:#2054b8}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid #215dd5;outline-offset:2px}
+.share-status{background:#eef2f8;border-radius:10px;padding:14px;margin:16px 0}.share-status strong{display:block;color:#172033}
+.share-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.share-actions form{margin:0}
+.share-settings{display:grid;gap:16px;margin-top:18px}.share-settings section{border:1px solid #d8e2ed;border-radius:12px;padding:16px;min-width:0}
+.share-settings h2{margin:0 0 8px;font-size:1.1rem}.share-settings select{min-height:44px;font:inherit;max-width:100%;margin:8px 8px 8px 0}
+.share-settings button{margin-top:8px}@media(max-width:520px){body{margin:12px auto;padding:0 10px}main{padding:16px}.share-actions form,.share-actions button{width:100%}.share-settings section{padding:12px}}
 .link{padding:12px;border:1px solid #b9cbe7;border-radius:9px;overflow-wrap:anywhere}
 p{color:#4b5563}a{color:#2054b8}
 form.action-form{display:inline-block;margin:8px 12px 8px 0}
@@ -94,40 +102,38 @@ form.action-form{display:inline-block;margin:8px 12px 8px 0}
 </style></head><body><main>
 <p><a href="/projects/${encodeURIComponent(projectId)}?view=history">← Till revisionshistoriken</a></p>
 <h1>Dela revision ${revision}</h1>
-<p>${status==='active'?'Den här revisionen är tillgänglig via en aktiv publik länk.':
-status==='revoked'?'Den tidigare delningslänken är återkallad.':
-'Den här revisionen är ännu inte publicerad.'}</p>
+<div class="share-status" role="status"><strong>${statusLabel}</strong><span>${active?'Besökaren kan se den här revisionens 3D-modell. Inställningarna nedan avgör om bilder och originalfilen också är tillgängliga.':status==='revoked'?'Den gamla länken fungerar inte längre. Skapa en ny länk om du vill dela igen.':'Skapa en länk för att låta andra se modellen utan att kunna ändra den.'}</span></div>
 ${link}
-<p>Delningen är skrivskyddad och visar GLB-modellen, dess animationer och
-de färdiga renderingar du själv väljer. Ingen besökare kan starta en rendering,
-se andra revisioner. Nedladdning av BLEND kräver separat godkännande.</p>
+<p class="muted">Delningen är skrivskyddad. Mottagaren kan inte ändra modellen, se andra revisioner eller starta renderingar. Nedladdning är avstängd som standard.</p>
 ${message==='images_saved'?'<p role="status" class="status">De publika bilderna har uppdaterats. Länken är oförändrad.</p>':
 message==='images_error'?'<p role="alert" class="status">Bildurvalet kunde inte sparas. Kontrollera att bilderna är färdiga och tillhör revisionen.</p>':
 message==='download_saved'?'<p role="status" class="status">Nedladdningsbehörigheten är uppdaterad.</p>':''}
-<form class="action-form" action="${base}" method="post"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+<div class="share-actions"><form class="action-form" action="${base}" method="post"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
 <input type="hidden" name="action" value="publish">
 <button type="submit">${status==='active'?'Skapa ny delningslänk':'Skapa publik delningslänk'}</button></form>
 ${status==='active'?`<form action="${base}" method="post">
 <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
 <input type="hidden" name="action" value="revoke">
-<button class="secondary" type="submit">Återkalla delningslänken</button></form>`:''}
-${status==='active'?`<section class="gallery-select" aria-label="Delning av BLEND-original">
-<h2>Nedladdning av BLEND-original</h2>
+<button class="secondary" type="submit">Återkalla delningslänken</button></form>`:''}</div>
+${active?`<p class="muted"><strong>Mottagaren kan:</strong> Visa 3D-modellen · ${selectedIds.length} valda bilder · ${allowDownload?'Ladda ned modellen':'Inte ladda ned modellen'}.</p>`:''}
+<div class="share-settings">
+${active?`<section aria-label="Nedladdningsinställningar">
+<h2>1. Tillåt nedladdning</h2>
 <p>Avstängt som standard. Den här inställningen gäller bara revision ${revision}.
 Revisioner med externa bildtexturer erbjuds som ZIP med BLEND och tillhörande resurser. Andra otillgängliga externa beroenden ingår inte.
 Avstängning eller återkallning blockerar nya nedladdningar.</p>
 <form action="${base}" method="post">
 <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
 <input type="hidden" name="action" value="download">
-<label for="download-permission">Tillåt BLEND-nedladdning</label>
+<label for="download-permission">Kan mottagaren ladda ned modellen?</label>
 <select id="download-permission" name="enabled">
 <option value="no" ${allowDownload?'':'selected'}>Nej – endast visning</option>
-<option value="yes" ${allowDownload?'selected':''}>Ja – BLEND-original får hämtas</option>
+<option value="yes" ${allowDownload?'selected':''}>Ja – BLEND eller ZIP med texturer</option>
 </select>
 <button type="submit">Spara nedladdningsbehörighet</button>
 </form></section>`:''}
-${status==='active'?`<section class="gallery-select">
-<h2>Publika renderade bilder</h2>
+${active?`<section>
+<h2>2. Välj vilka bilder som syns</h2>
 <p>Välj högst 12 färdiga bilder från revision ${revision}. Bara markerade bilder blir
 synliga för mottagaren. Nya renderingar publiceras aldrig automatiskt.</p>
 <form action="${base}" method="post">
@@ -141,6 +147,6 @@ ${candidates.length?candidates.map(r=>`<label class="image-choice">
 <span><strong>${escapeHtml(r.engine)}</strong> · ${r.width} × ${r.height}</span>
 </label>`).join(''):'<p>Inga färdiga renderingar tillgängliga för revisionen ännu.</p>'}
 <button type="submit">Spara publika bilder</button>
-</form></section>`:''}
+</form></section>`:''}</div>
 </main></body></html>`;
 }
