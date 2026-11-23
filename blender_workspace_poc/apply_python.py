@@ -20,6 +20,7 @@ from blender_workspace_poc.glb_material_fallback import glb_material_fallback, s
 from blender_workspace_poc.compose_sources import compose_sources
 from blender_workspace_poc.inline_render import render_inline
 from blender_workspace_poc.portable_scene import pack_scene_resources
+from blender_workspace_poc.external_resources import externalize_image_textures
 
 def preview_document(path):
     # The GLB exporter can succeed while generating a preview without scene
@@ -130,6 +131,9 @@ def main():
     # BLEND before committing this immutable revision. Unpackable/missing
     # dependencies are reported, never silently described as portable.
     portability=pack_scene_resources()
+    if portability['status'] != 'complete':
+        raise ValueError('Scene contains missing or unsupported external dependencies')
+    resource_files=externalize_image_textures()
     # An uncompressed BLEND allows the trusted controller to verify its
     # native BLENDER header without parsing untrusted compressed input.
     save_start=time.monotonic()
@@ -167,6 +171,7 @@ def main():
     write_manifest(report,'sandbox_python',files,preview=preview)
     report_data=json.loads(report.read_text())
     report_data['portableResources']=portability
+    report_data['resourceFiles']=resource_files
     report.write_text(json.dumps(report_data,ensure_ascii=False,indent=2)+'\n')
     render_status=None
     render_seconds=None
