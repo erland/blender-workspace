@@ -17,6 +17,8 @@ test('DEV-055 DB hashes share token, scopes revision, rotates and immediately re
  t.after(async()=>{
    await pool.query('DELETE FROM bw_public_shares WHERE project_id = ANY($1::uuid[])',
      [[project.id,otherProject.id]]);
+   await pool.query('DELETE FROM bw_render_jobs WHERE project_id = ANY($1::uuid[])',
+     [[project.id,otherProject.id]]);
    await pool.query('DELETE FROM bw_project_revisions WHERE project_id = ANY($1::uuid[])',
      [[project.id,otherProject.id]]);
    await pool.query('DELETE FROM bw_projects WHERE id = ANY($1::uuid[])',
@@ -42,9 +44,36 @@ test('DEV-055 DB hashes share token, scopes revision, rotates and immediately re
  assert.notEqual(first,second);
  assert.equal(await repository.resolve(first),null);
  assert.ok(await repository.resolve(second));
+ // A completed render from the precise revision may be explicitly selected.
+ const good=randomUUID(),otherRevision=randomUUID(),wrongOwner=randomUUID();
+ const renderInsert=`INSERT INTO bw_render_jobs
+   (id,project_id,owner_key,source_revision,engine,width,height,samples,
+    status,requested_from,sha256,size_bytes,finished_at)
+   VALUES($1,$2,$3,$4,'CYCLES',512,512,16,
+     'completed','project',$5,100,now())`;
+ await pool.query(renderInsert,[good,project.id,owner,1,'a'.repeat(64)]);
+ await projects.addRevision(owner,project.id,'Later',project.id+'/00000002');
+ await pool.query(renderInsert,[otherRevision,project.id,owner,2,'b'.repeat(64)]);
+ await pool.query(renderInsert,[wrongOwner,otherProject.id,foreign,1,'c'.repeat(64)]);
+ assert.equal(await repository.setSelectedRenders(foreign,project.id,1,[good]),false);
+ assert.equal(await repository.setSelectedRenders(owner,project.id,1,[otherRevision]),false);
+ assert.equal(await repository.setSelectedRenders(owner,project.id,1,[wrongOwner]),false);
+ assert.equal(await repository.setSelectedRenders(owner,project.id,1,[randomUUID()]),false);
+ await assert.rejects(repository.setSelectedRenders(owner,project.id,1,[good,good]),RangeError);
+ assert.equal(await repository.setSelectedRenders(owner,project.id,1,[good]),true);
+ let publicShare=await repository.resolve(second);
+ assert.deepEqual(publicShare.selected_render_ids,[good]);
+ assert.equal(publicShare.allow_renders,true);
+ assert.equal(publicShare.allow_download,false);
+ assert.equal(await repository.setSelectedRenders(owner,project.id,1,[]),true);
+ publicShare=await repository.resolve(second);
+ assert.deepEqual(publicShare.selected_render_ids,[]);
+ assert.equal(publicShare.allow_renders,false);
+ assert.equal(await repository.setSelectedRenders(owner,project.id,1,[good]),true);
  assert.equal(await repository.revoke(foreign,project.id,1),false);
  assert.ok(await repository.resolve(second));
  assert.equal(await repository.revoke(owner,project.id,1),true);
  assert.equal(await repository.resolve(second),null);
+ assert.equal(await repository.setSelectedRenders(owner,project.id,1,[good]),false);
  assert.ok((await repository.owned(owner,project.id,1)).revoked_at);
 });
