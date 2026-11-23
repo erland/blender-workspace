@@ -19,6 +19,7 @@ from blender_workspace_poc.common import ensure_output, export_glb, write_manife
 from blender_workspace_poc.glb_material_fallback import glb_material_fallback, source_material_stats
 from blender_workspace_poc.compose_sources import compose_sources
 from blender_workspace_poc.inline_render import render_inline
+from blender_workspace_poc.portable_scene import pack_scene_resources
 
 def preview_document(path):
     # The GLB exporter can succeed while generating a preview without scene
@@ -119,6 +120,10 @@ def main():
         raise ValueError('Scene must contain at least one object')
     out=ensure_output()
     blend,glb,report=(out/'scene.blend',out/'scene.glb',out/'scene.json')
+    # Store packable image textures, fonts and sound *inside* the native
+    # BLEND before committing this immutable revision. Unpackable/missing
+    # dependencies are reported, never silently described as portable.
+    portability=pack_scene_resources()
     # An uncompressed BLEND allows the trusted controller to verify its
     # native BLENDER header without parsing untrusted compressed input.
     save_start=time.monotonic()
@@ -154,6 +159,9 @@ def main():
     export_seconds=round(time.monotonic()-export_start,3)
     # Capture the authoritative saved scene BEFORE temporary preview camera/light.
     write_manifest(report,'sandbox_python',files,preview=preview)
+    report_data=json.loads(report.read_text())
+    report_data['portableResources']=portability
+    report.write_text(json.dumps(report_data,ensure_ascii=False,indent=2)+'\n')
     render_status=None
     render_seconds=None
     if inline_requested:

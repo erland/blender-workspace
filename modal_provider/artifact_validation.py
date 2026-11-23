@@ -96,6 +96,28 @@ def _validate_python_outputs(folder):
         if identifier in seen:
             raise ValueError('Duplicate scene object identity')
         seen.add(identifier)
+    portable=report.get('portableResources')
+    if portable is not None:
+        categories={'images','sounds','fonts','libraries','movieclips',
+                    'volumes','cacheFiles','sequencer'}
+        if (not isinstance(portable,dict) or
+            set(portable)!={'schemaVersion','status','packedCount',
+                            'externalCount','externalTypes'} or
+            type(portable['schemaVersion']) is not int or
+            portable['schemaVersion']!=1 or
+            portable['status'] not in ('complete','external','unknown') or
+            type(portable['packedCount']) is not int or
+            not 0<=portable['packedCount']<=1_000_000 or
+            type(portable['externalCount']) is not int or
+            not 0<=portable['externalCount']<=1_000_000 or
+            not isinstance(portable['externalTypes'],list) or
+            len(portable['externalTypes'])>len(categories) or
+            len(set(map(str,portable['externalTypes'])))!=len(portable['externalTypes']) or
+            any(type(t) is not str or t not in categories
+                for t in portable['externalTypes']) or
+            (portable['status']=='complete' and portable['externalCount']!=0) or
+            (portable['status']=='external' and portable['externalCount']==0)):
+            raise ValueError('Invalid portable resource metadata')
     artifacts=report.get('artifacts')
     if not isinstance(artifacts,list) or len(artifacts) not in (1,2,3):
         raise ValueError('Sandbox report must list both model files')
@@ -145,6 +167,7 @@ VALIDATION_REASONS = {
     'Exported GLB has no scene nodes': 'glb_nodes_missing',
     'Exported GLB has invalid mesh list': 'glb_meshes_invalid',
     'Invalid preview metadata': 'preview_metadata_invalid',
+    'Invalid portable resource metadata': 'report_provenance_invalid',
     'GLB cannot reference external assets': 'glb_external_assets',
     'Sandbox report has invalid provenance': 'report_provenance_invalid',
     'Sandbox report has invalid objects': 'report_objects_invalid',
