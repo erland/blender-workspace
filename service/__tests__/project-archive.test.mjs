@@ -143,3 +143,101 @@ test('empty projects can be exported and reimported without a Modal job',
     assert.equal((await projects.get(owner,imported)).current_revision,0);
     assert.deepEqual(await projects.revisions(owner,imported),[]);
 });
+
+test('DEV-062 project ZIP stores shared textures once and restores every revision manifest',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+    const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:4});
+    await applyMigrations(pool);
+    const root=await mkdtemp(path.join(os.tmpdir(),'bw-shared-resource-archive-'));
+    const artifacts=new LocalArtifactStore(root);
+    const projects=new ProjectRepository(pool);
+    const service=new ProjectArchiveService(projects,artifacts);
+    const owner='archive-resource-'+randomUUID();
+    const original=await projects.create(owner,'Textured model','Resource archive roundtrip');
+    const ids=[original.id];
+    t.after(async()=>{
+      try{
+        for(const id of ids){
+          await pool.query('DELETE FROM bw_jobs WHERE project_id=$1',[id]);
+          await pool.query('DELETE FROM bw_project_revisions WHERE project_id=$1',[id]);
+          await pool.query('DELETE FROM bw_projects WHERE id=$1',[id]);
+        }
+      }finally{await pool.end();await rm(root,{recursive:true,force:true});}
+    });
+    const source=path.join(root,'shared-texture.png');
+    await writeFile(source,'identical image bytes '.repeat(25));
+    const blob=await artifacts.storeResource(source);
+    const resource={name:'resources/'+blob.sha256+'.png',...blob};
+    for(let revision=1;revision<=2;revision++){
+      const blend=path.join(root,'source-'+revision+'.blend');
+      await writeFile(blend,'BLENDER saved revision '+revision);
+      await artifacts.publish({projectId:original.id,revision,
+        expectedPreviousRevision:revision-1,
+        artifacts:[{name:'scene.blend',sourcePath:blend}],resources:[resource]});
+      await projects.addRevision(owner,original.id,'Textured revision '+revision,
+        original.id+'/'+String(revision).padStart(8,'0'));
+    }
+    const {archive,directory}=await service.export(owner,original.id);
+    t.after(()=>rm(directory,{recursive:true,force:true}));
+    const inspect=await exec('python3',['-c',[
+      'import json,zipfile,sys',
+      'with zipfile.ZipFile(sys.argv[1]) as z:',
+      ' data=json.loads(z.read("project.json"))',
+      ' print(json.dumps({"names":z.namelist(),"data":data}))'
+    ].join('\n'),archive]);
+    const parsed=JSON.parse(inspect.stdout);
+    assert.equal(parsed.data.formatVersion,2);
+    assert.equal(parsed.data.resources.length,1);
+    assert.deepEqual(parsed.data.revisions.map(r=>r.resources),[[resource],[resource]]);
+    assert.equal(parsed.names.filter(n=>n==='resources/'+blob.sha256).length,1);
+    assert.equal(parsed.names.filter(n=>n.startsWith('resources/')).length,1);
+    assert.ok(!JSON.stringify(parsed.data).includes(root),
+      'private absolute source paths must never be exported');
+    const backup=await readFile(archive);
+    const imported=await service.import(owner,backup);
+    ids.push(imported);
+    assert.notEqual(imported,original.id);
+    assert.equal((await projects.get(owner,imported)).current_revision,2);
+    for(const revision of [1,2]){
+      const restored=await artifacts.inspect(imported,revision,true);
+      assert.deepEqual(restored.resources,[resource]);
+      const [resolved]=await artifacts.verifiedRevisionResources(imported,revision);
+      assert.equal((await readFile(resolved.path)).toString(),(await readFile(source)).toString());
+    }
+    await artifacts.deleteProject(original.id);
+    assert.deepEqual((await artifacts.inspect(imported,1,true)).resources,[resource]);
+    const after=await service.export(owner,imported);
+    t.after(()=>rm(after.directory,{recursive:true,force:true}));
+    assert.equal((await readFile(after.archive)).subarray(0,2).toString(),'PK');
+  });
+
+test('DEV-062 missing or altered resource entry is rejected before project import',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+    const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:2});
+    await applyMigrations(pool);
+    const root=await mkdtemp(path.join(os.tmpdir(),'bw-resource-archive-neg-'));
+    const artifacts=new LocalArtifactStore(root);
+    const projects=new ProjectRepository(pool);
+    const service=new ProjectArchiveService(projects,artifacts);
+    const owner='archive-negative-resources-'+randomUUID();
+    t.after(async()=>{await pool.end();await rm(root,{recursive:true,force:true});});
+    // ZIP has an apparently correct v2 manifest but no referenced image.
+    const file=path.join(root,'invalid.zip');
+    const script=[
+      'import json,zipfile,hashlib,sys',
+      'data=b"BLENDER-v400"',
+      'sha=hashlib.sha256(b"missing resource").hexdigest()',
+      'item={"sha256":sha,"sizeBytes":len(b"missing resource")}',
+      'meta={"formatVersion":2,"project":{"originalId":"11111111-1111-4111-8111-111111111111","name":"Invalid resources","description":"","currentRevision":1},',
+      ' "resources":[item],"revisions":[{"revision":1,"note":"test","createdAt":"2026-01-01T00:00:00Z",',
+      ' "artifacts":[{"name":"scene.blend","sha256":hashlib.sha256(data).hexdigest(),"sizeBytes":len(data)}],',
+      ' "resources":[{"name":"resources/"+sha+".png",**item}]}]}',
+      'with zipfile.ZipFile(sys.argv[1],"w") as z:',
+      ' z.writestr("project.json",json.dumps(meta))',
+      ' z.writestr("revisions/00000001/scene.blend",data)'
+    ].join('\n');
+    await exec('python3',['-c',script,file]);
+    const invalidBytes=await readFile(file);
+    await assert.rejects(()=>service.import(owner,invalidBytes));
+    assert.deepEqual(await projects.list(owner),[]);
+  });

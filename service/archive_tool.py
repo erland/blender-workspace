@@ -16,11 +16,32 @@ MAX_FILE = 256 * 1024 * 1024
 PATTERN = re.compile(r"^revisions/([0-9]{8})/([a-zA-Z0-9][a-zA-Z0-9_-]{0,80}\.(?:blend|glb|json|png))$")
 UUID = re.compile(r"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
 SHA = re.compile(r"^[0-9a-f]{64}$")
+RESOURCE_SEGMENT = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+RESOURCE_EXTENSION = re.compile(r"^[A-Za-z0-9]{1,12}$")
+MAX_RESOURCES_PER_REVISION = 128
 
 
 def validate_metadata(data):
-    if not isinstance(data, dict) or data.get("formatVersion") != 1:
+    if not isinstance(data, dict) or data.get("formatVersion") not in (1, 2):
         raise ValueError("Unsupported archive version")
+    version = data["formatVersion"]
+    expected = ({"formatVersion", "project", "revisions", "resources"}
+                if version == 2 else {"formatVersion", "project", "revisions"})
+    if set(data) != expected:
+        raise ValueError("Invalid archive metadata fields")
+    resource_blobs = {}
+    if version == 2:
+        blobs = data["resources"]
+        if not isinstance(blobs, list) or len(blobs) > MAX_FILES:
+            raise ValueError("Invalid resource inventory")
+        for blob in blobs:
+            if not isinstance(blob, dict) or set(blob) != {"sha256", "sizeBytes"}:
+                raise ValueError("Invalid blob descriptor")
+            sha, size = blob["sha256"], blob["sizeBytes"]
+            if (not isinstance(sha, str) or not SHA.fullmatch(sha) or
+                    type(size) is not int or not 1 <= size <= MAX_FILE or sha in resource_blobs):
+                raise ValueError("Duplicate or invalid resource blob")
+            resource_blobs[sha] = {"sha256": sha, "sizeBytes": size}
     p = data.get("project")
     revisions = data.get("revisions")
     if not isinstance(p, dict) or not isinstance(revisions, list) or len(revisions) > 99:
@@ -34,6 +55,7 @@ def validate_metadata(data):
     if p.get("currentRevision") != len(revisions):
         raise ValueError("Invalid revision count")
     paths = {}
+    referenced = set()
     for index, r in enumerate(revisions, 1):
         if not isinstance(r, dict) or r.get("revision") != index:
             raise ValueError("Revision sequence must be contiguous")
@@ -41,6 +63,36 @@ def validate_metadata(data):
             raise ValueError("Invalid revision note")
         if not isinstance(r.get("createdAt"), str) or len(r["createdAt"]) > 60:
             raise ValueError("Invalid revision timestamp")
+        expected_fields = ({"revision", "note", "createdAt", "artifacts", "resources"}
+                           if version == 2 else {"revision", "note", "createdAt", "artifacts"})
+        if set(r) != expected_fields:
+            raise ValueError("Invalid revision fields")
+        if version == 2:
+            resources = r["resources"]
+            if not isinstance(resources, list) or len(resources) > MAX_RESOURCES_PER_REVISION:
+                raise ValueError("Invalid revision resource count")
+            names = set()
+            for resource in resources:
+                if not isinstance(resource, dict) or set(resource) != {"name", "sha256", "sizeBytes"}:
+                    raise ValueError("Invalid revision resource")
+                name, sha, size = resource["name"], resource["sha256"], resource["sizeBytes"]
+                if not isinstance(name, str) or len(name) > 220 or chr(92) in name:
+                    raise ValueError("Unsafe resource filename")
+                parts = name.split("/")
+                if (len(parts) < 2 or len(parts) > 4 or parts[0] != "resources" or
+                        "." not in parts[-1] or
+                        any(not RESOURCE_SEGMENT.fullmatch(v) for v in parts[1:-1])):
+                    raise ValueError("Unsafe resource filename")
+                stem, ext = parts[-1].rsplit(".", 1)
+                if not RESOURCE_SEGMENT.fullmatch(stem) or not RESOURCE_EXTENSION.fullmatch(ext):
+                    raise ValueError("Unsafe resource filename")
+                if name.lower() in names:
+                    raise ValueError("Duplicate logical resource name")
+                names.add(name.lower())
+                if (not isinstance(sha, str) or sha not in resource_blobs or
+                        type(size) is not int or size != resource_blobs[sha]["sizeBytes"]):
+                    raise ValueError("Revision references absent or changed resource")
+                referenced.add(sha)
         files = r.get("artifacts")
         if not isinstance(files, list) or not 1 <= len(files) <= 12:
             raise ValueError("Invalid artifact count")
@@ -59,6 +111,10 @@ def validate_metadata(data):
             if full in paths:
                 raise ValueError("Duplicate artifact")
             paths[full] = file
+    if version == 2:
+        if referenced != set(resource_blobs):
+            raise ValueError("Unreferenced resource blob")
+        paths.update({"resources/" + sha: record for sha, record in resource_blobs.items()})
     if len(paths) > MAX_FILES or sum(f["sizeBytes"] for f in paths.values()) > MAX_TOTAL:
         raise ValueError("Archive exceeds resource limits")
     return paths
@@ -82,12 +138,23 @@ def copy_with_hash(source, target, expected):
 
 def export_zip(meta_path, project_dir, output_zip):
     data = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+    # Private absolute filenames must never enter the downloadable metadata.
+    sources = data.pop("resourceSources", {})
     paths = validate_metadata(data)
+    if not isinstance(sources, dict) or set(sources) != {
+            record["sha256"] for record in data.get("resources", [])}:
+        raise ValueError("Resource source inventory mismatch")
     with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=5,
                          allowZip64=True) as out:
         out.writestr("project.json", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
         for entry, expected in paths.items():
-            source = Path(project_dir) / entry.removeprefix("revisions/")
+            if entry.startswith("resources/"):
+                filename = sources[entry.removeprefix("resources/")]
+                if not isinstance(filename, str) or not Path(filename).is_absolute():
+                    raise ValueError("Invalid source path")
+                source = Path(filename)
+            else:
+                source = Path(project_dir) / entry.removeprefix("revisions/")
             info = source.lstat()
             if not stat.S_ISREG(info.st_mode) or info.st_size != expected["sizeBytes"]:
                 raise ValueError("Unsafe or changed artifact")
@@ -133,7 +200,8 @@ def import_zip(input_zip, output_dir):
             if info.file_size != expected["sizeBytes"]:
                 raise ValueError("Artifact byte length mismatch")
             # Never extract using arbitrary ZIP entry names.
-            target = Path(output_dir) / name.removeprefix("revisions/")
+            target = (Path(output_dir) / name if name.startswith("resources/")
+                      else Path(output_dir) / name.removeprefix("revisions/"))
             target.parent.mkdir(parents=True, exist_ok=True)
             with inp.open(info, "r") as source, target.open("xb") as dest:
                 copy_with_hash(source, dest, expected)
