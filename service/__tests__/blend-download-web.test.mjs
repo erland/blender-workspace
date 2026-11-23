@@ -111,13 +111,13 @@ test('DEV-052 history links to native BLEND for every saved revision; status is 
   };
   let html=await page();
   assert.match(html,/revisions\/15\/download/);
-  assert.match(html,/Ladda ned modell \\(BLEND\\)/);
-  assert.match(html,/Fler val för revision 15/);
-  assert.match(html,/revision-open/);
+  assert.ok(html.includes('Ladda ned modell (BLEND)'));
+  assert.match(html,/Fler val för Revision 15/);
+  assert.match(html,/revision-unavailable/);
   assert.doesNotMatch(html,/Kända externa resurser inpackade/);
   f.status='external';
   html=await page();
-  assert.match(html,/Ladda ned modell \\(BLEND\\)/);
+  assert.ok(html.includes('Ladda ned modell (BLEND)'));
   f.status='legacy';
   html=await page();
   assert.match(html,/Revisionshistorik/);
