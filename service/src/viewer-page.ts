@@ -1,3 +1,4 @@
+import {uiIcon} from './web/icons.js';
 import {themeStyles,themedCss,componentStyles} from './web/theme.js';
 /** Static, token-free viewer shell. The model is fetched separately through an
  * authenticated, same-origin request tied to the HttpOnly Google session.
@@ -102,7 +103,7 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
 <header>
  <a class="back-link" href="/projects/${projectId}" aria-label="Tillbaka till projektet">← Projekt</a>
  <h1 class="header-title">3D-visare · revision ${revision}</h1>
- <div class="header-actions"><details><summary aria-label="Fler alternativ">⋯</summary>
+ <div class="header-actions"><details><summary aria-label="Fler alternativ">${uiIcon("more")}</summary>
   <nav class="header-menu" aria-label="Fler alternativ">
    <a href="/projects/${projectId}?view=images">Projektets bilder</a>
    <a href="/projects/${projectId}?view=history">Projektets historik</a>
@@ -115,8 +116,8 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
 </div></main>
 <div class="viewer-toolbar" role="group" aria-label="Åtgärder för aktuell 3D-vy">
  <button id="render-current-view" class="primary" disabled>Rendera vy (Modal)</button>
- <button id="snapshot" class="icon-button" disabled title="Exportera PNG" aria-label="Exportera PNG">📷</button>
- <button id="reset" class="icon-button" disabled title="Återställ vy" aria-label="Återställ vy">↺</button>
+ <button id="snapshot" class="icon-button" disabled title="Exportera PNG" aria-label="Exportera PNG">${uiIcon("camera")}</button>
+ <button id="reset" class="icon-button" disabled title="Återställ vy" aria-label="Återställ vy">${uiIcon("reset")}</button>
 </div>
 <div id="animation-bar" class="animation-bar" role="group" aria-label="Animationskontroller" hidden>
  <label for="animation-clip">Animation</label>
