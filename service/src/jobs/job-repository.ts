@@ -175,7 +175,9 @@ export class JobRepository {
       throw new RangeError('Invalid job history request');
     return (await this.pool.query<Job>(
       `SELECT j.id,j.project_id,j.owner_key,j.expected_revision,j.requested_revision,j.source_revision,j.asset_sources,
-         j.status,j.note,j.error_message,j.created_at,j.updated_at,j.finished_at,j.cancellation_requested_at
+         j.status,j.note,j.error_message,j.created_at,j.updated_at,j.finished_at,
+         j.started_at,j.worker_heartbeat_at,j.blender_heartbeat_at,j.progress_phase,
+         j.deadline_at,j.cancellation_requested_at
        FROM bw_jobs j JOIN bw_projects p ON p.id=j.project_id
        WHERE j.owner_key=$1 AND p.owner_key=$1 AND p.deleted_at IS NULL
          AND ($2::uuid IS NULL OR j.project_id=$2::uuid)
