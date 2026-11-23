@@ -4,13 +4,13 @@ import {createReadStream} from 'node:fs';
 import path from 'node:path';
 
 export const MAX_UPLOAD_BYTES=32*1024*1024;
-export type UploadFormat='blend'|'glb';
+export type UploadFormat='blend'|'glb'|'png'|'jpg';
 export interface ValidatedUpload {format:UploadFormat;sizeBytes:number;sha256:string}
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uid(s:string){if(!UUID.test(s))throw new RangeError('Invalid upload ID');return s.toLowerCase();}
 function checkName(name:string){
  if(typeof name!=='string'||name.length<1||name.length>200||
-    !/^[^/\\\0-\x1f\x7f]+\.(?:blend|glb)$/i.test(name))
+    !/^[^/\\\0-\x1f\x7f]+\.(?:blend|glb|png|jpe?g)$/i.test(name))
    throw new RangeError('Invalid upload filename');
  return name;
 }
@@ -46,15 +46,57 @@ function checkGltfDocument(bytes:Buffer){
      throw new RangeError('External GLB resources are not supported');
  }
 }
+/** Reject non-image payloads and pathological dimensions before storing.
+ * Blender remains the authoritative decoder in a network-isolated Sandbox.
+ */
+function checkTexture(bytes:Buffer,format:'png'|'jpg'):void{
+ if(format==='png'){
+  if(bytes.length<33||!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||
+     bytes.toString('ascii',12,16)!=='IHDR'||bytes.readUInt32BE(8)!==13||
+     bytes[24]!==8||![0,2,4,6].includes(bytes[25]))
+    throw new RangeError('Invalid PNG texture');
+  const width=bytes.readUInt32BE(16),height=bytes.readUInt32BE(20);
+  if(width<1||height<1||width>8192||height>8192||width*height>16777216)
+    throw new RangeError('Invalid texture dimensions');
+ }else{
+  if(bytes.length<32||bytes[0]!==0xff||bytes[1]!==0xd8||
+     bytes[bytes.length-2]!==0xff||bytes[bytes.length-1]!==0xd9)
+    throw new RangeError('Invalid JPEG texture');
+  // Parse the bounded JPEG marker stream to find actual dimensions.
+  let offset=2,dimensions=false;
+  while(offset+4<bytes.length){
+   if(bytes[offset]!==0xff)break;
+   let marker=bytes[offset+1];
+   while(marker===0xff&&offset+2<bytes.length){offset++;marker=bytes[offset+1];}
+   if(marker===0xda)break;
+   if(marker===0xd8||marker===0xd9||marker===0x01||
+      marker>=0xd0&&marker<=0xd7){offset+=2;continue;}
+   const size=bytes.readUInt16BE(offset+2);
+   if(size<2||offset+2+size>bytes.length)break;
+   if([0xc0,0xc1,0xc2].includes(marker)){
+     if(size<7)break;
+     const h=bytes.readUInt16BE(offset+5),w=bytes.readUInt16BE(offset+7);
+     if(w<1||h<1||w>8192||h>8192||w*h>16777216)
+       throw new RangeError('Invalid texture dimensions');
+     dimensions=true;break;
+   }
+   offset+=2+size;
+  }
+  if(!dimensions)throw new RangeError('Invalid JPEG texture');
+ }
+}
 export function validateUpload(bytes:Buffer,filename:string):ValidatedUpload{
  const name=checkName(filename);
  if(!Buffer.isBuffer(bytes)||bytes.length<20||bytes.length>MAX_UPLOAD_BYTES)
    throw new RangeError('Upload must be 20 bytes to 32 MiB');
- const format=name.toLowerCase().endsWith('.blend')?'blend':'glb';
+ const suffix=name.toLowerCase().split('.').at(-1);
+ const format:UploadFormat=suffix==='blend'?'blend':suffix==='glb'?'glb':
+   suffix==='png'?'png':'jpg';
  if(format==='blend'){
    if(!isNativeBlend(bytes))
       throw new RangeError('Unrecognized BLEND header');
- }else checkGltfDocument(bytes);
+ }else if(format==='glb')checkGltfDocument(bytes);
+ else checkTexture(bytes,format);
  return {format,sizeBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
 }
 async function sha256(filename:string){
@@ -68,7 +110,7 @@ export class UploadedAssetStore {
   if(!path.isAbsolute(root))throw new RangeError('Absolute file storage required');
  }
  private filepath(id:string,format:UploadFormat){
-  if(format!=='blend'&&format!=='glb')throw new RangeError('Unsupported format');
+  if(!['blend','glb','png','jpg'].includes(format))throw new RangeError('Unsupported format');
   return path.join(this.root,'.uploaded-assets',uid(id)+'.'+format);
  }
  async store(bytes:Buffer,id:string,format:UploadFormat){
