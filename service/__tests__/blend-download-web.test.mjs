@@ -57,7 +57,9 @@ function fixture(t){
   };
   const app=createApp({authMode:'google',google:{},publicOrigin:ORIGIN,
     host:'127.0.0.1',port:3000,accessToken:''},
-    {projects,jobs:{async list(){return [];}},artifacts},
+    {projects,jobs:{async list(){return [];}},artifacts,
+      modalAccounts:{async status(){return {connected:false,needsRenewal:false};},
+        async memoryMiB(){return 2048;}}},
     {google});
   t.after(async()=>{await app.close();await rm(await rootPromise,{recursive:true,force:true});});
   const write=async()=>writeFile(path.join(await rootPromise,'scene.blend'),nativeBytes);
