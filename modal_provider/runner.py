@@ -158,10 +158,23 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
             source=Path(filename)
             if (not source.is_file() or source.is_symlink() or
                 source.stat().st_size<20 or source.stat().st_size>256*1024*1024 or
-                not isinstance(entry,dict) or set(entry)!={'index','offset','format'} or
-                entry['format'] not in ('blend','glb') or
+                not isinstance(entry,dict) or
+                set(entry)!=({'index','offset','format','texture'}
+                    if entry.get('format') in ('png','jpg') else
+                    {'index','offset','format'}) or
+                entry['format'] not in ('blend','glb','png','jpg') or
                 (entry['format']=='blend' and not _is_native_blend_magic(source)) or
                 (entry['format']=='glb' and source.open('rb').read(4)!=b'glTF') or
+                (entry['format']=='png' and source.open('rb').read(8)!=
+                    bytes.fromhex('89504e470d0a1a0a')) or
+                (entry['format']=='jpg' and source.open('rb').read(2)!=bytes.fromhex('ffd8')) or
+                (entry['format'] in ('png','jpg') and (
+                    not isinstance(entry.get('texture'),dict) or
+                    set(entry['texture'])!={'objectName','channel'} or
+                    not isinstance(entry['texture']['objectName'],str) or
+                    not 1<=len(entry['texture']['objectName'])<=200 or
+                    entry['texture']['channel'] not in
+                        ('baseColor','roughness','metallic','normal'))) or
                 entry['index']!=i or not isinstance(entry['offset'],list) or
                 len(entry['offset'])!=3 or
                 any(type(x) not in (int,float) or not -100000<=x<=100000 for x in entry['offset'])):
