@@ -122,7 +122,7 @@ export class JobOrchestrator {
           const record=item as Record<string,unknown>;
           if(Object.keys(record).sort().join(',')!=='name,sha256,sizeBytes'||
              typeof record.name!=='string'||typeof record.sha256!=='string'||
-             !/^resources\\/[0-9a-f]{64}\\.(?:png|jpg)$/.test(record.name)||
+             !/^resources\/[0-9a-f]{64}\.(?:png|jpg)$/.test(record.name)||
              seen.has(record.name)||!Number.isSafeInteger(record.sizeBytes))
             throw new Error('Invalid generated resource descriptor');
           seen.add(record.name);
