@@ -5,14 +5,12 @@ from pathlib import Path
 import bpy
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from blender_workspace_poc.compose_sources import compose_sources
+from blender_workspace_poc.texture_materials import apply_staged_textures
 from blender_workspace_poc.portable_scene import pack_scene_resources
 
 out=Path('/workspace/out')
 out.mkdir(parents=True,exist_ok=True)
 bpy.ops.wm.read_factory_settings(use_empty=True)
-bpy.ops.mesh.primitive_cube_add()
-obj=bpy.context.object
-obj.name='Texture Target'
 bpy.ops.mesh.primitive_cube_add(location=(3,0,0))
 bpy.context.object.name='Untouched Cube'
 
@@ -27,6 +25,11 @@ bpy.data.images.remove(image)
  'texture':{'objectName':'Texture Target','channel':'baseColor'}
 }]))
 assert compose_sources()==[]
+# New mesh is created after source staging, as happens with user Python.
+bpy.ops.mesh.primitive_cube_add()
+obj=bpy.context.object
+obj.name='Texture Target'
+assert apply_staged_textures(json.loads((out/'asset-sources.json').read_text()))==1
 mat=obj.data.materials[0]
 bsdf=mat.node_tree.nodes.get('Principled BSDF')
 assert bsdf.inputs['Base Color'].is_linked
