@@ -25,7 +25,7 @@ test('Safari/iPad import uses unrestricted native file picker and explains allow
  assert.doesNotMatch(html,/<input id="model-file"[^>]*accept=/,
    'iOS WebKit can prevent uncommon .blend/.glb types from being selectable');
  assert.match(html,/model-file-help/);
- assert.match(html,/Välj en .blend- eller .glb-fil/);
+ assert.match(html,/Välj en .blend-, .glb-, .png-, .jpg- eller .jpeg-fil/);
 });
 
 test('upload client shows file selection and rejects wrong extension before network',async()=>{
@@ -36,7 +36,7 @@ test('upload client shows file selection and rejects wrong extension before netw
  let prevented=false;
  await h.handlers.get('form:submit')({preventDefault(){prevented=true;}});
  assert.equal(prevented,true);
- assert.match(h.status.textContent,/ändelsen .blend eller .glb/);
+ assert.match(h.status.textContent,/ändelsen .blend, .glb, .png, .jpg eller .jpeg/);
  assert.equal(h.uploads,0);
  assert.equal(h.button.disabled,false);
  h.fileInput.files=[{name:'scene.blend',size:10}];
@@ -49,7 +49,7 @@ test('upload client shows file selection and rejects wrong extension before netw
 });
 
 test('upload client accepts correct uppercase BLEND and GLB extensions',async()=>{
- for(const name of ['scene.blend','SCENE.BLEND','scene.glb','SCENE.GLB']){
+ for(const name of ['scene.blend','SCENE.BLEND','scene.glb','SCENE.GLB','skin.png','SKIN.PNG','skin.jpg','skin.jpeg']){
   const h=browserHarness();
   h.fileInput.files=[{name,size:1024}];
   await h.handlers.get('form:submit')({preventDefault(){}});
