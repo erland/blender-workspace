@@ -1,6 +1,6 @@
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
-export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean}
+export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;portableStatus?:'complete'|'external'|'unknown';externalCount?:number}
 export interface PortalModelJob {id:string;project_id:string;requested_revision:number;status:string;note:string;error_message:string|null;created_at:Date}
 export interface PortalJobItem {id:string;project_id:string;project_name:string;type:'model'|'render';revision:number;status:string;created_at:Date;detail:string;error:string|null}
 export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null}
@@ -52,6 +52,7 @@ const style=[
 '.button.alt{background:#eaf0fb;color:#2054b8}',
 '.panel{padding:22px}.history{list-style:none;padding:0;margin:0}.history li{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-top:1px solid #d8e2ed;padding:14px 0}',
 '.history li:first-child{border-top:0}.history p{margin:0}.history .muted{overflow-wrap:anywhere}',
+'.revision-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.revision-actions .button{min-height:44px;display:inline-flex;align-items:center}',
 '.job-list li{display:block;padding:0}.job-list li:first-child{border-top:0}',
 '.job-link{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:76px;padding:12px 6px;color:inherit;text-decoration:none}',
 '.job-link:hover{background:#f1f5ff;text-decoration:none}.job-link:focus-visible{outline:3px solid #215dd5;outline-offset:-3px;border-radius:8px}',
@@ -233,14 +234,23 @@ export function projectDetailPage(
  const latestView=latest?.glbAvailable!==false&&latest?viewerUrl(p.id,latest.revision):null;
  const imagesUrl=base+'?view=images',historyUrl=base+'?view=history',settingsUrl=base+'?view=settings';
  const history=[...revs].sort((a,b)=>b.revision-a.revision).map(r=>{
-   const saved=r.artifact_prefix;
+   const saved=Boolean(r.artifact_prefix);
    const status=saved?'<span class="tag">Sparad</span>':'<span class="tag empty">Ej tillgänglig</span>';
    const open=saved&&r.glbAvailable!==false?
-     '<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa GLB</a>':
-     '<span class="muted small">GLB saknas · Blender-original sparat</span>';
+     '<a class="button alt" href="'+viewerUrl(p.id,r.revision)+'">Visa GLB</a>':'';
+   const download=saved?
+     '<a class="button alt" href="'+base+'/revisions/'+r.revision+
+     '/download" download>⬇ Ladda ned BLEND</a>':'';
+   const portability=!saved?'':r.portableStatus==='complete'
+     ?'<span class="muted small">Kända externa resurser inpackade</span>':
+     r.portableStatus==='external'
+       ?'<span class="muted small" role="note">⚠ '+(r.externalCount??0)+
+        ' externa filberoenden återstår – lokal rendering kan sakna resurser</span>'
+       :'<span class="muted small">Externa resurser ej verifierade för denna revision</span>';
    return '<li><div><p><strong>Revision '+r.revision+'</strong> '+status+'</p>'+
      '<p class="muted small">'+escapeHtml(r.note||'Ingen beskrivning')+' · '+when(r.created_at)+
-     '</p></div>'+open+'</li>';
+     '</p>'+portability+'</div>'+
+     (saved?'<div class="revision-actions">'+open+download+'</div>':'')+'</li>';
  }).join('');
  const tab=(title:string,icon:string,url:string,selected:boolean)=>
    '<a class="project-tab" href="'+url+'"'+(selected?' aria-current="page"':'')+'>'+
