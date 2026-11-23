@@ -203,3 +203,20 @@ test('DEV-050: uncertain termination never reports cancelled or releases revisio
   await assert.rejects(()=>x.jobs.reserve(x.ownerA,x.pA.id,0,'Blocked',undefined,
     {kind:'python_script',code:'pass'}),/Another job is active/);
 });
+
+test('JOB-PROGRESS: owner-scoped job list returns persisted heartbeat and deadlines',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
+  const job=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Status',
+    undefined,{kind:'python_script',code:'pass'});
+  await x.jobs.claimNext();
+  await x.jobs.heartbeat(x.ownerA,job.id,'blender_execution',true);
+  const own=(await x.jobs.list(x.ownerA,x.pA.id)).find(j=>j.id===job.id);
+  assert.equal(own.progress_phase,'blender_execution');
+  assert.ok(own.started_at instanceof Date);
+  assert.ok(own.deadline_at instanceof Date);
+  assert.ok(own.worker_heartbeat_at instanceof Date);
+  assert.ok(own.blender_heartbeat_at instanceof Date);
+  assert.ok(!(await x.jobs.list(x.ownerB,x.pB.id)).some(j=>j.id===job.id));
+});
