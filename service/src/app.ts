@@ -38,7 +38,7 @@ export function createApp(config:ServiceConfig,
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
    projectClone?:Pick<ProjectCloneService,'clone'>;
   uploads?:Pick<UploadedAssets,'upload'|'list'|'get'|'verifiedPath'>;
-  publicShares?:Pick<PublicShareRepository,'create'|'owned'|'revoke'|'resolve'>;
+  publicShares?:Pick<PublicShareRepository,'create'|'owned'|'revoke'|'resolve'|'setSelectedRenders'>;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
   glbPreviews?:Pick<GlbPreviewRepository,'latest'|'get'|'reserve'>;
@@ -334,7 +334,21 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          const status=share&&!share.revoked_at&&
            (!share.expires_at||new Date(share.expires_at)>new Date())?'active':
            share?'revoked':'none';
-         return ownerSharePage(projectId,Number(revision),session.csrf,status);
+         const completed=services!.renderJobs&&status==='active'
+           ?(await services!.renderJobs.list(session.ownerKey,projectId,Number(revision)))
+             .filter(j=>j.status==='completed'&&j.sha256&&j.size_bytes)
+           :[];
+         const candidates=[];
+         for(const image of completed){
+           try{
+             await services!.renderedImages!.verifiedPath(
+               projectId,image.id,image.sha256!,image.size_bytes!);
+             candidates.push(image);
+           }catch{/* Exclude missing or corrupted rendering. */}
+         }
+         return ownerSharePage(projectId,Number(revision),session.csrf,status,
+           undefined,candidates,share?.selected_render_ids??[],
+           (request.query as {message?:string}).message);
        }catch{return reply.code(404).send('Revisionen hittades inte');}
      });
      app.post('/projects/:projectId/revisions/:revision/share',{bodyLimit:4096},
@@ -351,7 +365,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
        const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
        if(form.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
        const action=form.get('action');
-       if(!['publish','revoke'].includes(action??''))return reply.code(400).send('Invalid action');
+       if(!['publish','revoke','images'].includes(action??''))return reply.code(400).send('Invalid action');
        const {projectId,revision}=request.params as {projectId:string;revision:string};
        const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
        if(!uuid.test(projectId)||!/^[1-9][0-9]{0,7}$/.test(revision)||
@@ -364,6 +378,34 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          if(action==='revoke'){
            await services!.publicShares.revoke(session.ownerKey,projectId,Number(revision));
            return ownerSharePage(projectId,Number(revision),session.csrf,'revoked');
+         }
+         if(action==='images'){
+           // Images are an explicit whitelist snapshot for this exact revision.
+           // A render job cannot be shared until it has completed and its PNG
+           // is present with the expected SHA-256 checksum.
+           const ids=form.getAll('imageId');
+           const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+           if(ids.length>12||ids.some(id=>!uuid.test(id))||
+              new Set(ids.map(id=>id.toLowerCase())).size!==ids.length)
+             return reply.code(422).send('Ogiltigt bildurval');
+           if(!services!.renderJobs||!services!.renderedImages)
+             return reply.code(503).send('Bildtjänsten saknas');
+           for(const id of ids){
+             const image=await services!.renderJobs.get(session.ownerKey,id);
+             if(!image||image.project_id!==projectId||
+                image.source_revision!==Number(revision)||
+                image.status!=='completed'||!image.sha256||!image.size_bytes)
+               return reply.code(422).send('Bilden är inte tillgänglig');
+             try{
+               await services!.renderedImages.verifiedPath(
+                 projectId,id,image.sha256,image.size_bytes);
+             }catch{return reply.code(422).send('Bilden är inte tillgänglig');}
+           }
+           const updated=await services!.publicShares.setSelectedRenders(
+             session.ownerKey,projectId,Number(revision),ids);
+           if(!updated)return reply.code(404).send('Delningen är inte aktiv');
+           return reply.code(303).header('location',
+             '/projects/'+projectId+'/revisions/'+revision+'/share?message=images_saved').send();
          }
          // Publication is impossible unless real, checksum-verified GLB exists.
          await services!.artifacts!.verifiedArtifactPath(projectId,Number(revision),'scene.glb');
@@ -777,9 +819,48 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
        const share=await services!.publicShares.resolve(token);
        if(!share)return reply.code(404).send('Delningen hittades inte');
        await services!.artifacts!.verifiedArtifactPath(share.project_id,share.revision,'scene.glb');
+       const publicImages=[];
+       if(share.allow_renders&&services!.renderJobs&&services!.renderedImages){
+         for(const id of share.selected_render_ids.slice(0,12)){
+           const image=await services!.renderJobs.get(share.owner_key,id);
+           if(!image||image.project_id!==share.project_id||
+              image.source_revision!==share.revision||
+              image.status!=='completed'||!image.sha256||!image.size_bytes)continue;
+           try{
+             await services!.renderedImages.verifiedPath(
+               share.project_id,id,image.sha256,image.size_bytes);
+             publicImages.push(image);
+           }catch{/* Broken images are not offered in the gallery. */}
+         }
+       }
        return reply.type('text/html; charset=utf-8')
-         .send(publicSharePage(token,share.project_name,share.revision));
+         .send(publicSharePage(token,share.project_name,share.revision,publicImages));
      }catch{return reply.code(404).send('Delningen hittades inte');}
+   });
+   // Public PNG is always checked against the current active share's
+   // explicit whitelist, revision, owner, completed job and file checksum.
+   // No private render path is exposed to the anonymous viewer.
+   app.get('/share/:token/renders/:imageId.png',async(request,reply)=>{
+     publicHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const {token,imageId}=request.params as {token:string;imageId:string};
+     const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+     if(!validShareToken(token)||!uuid.test(imageId)||!services!.publicShares||
+        !services!.renderJobs||!services!.renderedImages)
+       return reply.code(404).send({error:'not_found'});
+     try{
+       const share=await services!.publicShares.resolve(token);
+       if(!share||!share.allow_renders||
+          !share.selected_render_ids.some(id=>id.toLowerCase()===imageId.toLowerCase()))
+         return reply.code(404).send({error:'not_found'});
+       const image=await services!.renderJobs.get(share.owner_key,imageId);
+       if(!image||image.project_id!==share.project_id||
+          image.source_revision!==share.revision||
+          image.status!=='completed'||!image.sha256||!image.size_bytes)
+         return reply.code(404).send({error:'not_found'});
+       const file=await services!.renderedImages.verifiedPath(
+         share.project_id,imageId,image.sha256,image.size_bytes);
+       return reply.type('image/png').send(createReadStream(file));
+     }catch{return reply.code(404).send({error:'not_found'});}
    });
    app.get('/share/:token/scene.glb',async(request,reply)=>{
      publicHeaders(reply).header('content-security-policy',"default-src 'none'");
