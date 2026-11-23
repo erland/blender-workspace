@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 import time
+import threading
 
 
 def _is_native_blend_magic(path):
@@ -223,7 +224,32 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
             "NEW" if revision == 1 else "/workspace/out/input.blend",
             "/workspace/out/model.py", str(revision),
             *(['RENDER'] if inline_render else []))
-        code = process.wait()
+        # Poll a numeric marker written by the trusted Blender entrypoint.
+        # This is independent of the controller/worker heartbeat. Ignore all
+        # untrusted contents and do not persist or expose source/output text.
+        monitor_stop = threading.Event()
+        def monitor_blender():
+            previous = -1
+            target = out / 'blender-heartbeat.txt'
+            while not monitor_stop.wait(15):
+                try:
+                    sandbox.filesystem.copy_to_local('/workspace/out/bw-heartbeat',str(target))
+                    marker = target.read_text(encoding='ascii').strip()
+                    if re.fullmatch(r'[0-9]{1,12}',marker):
+                        sequence=int(marker)
+                        if sequence > previous:
+                            previous=sequence
+                            print('BW_PROGRESS phase=blender_execution alive=1',flush=True)
+                except Exception:
+                    pass  # Signal may not exist yet or SDK copy can fail.
+        monitor=threading.Thread(target=monitor_blender,daemon=True)
+        monitor.start()
+        try:
+            code = process.wait()
+        finally:
+            monitor_stop.set()
+            monitor.join(timeout=2)
+            (out/'blender-heartbeat.txt').unlink(missing_ok=True)
         # Never persist raw stream tails: user Python can print sensitive data.
         stdout = process.stdout.read()[-8000:]
         stderr = process.stderr.read()[-8000:]
