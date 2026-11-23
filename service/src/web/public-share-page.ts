@@ -1,3 +1,4 @@
+import {themeStyles,themedCss} from './theme.js';
 import {escapeHtml} from './project-pages.js';
 
 export interface ShareRenderImage {
@@ -11,7 +12,7 @@ export function publicSharePage(token:string,projectName:string,revision:number,
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
 <title>${title} – Publik 3D-modell – Blender Workspace</title>
-<style>
+<style>${themeStyles}${themedCss(`
 *{box-sizing:border-box}
 body{margin:0;background:#eef2f7;color:#172033;font:16px system-ui,sans-serif;line-height:1.5}
 header{background:#fff;padding:16px max(16px,calc((100% - 1100px)/2));border-bottom:1px solid #cbd5e1}
@@ -34,7 +35,7 @@ button:disabled,select:disabled{opacity:.5}
 .public-gallery img{display:block;max-width:100%;width:100%;height:175px;object-fit:contain;background:#eef2f7;border-radius:6px}
 .public-gallery small{display:block;color:#475569;margin-top:7px}
 footer{margin-top:18px;color:#64748b;font-size:.82rem}
-</style></head><body>
+`)}</style></head><body>
 <header><h1>${title}</h1><p>Delad Blender-modell · revision ${revision}</p></header>
 <main><section aria-label="Publik GLB-visare">
 <canvas id="public-viewport" aria-label="Interaktiv tredimensionell modell"></canvas>
@@ -78,7 +79,7 @@ Om du tappar bort länken kan du skapa en ny, vilket ogiltigförklarar den gamla
   return `<!doctype html><html lang="sv"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive"><title>Dela revision ${revision} – Blender Workspace</title>
-<style>
+<style>${themeStyles}${themedCss(`
 body{font:16px system-ui,sans-serif;line-height:1.5;background:#f4f7fb;color:#172033;max-width:740px;margin:30px auto;padding:0 16px}
 main{padding:22px;border:1px solid #d8e2ed;border-radius:14px;background:white}
 button{min-height:44px;padding:10px 16px;border:1px solid #2563eb;border-radius:9px;background:#215dd5;color:white;font:inherit;cursor:pointer}
@@ -99,7 +100,7 @@ form.action-form{display:inline-block;margin:8px 12px 8px 0}
 .gallery-select h2{font-size:1.15rem}
 .image-choice span{flex:1}
 .status{padding:8px 12px;background:#edf5ff;border-radius:8px}
-</style></head><body><main>
+`)}</style></head><body><main>
 <p><a href="/projects/${encodeURIComponent(projectId)}?view=history">← Till revisionshistoriken</a></p>
 <h1>Dela revision ${revision}</h1>
 <div class="share-status" role="status"><strong>${statusLabel}</strong><span>${active?'Besökaren kan se den här revisionens 3D-modell. Inställningarna nedan avgör om bilder och originalfilen också är tillgängliga.':status==='revoked'?'Den gamla länken fungerar inte längre. Skapa en ny länk om du vill dela igen.':'Skapa en länk för att låta andra se modellen utan att kunna ändra den.'}</span></div>
