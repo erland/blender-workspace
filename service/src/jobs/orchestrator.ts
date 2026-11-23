@@ -2,7 +2,7 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type { Job, JobRepository } from './job-repository.js';
-import type { IncomingArtifact, LocalArtifactStore } from '../storage/artifact-store.js';
+import type { IncomingArtifact, LocalArtifactStore,RevisionResource } from '../storage/artifact-store.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {JobExecutionError} from './job-diagnostics.js';
 import {parseAssetSources} from './asset-sources.js';
@@ -16,9 +16,10 @@ export interface BlenderAssetInput {
   offset:[number,number,number];
   texture?:{objectName:string;channel:'baseColor'|'roughness'|'metallic'|'normal'};
 }
+export interface RevisionResourceInput extends RevisionResource { path:string; }
 export interface BlenderExecutor {
   runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,
-    inputBlend?:string,assets?:BlenderAssetInput[]):Promise<void>;
+    inputBlend?:string,assets?:BlenderAssetInput[],resources?:RevisionResourceInput[]):Promise<void>;
 }
 
 const SCENE_ARTIFACTS=['scene.blend','scene.json'] as const;
@@ -51,6 +52,8 @@ export class JobOrchestrator {
         throw new Error('Invalid source revision');
       const source=sourceRevision===0?undefined:await this.files.verifiedArtifactPath(
         job.project_id,sourceRevision,'scene.blend');
+      const resources:RevisionResourceInput[]=sourceRevision===0?[]:
+        await this.files.verifiedRevisionResources(job.project_id,sourceRevision);
       const requestedAssets=parseAssetSources(job.asset_sources??[]);
       const assets:BlenderAssetInput[]=[];
       if(requestedAssets.length){
@@ -73,13 +76,17 @@ export class JobOrchestrator {
                 offset:item.offset as [number,number,number]});
             }
           }else{
+            // Importing a second resource-dependent BLEND requires a
+            // per-source namespace/remap, not supported in this phase.
+            if((await this.files.verifiedRevisionResources(item.projectId,item.revision)).length)
+              throw new Error('External-resource model composition not yet supported');
             assets.push({path:await this.files.verifiedArtifactPath(
               item.projectId,item.revision,'scene.blend'),format:'blend',
               offset:item.offset as [number,number,number]});
           }
         }
       }
-      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets);
+      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets,resources);
       // GLB is a disposable preview, never a prerequisite for the native
       // Blender revision. Only publish one if the trusted worker declared it.
       const artifacts:IncomingArtifact[]=SCENE_ARTIFACTS.map(name=>({
