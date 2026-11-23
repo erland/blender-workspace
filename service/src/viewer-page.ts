@@ -1,4 +1,4 @@
-import {themeStyles,themedCss} from './web/theme.js';
+import {themeStyles,themedCss,componentStyles} from './web/theme.js';
 /** Static, token-free viewer shell. The model is fetched separately through an
  * authenticated, same-origin request tied to the HttpOnly Google session.
  */
@@ -98,7 +98,7 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
    height:clamp(220px,30dvh,390px);min-height:0
  }
 }
-`)}</style></head><body>
+`)}${componentStyles}</style></head><body>
 <header>
  <a class="back-link" href="/projects/${projectId}" aria-label="Tillbaka till projektet">← Projekt</a>
  <h1 class="header-title">3D-visare · revision ${revision}</h1>
