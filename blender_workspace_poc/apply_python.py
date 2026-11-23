@@ -138,6 +138,13 @@ def main():
     # native BLENDER header without parsing untrusted compressed input.
     save_start=time.monotonic()
     bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=False)
+    # Relative resource paths now resolve against the saved native file.
+    # Refresh the image pixels before GLB export and optional inline render.
+    for image in bpy.data.images:
+        if image.source=='FILE' and image.filepath.startswith('//resources/'):
+            image.reload()
+            if not image.has_data:
+                raise ValueError('Externalized texture could not be reloaded')
     save_seconds=round(time.monotonic()-save_start,3)
     preview={'format':'glb','status':'unavailable','reason':'export_failed'}
     files=[blend]
