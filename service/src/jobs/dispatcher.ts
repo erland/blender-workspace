@@ -16,7 +16,7 @@ export interface DispatchOutcome {state:'idle'|'completed'|'failed';jobId?:strin
 export class JobDispatcher {
   readonly pollMs:number;
   readonly graceMinutes:number;
-  constructor(private readonly jobs:Pick<JobRepository,'claimNext'|'quarantineStaleRunning'>,
+  constructor(private readonly jobs:Pick<JobRepository,'claimNext'|'quarantineStaleRunning'> & Partial<Pick<JobRepository,'heartbeat'>>,
     private readonly workflow:Pick<JobOrchestrator,'executeClaimed'>,
     options:DispatchOptions={},
     private readonly renders?:Pick<RenderJobRepository,'claimNext'|'quarantineStale'>,
@@ -53,6 +53,12 @@ export class JobDispatcher {
         return {state:'failed',jobId:render.id};
       }
     }
+    // Worker liveness is not proof of Blender progress.
+    const beat=()=>{void this.jobs.heartbeat?.(job.owner_key,job.id).catch(()=>{
+      console.error(JSON.stringify({event:'job_heartbeat_unavailable',jobId:job.id}));
+    });};
+    const heartbeatTimer=setInterval(beat,15_000);
+    heartbeatTimer.unref();
     try{
       await this.workflow.executeClaimed(job);
       return {state:'completed',jobId:job.id};
@@ -64,9 +70,17 @@ export class JobDispatcher {
         : {phase:'setup',code:'initialization_failed'};
       console.error(JSON.stringify({event:'blender_job_failed',jobId:job.id,...diagnostic}));
       return {state:'failed',jobId:job.id};
-    }
+    }finally{clearInterval(heartbeatTimer);}
   }
   async run(signal:AbortSignal):Promise<void>{
+    // Run watchdog independently of dispatchOnce's blocking Modal execution.
+    const watchdog=setInterval(()=>{
+      void this.jobs.quarantineStaleRunning(this.graceMinutes).catch(()=>{
+        console.error(JSON.stringify({event:'job_watchdog_unavailable'}));
+      });
+    },15_000);
+    watchdog.unref();
+    try {
     await this.jobs.quarantineStaleRunning(this.graceMinutes);
     if(this.renders)await this.renders.quarantineStale(this.graceMinutes);
     if(this.previews)await this.previews.quarantineStale(this.graceMinutes);
@@ -83,5 +97,6 @@ export class JobDispatcher {
         }
       }
     }
+    }finally{clearInterval(watchdog);}
   }
 }
