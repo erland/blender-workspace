@@ -60,7 +60,7 @@ function luminance(rgb){
  return c[0]*.2126+c[1]*.7152+c[2]*.0722;
 }
 function parseColor(color){
- const match=color.match(/^rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/i);
+ const match=color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
  return match?match.slice(1,4).map(Number):null;
 }
 function contrast(a,b){
@@ -76,7 +76,7 @@ try{
    for(const [name,markup] of Object.entries(pages)){
     // Actual server-rendered HTML; disable external client bundles so a test
     // never requires authenticated API responses or talks to production.
-    const staticMarkup=markup.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi,'');
+    const staticMarkup=markup.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
     await page.setContent(staticMarkup,{waitUntil:'domcontentloaded'});
     await page.evaluate(()=>document.fonts.ready);
     const dimensions=await page.evaluate(()=>({
