@@ -48,7 +48,7 @@ test('browser only queues render after explicit signed-owner, origin and CSRF ch
  const post=(overrides={},body={})=>service.inject({
    method:'POST',url:'/projects/'+PROJECT+'/renders',
    headers:{cookie:'session=owner',origin:ORIGIN,'content-type':'application/x-www-form-urlencoded',...overrides},
-   payload:new URLSearchParams({csrf:CSRF,revision:'1',engine:'CYCLES',size:'256',samples:'8',...body}).toString()
+   payload:new URLSearchParams({csrf:CSRF,revision:'1',engine:'CYCLES',size:'256',samples:'8',confirm:'yes',...body}).toString()
  });
  assert.equal((await post({cookie:'session=other'})).statusCode,404);
  assert.equal((await post({cookie:'session=other',origin:'https://evil.invalid'})).statusCode,403);
@@ -56,6 +56,9 @@ test('browser only queues render after explicit signed-owner, origin and CSRF ch
  assert.equal((await post({origin:'https://evil.invalid'})).statusCode,403);
  assert.equal((await post({origin:'null','sec-fetch-site':'cross-site'})).statusCode,403);
  assert.equal((await post({}, {csrf:'bad'})).statusCode,403);
+ assert.equal((await post({}, {confirm:'no'})).statusCode,400);
+ assert.equal((await post({}, {confirm:''})).statusCode,400);
+ assert.equal(queued,0);
  assert.equal((await post({}, {size:'9999'})).statusCode,303);
  assert.equal(queued,0);
  const ok=await post({origin:'null','sec-fetch-site':'same-origin'});
