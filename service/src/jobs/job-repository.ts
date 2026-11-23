@@ -190,7 +190,7 @@ export class JobRepository {
       updated_at=now() WHERE id=$1 AND owner_key=$2
       AND status IN ('running','needs_recovery')`,[id,owner,safeStoredJobError(error)]);
   }
-  async finalize(owner:string,jobId:string,artifactPrefix:string):Promise<Job> {
+  async finalize(owner:string,jobId:string,artifactPrefix:string,explicitRecovery=false):Promise<Job> {
     const c=await this.pool.connect();
     try {
       await c.query('BEGIN');
@@ -201,7 +201,10 @@ export class JobRepository {
       if(!jr.rowCount)throw new JobConflict('Job not found or unauthorized');
       const job=jr.rows[0];
       if(job.status==='completed'){await c.query('COMMIT');return job;}
-      if(!['running','needs_recovery'].includes(job.status))throw new JobConflict('Job not finalizable');
+      if(job.status!=='running' && !(explicitRecovery && job.status==='needs_recovery'))
+        throw new JobConflict('Job not finalizable');
+      if(!explicitRecovery && job.deadline_at && new Date(job.deadline_at).getTime()<Date.now())
+        throw new JobConflict('Job execution deadline elapsed');
       const updated=await c.query(
         `UPDATE bw_projects SET current_revision=$3,updated_at=now()
          WHERE id=$1 AND owner_key=$2 AND current_revision=$4 AND deleted_at IS NULL
