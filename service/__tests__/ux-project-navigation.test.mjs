@@ -28,7 +28,8 @@ test('UX-002 overview is short, shows preview images and routes to three main ta
  assert.equal((html.match(/class="overview-image"/g)||[]).length,3);
  assert.match(html,/Aktuell modell/);
  for(const r of [renderA,renderB,renderC])assert.ok(html.includes('/renders/'+id+'/'+r+'.png'));
- assert.doesNotMatch(html,/id="project-name"|name="engine"|<h2>Revisionshistorik<\\/h2>|Modelleringsjobb/);
+ assert.doesNotMatch(html,/id="project-name"|name="engine"|Modelleringsjobb/);
+ assert.ok(!html.includes('<h2>Revisionshistorik</h2>'));
  assert.doesNotMatch(html,/<script>katt<\/script>|Projekt <katt>/);
 });
 test('UX-002 image view includes shared render jobs and collapsed render form',()=>{
