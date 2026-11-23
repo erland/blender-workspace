@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type { Job, JobRepository } from './job-repository.js';
@@ -107,8 +107,33 @@ export class JobOrchestrator {
           throw new JobExecutionError('artifact_storage','artifact_storage_failed');
       }
       try{
+        const reportPath=path.join(temp,'scene.json');
+        if((await stat(reportPath)).size>16*1024*1024)
+          throw new Error('Oversized scene report');
+        const report=JSON.parse(await readFile(reportPath,'utf8')) as Record<string,unknown>;
+        const declared=report.resourceFiles??[];
+        if(!Array.isArray(declared)||declared.length>128)
+          throw new Error('Invalid generated resources');
+        const resources:RevisionResource[]=[];
+        const seen=new Set<string>();
+        for(const item of declared){
+          if(!item||typeof item!=='object'||Array.isArray(item))
+            throw new Error('Invalid generated resource');
+          const record=item as Record<string,unknown>;
+          if(Object.keys(record).sort().join(',')!=='name,sha256,sizeBytes'||
+             typeof record.name!=='string'||typeof record.sha256!=='string'||
+             !/^resources\\/[0-9a-f]{64}\\.(?:png|jpg)$/.test(record.name)||
+             seen.has(record.name)||!Number.isSafeInteger(record.sizeBytes))
+            throw new Error('Invalid generated resource descriptor');
+          seen.add(record.name);
+          const file=path.join(temp,record.name);
+          const stored=await this.files.storeResource(file);
+          if(stored.sha256!==record.sha256||stored.sizeBytes!==record.sizeBytes)
+            throw new Error('Generated resource checksum mismatch');
+          resources.push({name:record.name,...stored});
+        }
         await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
-          expectedPreviousRevision:job.expected_revision,artifacts});
+          expectedPreviousRevision:job.expected_revision,artifacts,resources});
       }catch{
         throw new JobExecutionError('artifact_storage','artifact_storage_failed');
       }
