@@ -70,10 +70,21 @@ test('DEV-055 DB hashes share token, scopes revision, rotates and immediately re
  assert.deepEqual(publicShare.selected_render_ids,[]);
  assert.equal(publicShare.allow_renders,false);
  assert.equal(await repository.setSelectedRenders(owner,project.id,1,[good]),true);
+ // Explicit native download must be disabled initially, owner scoped,
+ // independently switchable and immediately revoked without token rotation.
+ assert.equal(await repository.setDownloadPermission(foreign,project.id,1,true),false);
+ assert.equal(await repository.setDownloadPermission(owner,project.id,2,true),false);
+ await assert.rejects(repository.setDownloadPermission(owner,project.id,1,'yes'),RangeError);
+ assert.equal(await repository.setDownloadPermission(owner,project.id,1,true),true);
+ assert.equal((await repository.resolve(second)).allow_download,true);
+ assert.equal(await repository.setDownloadPermission(owner,project.id,1,false),true);
+ assert.equal((await repository.resolve(second)).allow_download,false);
+ assert.equal(await repository.setDownloadPermission(owner,project.id,1,true),true);
  assert.equal(await repository.revoke(foreign,project.id,1),false);
  assert.ok(await repository.resolve(second));
  assert.equal(await repository.revoke(owner,project.id,1),true);
  assert.equal(await repository.resolve(second),null);
+ assert.equal(await repository.setDownloadPermission(owner,project.id,1,true),false);
  assert.equal(await repository.setSelectedRenders(owner,project.id,1,[good]),false);
  assert.ok((await repository.owned(owner,project.id,1)).revoked_at);
 });

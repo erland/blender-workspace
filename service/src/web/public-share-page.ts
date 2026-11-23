@@ -4,7 +4,7 @@ export interface ShareRenderImage {
  id:string;engine:string;width:number;height:number;created_at:Date;
 }
 export function publicSharePage(token:string,projectName:string,revision:number,
- renders:ShareRenderImage[]=[]):string {
+ renders:ShareRenderImage[]=[],allowDownload=false):string {
   const title=escapeHtml(projectName);
   // Called only after token has been verified by the repository.
   return `<!doctype html><html lang="sv"><head><meta charset="utf-8">
@@ -52,17 +52,22 @@ ${renders.length?`<section class="public-gallery" aria-label="Renderade bilder f
  alt="Rendering ${escapeHtml(r.engine)} från revision ${revision}">
 <small>${escapeHtml(r.engine)} · ${r.width} × ${r.height}</small></a>`).join('')}
 </div></section>`:''}
+${allowDownload?`<section class="public-gallery" aria-label="Ladda ned originalmodell">
+<h2>Ladda ned Blender-modellen</h2>
+<p>Ägaren tillåter nedladdning av den sparade BLEND-filen för revision ${revision}.
+Inpackade texturer och andra resurser ingår i originalfilen.</p>
+<a href="/share/${token}/scene.blend" download>Ladda ned BLEND · revision ${revision}</a>
+</section>`:''}
 <p class="note">Rotera med fingret eller musen, zooma med två fingrar eller mushjulet.
 Den här länken ger endast visningsåtkomst till revision ${revision} och de renderade
-bilder som ägaren uttryckligen har valt. Nedladdning av Blender-originalet
-är ännu inte tillgänglig för besökare.</p>
+bilder som ägaren uttryckligen har valt. ${allowDownload?'Ägaren tillåter BLEND-nedladdning.':'BLEND-nedladdning är inte tillåten.'}</p>
 <footer>Blender Workspace · Publik, skrivskyddad förhandsvisning</footer>
 </main><script type="module" src="/share/assets/public-viewer.js"></script></body></html>`;
 }
 
 export function ownerSharePage(projectId:string,revision:number,csrf:string,
   status:'none'|'active'|'revoked',newLink?:string,
-  candidates:ShareRenderImage[]=[],selectedIds:string[]=[],message?:string):string {
+  candidates:ShareRenderImage[]=[],selectedIds:string[]=[],message?:string,allowDownload=false):string {
   const base='/projects/'+encodeURIComponent(projectId)+'/revisions/'+revision+'/share';
   // Only the freshly generated link is displayed, never stored in plaintext.
   const link=newLink?`<div class="link"><a href="${escapeHtml(newLink)}" rel="noreferrer noopener"
@@ -96,9 +101,10 @@ status==='revoked'?'Den tidigare delningslänken är återkallad.':
 ${link}
 <p>Delningen är skrivskyddad och visar GLB-modellen, dess animationer och
 de färdiga renderingar du själv väljer. Ingen besökare kan starta en rendering,
-se andra revisioner eller ladda ned BLEND via denna länk.</p>
+se andra revisioner. Nedladdning av BLEND kräver separat godkännande.</p>
 ${message==='images_saved'?'<p role="status" class="status">De publika bilderna har uppdaterats. Länken är oförändrad.</p>':
-message==='images_error'?'<p role="alert" class="status">Bildurvalet kunde inte sparas. Kontrollera att bilderna är färdiga och tillhör revisionen.</p>':''}
+message==='images_error'?'<p role="alert" class="status">Bildurvalet kunde inte sparas. Kontrollera att bilderna är färdiga och tillhör revisionen.</p>':
+message==='download_saved'?'<p role="status" class="status">Nedladdningsbehörigheten är uppdaterad.</p>':''}
 <form class="action-form" action="${base}" method="post"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
 <input type="hidden" name="action" value="publish">
 <button type="submit">${status==='active'?'Skapa ny delningslänk':'Skapa publik delningslänk'}</button></form>
@@ -106,6 +112,21 @@ ${status==='active'?`<form action="${base}" method="post">
 <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
 <input type="hidden" name="action" value="revoke">
 <button class="secondary" type="submit">Återkalla delningslänken</button></form>`:''}
+${status==='active'?`<section class="gallery-select" aria-label="Delning av BLEND-original">
+<h2>Nedladdning av BLEND-original</h2>
+<p>Avstängt som standard. Den här inställningen gäller bara revision ${revision}.
+Texturer som packats i BLEND ingår, men externa beroenden som inte kunde packas gör det inte.
+Avstängning eller återkallning blockerar nya nedladdningar.</p>
+<form action="${base}" method="post">
+<input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+<input type="hidden" name="action" value="download">
+<label for="download-permission">Tillåt BLEND-nedladdning</label>
+<select id="download-permission" name="enabled">
+<option value="no" ${allowDownload?'':'selected'}>Nej – endast visning</option>
+<option value="yes" ${allowDownload?'selected':''}>Ja – BLEND-original får hämtas</option>
+</select>
+<button type="submit">Spara nedladdningsbehörighet</button>
+</form></section>`:''}
 ${status==='active'?`<section class="gallery-select">
 <h2>Publika renderade bilder</h2>
 <p>Välj högst 12 färdiga bilder från revision ${revision}. Bara markerade bilder blir

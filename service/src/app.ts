@@ -38,7 +38,7 @@ export function createApp(config:ServiceConfig,
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
    projectClone?:Pick<ProjectCloneService,'clone'>;
   uploads?:Pick<UploadedAssets,'upload'|'list'|'get'|'verifiedPath'>;
-  publicShares?:Pick<PublicShareRepository,'create'|'owned'|'revoke'|'resolve'|'setSelectedRenders'>;
+  publicShares?:Pick<PublicShareRepository,'create'|'owned'|'revoke'|'resolve'|'setSelectedRenders'|'setDownloadPermission'>;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
   glbPreviews?:Pick<GlbPreviewRepository,'latest'|'get'|'reserve'>;
@@ -348,7 +348,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          }
          return ownerSharePage(projectId,Number(revision),session.csrf,status,
            undefined,candidates,share?.selected_render_ids??[],
-           (request.query as {message?:string}).message);
+           (request.query as {message?:string}).message,share?.allow_download===true);
        }catch{return reply.code(404).send('Revisionen hittades inte');}
      });
      app.post('/projects/:projectId/revisions/:revision/share',{bodyLimit:4096},
@@ -365,7 +365,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
        const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
        if(form.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
        const action=form.get('action');
-       if(!['publish','revoke','images'].includes(action??''))return reply.code(400).send('Invalid action');
+       if(!['publish','revoke','images','download'].includes(action??''))return reply.code(400).send('Invalid action');
        const {projectId,revision}=request.params as {projectId:string;revision:string};
        const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
        if(!uuid.test(projectId)||!/^[1-9][0-9]{0,7}$/.test(revision)||
@@ -378,6 +378,27 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          if(action==='revoke'){
            await services!.publicShares.revoke(session.ownerKey,projectId,Number(revision));
            return ownerSharePage(projectId,Number(revision),session.csrf,'revoked');
+         }
+         if(action==='download'){
+           const option=form.getAll('enabled');
+           if(option.length!==1||!['yes','no'].includes(option[0]))
+             return reply.code(422).send('Ogiltigt val för nedladdning');
+           const enabled=option[0]==='yes';
+           // Never grant an anonymous download before checking that the
+           // precise committed BLEND exists and passes SHA-256 verification.
+           if(enabled){
+             if(!services!.artifacts)return reply.code(404).send('BLEND saknas');
+             try{
+               await services!.artifacts.verifiedArtifactPath(
+                 projectId,Number(revision),'scene.blend');
+             }catch{return reply.code(422).send('BLEND saknas eller är skadad');}
+           }
+           const updated=await services!.publicShares.setDownloadPermission(
+             session.ownerKey,projectId,Number(revision),enabled);
+           if(!updated)return reply.code(404).send('Delningen är inte aktiv');
+           return reply.code(303).header('location',
+             '/projects/'+projectId+'/revisions/'+revision+
+             '/share?message=download_saved').send();
          }
          if(action==='images'){
            // Images are an explicit whitelist snapshot for this exact revision.
@@ -847,7 +868,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          }
        }
        return reply.type('text/html; charset=utf-8')
-         .send(publicSharePage(token,share.project_name,share.revision,publicImages));
+         .send(publicSharePage(token,share.project_name,share.revision,publicImages,share.allow_download===true));
      }catch{return reply.code(404).send('Delningen hittades inte');}
    });
    // Public PNG is always checked against the current active share's
@@ -873,6 +894,26 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
        const file=await services!.renderedImages.verifiedPath(
          share.project_id,imageId,image.sha256,image.size_bytes);
        return reply.type('image/png').send(createReadStream(file));
+     }catch{return reply.code(404).send({error:'not_found'});}
+   });
+   // Native download is an independent, opt-in right. Re-resolve the share
+   // on every request; revoked, expired, rotated or disabled links fail closed.
+   // Only an immutable and checksum-verified BLEND is ever streamed. Packed
+   // resources are embedded during the original save, never regenerated here.
+   app.get('/share/:token/scene.blend',async(request,reply)=>{
+     publicHeaders(reply).header('content-security-policy',"default-src 'none'");
+     const {token}=request.params as {token:string};
+     if(!validShareToken(token)||!services!.publicShares||!services!.artifacts)
+       return reply.code(404).send({error:'not_found'});
+     try{
+       const share=await services!.publicShares.resolve(token);
+       if(!share||share.allow_download!==true)
+         return reply.code(404).send({error:'not_found'});
+       const file=await services!.artifacts.verifiedArtifactPath(
+         share.project_id,share.revision,'scene.blend');
+       const filename=blendDownloadFilename(share.project_name,share.revision);
+       return reply.header('content-disposition','attachment; filename="'+filename+'"')
+         .type('application/octet-stream').send(createReadStream(file));
      }catch{return reply.code(404).send({error:'not_found'});}
    });
    app.get('/share/:token/scene.glb',async(request,reply)=>{
