@@ -197,6 +197,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
               "sandbox_timeout_seconds": timeout, "status": "FAILED", "artifacts": [],
               "blender_image": image_ref}
     phase = "modal_start"
+    print("BW_PROGRESS phase=modal_start", flush=True)
     try:
         image = sdk.Image.from_registry(image_ref, add_python="3.11")
         app = sdk.App.lookup(modal_app_name(), create_if_missing=True)
@@ -216,6 +217,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 sandbox.filesystem.copy_from_local(str(Path(filename).resolve()),
                     '/workspace/out/source-%02d.%s' % (i,entry['format']))
         phase = "blender_execution"
+        print("BW_PROGRESS phase=blender_execution", flush=True)
         process = sandbox.exec("blender", "-b", "--factory-startup", "--python-exit-code", "1", "--python",
             "/workspace/blender_workspace_poc/apply_python.py", "--",
             "NEW" if revision == 1 else "/workspace/out/input.blend",
@@ -237,6 +239,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 exit_code=code if type(code) is int else None)
         executed = time.monotonic()
         phase = "artifact_transfer"
+        print("BW_PROGRESS phase=artifact_transfer", flush=True)
         # Always transfer the native project and inspection report first.
         # Preview presence is determined by the report, not a mandatory GLB.
         for name in ARTIFACT_NAMES:
@@ -293,6 +296,7 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
         report["inline_render_status"]=metadata.get("inlineRender",{}).get("status","not_requested")
         report["preview_status"]=metadata.get("preview",{}).get("status","unknown")
         phase = "artifact_validation"
+        print("BW_PROGRESS phase=artifact_validation", flush=True)
         from modal_provider.artifact_validation import validate_python_outputs
         validate_python_outputs(out)
         report["sandbox_start_seconds"] = round(created - started, 3)
