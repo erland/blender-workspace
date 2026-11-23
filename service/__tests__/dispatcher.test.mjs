@@ -90,7 +90,7 @@ test('stale running jobs are quarantined for explicit recovery, never re-execute
   const j=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Python scene',undefined,{kind:'python_script',code:'import bpy\nprint(1)'});
   const claimed=await x.jobs.claimNext();
   assert.equal(claimed.id,j.id);
-  await x.pool.query(`UPDATE bw_jobs SET updated_at=now()-interval '50 minutes' WHERE id=$1`,[j.id]);
+  await x.pool.query(`UPDATE bw_jobs SET updated_at=now()-interval '50 minutes', worker_heartbeat_at=now()-interval '50 minutes' WHERE id=$1`,[j.id]);
   assert.equal(await x.jobs.quarantineStaleRunning(30),1);
   assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'needs_recovery');
   assert.deepEqual(await x.dispatcher.dispatchOnce(),{state:'idle'});
