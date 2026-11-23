@@ -38,7 +38,7 @@ export function createApp(config:ServiceConfig,
   projectArchive?:Pick<ProjectArchiveService,'export'|'import'>;
    projectClone?:Pick<ProjectCloneService,'clone'>;
   uploads?:Pick<UploadedAssets,'upload'|'list'|'get'|'verifiedPath'>;
-  publicShares?:Pick<PublicShareRepository,'create'|'owned'|'revoke'|'resolve'|'setSelectedRenders'>;
+  publicShares?:Pick<PublicShareRepository,'create'|'owned'|'revoke'|'resolve'|'setSelectedRenders'|'setDownloadPermission'>;
   renderJobs?:Pick<RenderJobRepository,'reserve'|'list'|'listForOwner'|'recentCompletedByProjects'|'get'>;
   renderedImages?:Pick<RenderArtifactStore,'verifiedPath'>;
   glbPreviews?:Pick<GlbPreviewRepository,'latest'|'get'|'reserve'>;
