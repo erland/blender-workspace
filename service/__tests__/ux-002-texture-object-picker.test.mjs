@@ -99,7 +99,7 @@ test('UX-002 texture submission requires exact current revision, owned mesh, Mod
    objectName:obj,channel:'baseColor',sourceRevision:String(revision),
    ...(confirmed?{confirm:'yes'}:{})}).toString()
  });
- assert.equal((await post('Torso',3,'foreign')).statusCode,403);
+ assert.equal((await post('Torso',3,'foreign')).statusCode,404);
  assert.equal((await post('Torso',3,'owner',false)).statusCode,400);
  assert.equal((await post('Head <mesh>',2)).statusCode,409);
  assert.equal((await post('Missing',3)).statusCode,409);
