@@ -84,6 +84,6 @@ def compose_sources():
         group['bw_imported_source_index']=index
         group['bw_imported_object_count']=len(objects)
         provenance.append({'sourceIndex':index,'objectsImported':len(objects)})
-    from blender_workspace_poc.texture_materials import apply_staged_textures
-    apply_staged_textures(spec)
+    # Texture assignment happens after user Python, so a new mesh created in
+    # the same modeling job can also receive an uploaded image.
     return provenance
