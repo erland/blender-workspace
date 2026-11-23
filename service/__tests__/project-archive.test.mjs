@@ -237,6 +237,7 @@ test('DEV-062 missing or altered resource entry is rejected before project impor
       ' z.writestr("revisions/00000001/scene.blend",data)'
     ].join('\n');
     await exec('python3',['-c',script,file]);
-    await assert.rejects(()=>service.import(owner,await readFile(file)));
+    const invalidBytes=await readFile(file);
+    await assert.rejects(()=>service.import(owner,invalidBytes));
     assert.deepEqual(await projects.list(owner),[]);
   });
