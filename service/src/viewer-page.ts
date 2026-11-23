@@ -1,4 +1,5 @@
 import {uiIcon} from './web/icons.js';
+import {viewerWorkspaceStyles} from './web/viewer-workspace-styles.js';
 import {themeStyles,themedCss,componentStyles} from './web/theme.js';
 /** Static, token-free viewer shell. The model is fetched separately through an
  * authenticated, same-origin request tied to the HttpOnly Google session.
@@ -99,7 +100,7 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
    height:clamp(220px,30dvh,390px);min-height:0
  }
 }
-`)}${componentStyles}</style></head><body>
+`)}${componentStyles}${viewerWorkspaceStyles}</style></head><body>
 <header>
  <a class="back-link" href="/projects/${projectId}" aria-label="Tillbaka till projektet">← Projekt</a>
  <h1 class="header-title">3D-visare · revision ${revision}</h1>
@@ -111,14 +112,14 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
    <a href="/">Mina projekt</a>
   </nav></details></div>
 </header>
-<main><div class="viewports"><div class="viewport"><canvas id="viewport" aria-label="Interaktiv 3D-modell för aktuell revision"></canvas></div>
-<div class="viewport" id="compare-pane" hidden><canvas id="comparison-viewport" aria-label="Interaktiv 3D-modell för jämförd revision"></canvas></div>
+<div class="viewer-workspace"><main aria-label="3D-arbetsyta"><div class="viewports"><div class="viewport"><span class="stage-caption" aria-hidden="true">${uiIcon('cube')} Revision ${revision}</span><canvas id="viewport" aria-label="Interaktiv 3D-modell för aktuell revision"></canvas></div>
+<div class="viewport" id="compare-pane" hidden><span class="stage-caption" aria-hidden="true">${uiIcon('history')} Jämförd revision</span><canvas id="comparison-viewport" aria-label="Interaktiv 3D-modell för jämförd revision"></canvas></div>
 </div></main>
 <div class="viewer-toolbar" role="group" aria-label="Åtgärder för aktuell 3D-vy">
  <button id="render-current-view" class="primary" disabled>Rendera vy (Modal)</button>
  <button id="snapshot" class="icon-button" disabled title="Exportera PNG" aria-label="Exportera PNG">${uiIcon("camera")}</button>
  <button id="reset" class="icon-button" disabled title="Återställ vy" aria-label="Återställ vy">${uiIcon("reset")}</button>
-</div>
+</div></div>
 <div id="animation-bar" class="animation-bar" role="group" aria-label="Animationskontroller" hidden>
  <label for="animation-clip">Animation</label>
  <select id="animation-clip" aria-label="Välj animation"></select>
@@ -141,7 +142,7 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
  </details>
 </div>
 <details class="viewer-settings" id="viewer-settings">
- <summary>Visningsinställningar</summary>
+ <summary>${uiIcon('settings')} Visningsinställningar</summary>
  <div class="settings-content">
  <div class="viewer-options" role="group" aria-label="Kameravy och modellhjälpmedel">
 <label for="view-angle">Kameravy</label>
