@@ -68,6 +68,11 @@ def validated_resources(manifest_filename):
 
 
 def transfer_resources(sandbox, resources):
+    directories = sorted({'/workspace/out/' + str(Path(name).parent) for name, _ in resources})
+    for directory in directories:
+        result = sandbox.exec('mkdir', '-p', directory)
+        if result.wait() != 0:
+            raise RuntimeError('Resource staging directory failed')
     for name, source in resources:
         destination = '/workspace/out/' + name
         # The sandbox starts with /workspace/out and no existing 'resources'.
