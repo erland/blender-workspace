@@ -38,7 +38,8 @@ blend=root/'input.blend'
 bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=False)
 source.unlink()
 bpy.ops.wm.open_mainfile(filepath=str(blend),load_ui=False,use_scripts=False)
-image=bpy.data.images['Persistent']
+image=bpy.data.objects['Cube'].data.materials[0].node_tree.nodes.get('Image Texture').image
+assert image is not None
 assert image.packed_file is None
 assert image.filepath=='//'+records[0]['name']
 image.reload()
