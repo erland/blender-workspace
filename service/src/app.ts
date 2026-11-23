@@ -605,6 +605,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          return reply.code(415).send('Unsupported Media Type');
        const params=new URLSearchParams(typeof request.body==='string'?request.body:'');
        if(params.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
+       if(params.get('confirm')!=='yes')return reply.code(400).send('Kostnadsbekräftelse saknas');
        const id=(request.params as {projectId:string}).projectId;
        if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))
          return reply.code(404).send('Not found');
