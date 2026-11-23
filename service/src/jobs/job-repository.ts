@@ -5,12 +5,12 @@ import {preflightPython} from './python-preflight.js';
 import {safeStoredJobError} from './job-diagnostics.js';
 import {parseAssetSources,type AssetSource} from './asset-sources.js';
 
-export type JobStatus = 'pending'|'running'|'needs_recovery'|'completed'|'failed';
+export type JobStatus = 'pending'|'running'|'cancelling'|'cancelled'|'needs_recovery'|'completed'|'failed';
 export interface Job {
   id:string; project_id:string;owner_key:string; expected_revision:number;source_revision:number|null;asset_sources:AssetSource[];
   requested_revision:number;status:JobStatus;note:string;error_message:string|null;created_at:Date;updated_at:Date;finished_at:Date|null;edit_spec:unknown|null;operation_spec:PythonScriptSpec|null;
   started_at:Date|null;worker_heartbeat_at:Date|null;blender_heartbeat_at:Date|null;
-  progress_phase:string|null;deadline_at:Date|null;
+  progress_phase:string|null;deadline_at:Date|null;cancellation_requested_at:Date|null;
 }
 export class JobConflict extends Error {
   constructor(message:string) {super(message);this.name='JobConflict';}
@@ -109,6 +109,39 @@ export class JobRepository {
     RETURNING j.*`);
     return r.rows[0]??null;
   }
+  /** Durable user intent; only the owner can request cancellation.
+   * Pending jobs have never reached Modal and can become terminal immediately.
+   * Running jobs retain their revision lock until termination is confirmed.
+   */
+  async requestCancellation(owner:string,id:string):Promise<Job|null> {
+    const r=await this.pool.query<Job>(`UPDATE bw_jobs SET
+      status=CASE WHEN status='pending' THEN 'cancelled' ELSE 'cancelling' END,
+      cancellation_requested_at=COALESCE(cancellation_requested_at,now()),
+      updated_at=now(),
+      finished_at=CASE WHEN status='pending' THEN now() ELSE finished_at END
+      WHERE id=$1 AND owner_key=$2 AND status IN ('pending','running','cancelling')
+      RETURNING *`,[id,owner]);
+    return r.rows[0]??await this.get(owner,id);
+  }
+  async cancellationRequested(owner:string,id:string):Promise<boolean> {
+    const r=await this.pool.query<{status:JobStatus}>(`
+      SELECT status FROM bw_jobs WHERE id=$1 AND owner_key=$2`,[id,owner]);
+    return r.rows[0]?.status==='cancelling'||r.rows[0]?.status==='cancelled';
+  }
+  /** Only a verified Modal termination may release the running revision lock. */
+  async confirmCancelled(owner:string,id:string):Promise<boolean> {
+    const r=await this.pool.query(`UPDATE bw_jobs
+      SET status='cancelled',updated_at=now(),finished_at=now()
+      WHERE id=$1 AND owner_key=$2 AND status='cancelling' RETURNING id`,[id,owner]);
+    return Boolean(r.rowCount);
+  }
+  /** Unconfirmed termination is never misreported as cancelled. */
+  async cancellationNeedsRecovery(owner:string,id:string):Promise<void> {
+    await this.pool.query(`UPDATE bw_jobs
+      SET status='needs_recovery',updated_at=now(),
+        error_message='BW_JOB_ERROR phase=cleanup code=sandbox_cleanup_failed'
+      WHERE id=$1 AND owner_key=$2 AND status='cancelling'`,[id,owner]);
+  }
   /** Quarantine stale running jobs; never re-run a potentially billed Modal job automatically. */
   async quarantineStaleRunning(minAgeMinutes=30):Promise<number>{
     if(!Number.isInteger(minAgeMinutes)||minAgeMinutes<20||minAgeMinutes>10080)
@@ -116,7 +149,7 @@ export class JobRepository {
     const r=await this.pool.query(`UPDATE bw_jobs
       SET status='needs_recovery',error_message='BW_JOB_ERROR phase=setup code=worker_timeout',
         updated_at=now()
-      WHERE status='running' AND (
+      WHERE status IN ('running','cancelling') AND (
         (COALESCE(worker_heartbeat_at,updated_at) < now()-($1::integer * interval '1 minute'))
         OR (deadline_at IS NOT NULL AND deadline_at < now()))
       RETURNING id`,[minAgeMinutes]);
@@ -131,7 +164,7 @@ export class JobRepository {
       worker_heartbeat_at=now(),updated_at=now(),
       progress_phase=COALESCE($3,progress_phase),
       blender_heartbeat_at=CASE WHEN $4::boolean THEN now() ELSE blender_heartbeat_at END
-      WHERE id=$1 AND owner_key=$2 AND status='running'
+      WHERE id=$1 AND owner_key=$2 AND status IN ('running','cancelling')
       RETURNING id`,[id,owner,phase??null,blenderSignal]);
     return (result.rowCount??0)===1;
   }
@@ -142,7 +175,7 @@ export class JobRepository {
       throw new RangeError('Invalid job history request');
     return (await this.pool.query<Job>(
       `SELECT j.id,j.project_id,j.owner_key,j.expected_revision,j.requested_revision,j.source_revision,j.asset_sources,
-         j.status,j.note,j.error_message,j.created_at,j.updated_at,j.finished_at
+         j.status,j.note,j.error_message,j.created_at,j.updated_at,j.finished_at,j.cancellation_requested_at
        FROM bw_jobs j JOIN bw_projects p ON p.id=j.project_id
        WHERE j.owner_key=$1 AND p.owner_key=$1 AND p.deleted_at IS NULL
          AND ($2::uuid IS NULL OR j.project_id=$2::uuid)

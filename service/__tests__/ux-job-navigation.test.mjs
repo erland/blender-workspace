@@ -57,3 +57,16 @@ test('UX-004 project history rows stay informational, not same-page navigational
  assert.doesNotMatch(item,/<a /);
  assert.match(html,/Alla jobb/);
 });
+
+test('DEV-050: only active modeling jobs expose a safe standalone cancel form',()=>{
+  const html=jobsOverviewPage(jobs,'<csrf&>');
+  const cancel=(html.match(/action="\/jobs\/[0-9a-f-]+\/cancel"/g)??[]);
+  assert.equal(cancel.length,1);
+  assert.match(html,/method="post"/);
+  assert.match(html,/value="&lt;csrf&amp;&gt;"/);
+  const row=html.match(/<li class="job-item">[\s\S]*?<\/li>/)?.[0]??'';
+  assert.ok(row.indexOf('</a>')<row.indexOf('<form '),'no form nested in link');
+  assert.doesNotMatch(jobsOverviewPage(jobs),/job-cancel-form/);
+  assert.doesNotMatch(jobsOverviewPage([{...jobs[0],status:'cancelling'}],'csrf'),/job-cancel-form/);
+  assert.doesNotMatch(jobsOverviewPage([jobs[1]],'csrf'),/job-cancel-form/);
+});

@@ -150,3 +150,56 @@ test('DEV-049: watchdog quarantines expired deadline even with recent heartbeat'
   assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'needs_recovery');
   assert.equal(await x.jobs.heartbeat(x.ownerA,j.id,'blender_execution',true),false);
 });
+
+test('DEV-050: queued cancellation is immediate, idempotent, owner-scoped and never billed',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
+  const j=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Queued',undefined,{kind:'python_script',code:'pass'});
+  assert.equal(await x.jobs.requestCancellation(x.ownerB,j.id),null);
+  assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'pending');
+  const cancelled=await x.jobs.requestCancellation(x.ownerA,j.id);
+  assert.equal(cancelled.status,'cancelled');
+  assert.ok(cancelled.finished_at);
+  assert.equal((await x.jobs.requestCancellation(x.ownerA,j.id)).status,'cancelled');
+  assert.equal(await x.jobs.cancellationRequested(x.ownerA,j.id),true);
+  assert.deepEqual(await x.dispatcher.dispatchOnce(),{state:'idle'});
+  assert.equal((await x.projects.get(x.ownerA,x.pA.id)).current_revision,0);
+  assert.equal(x.owners.length,0);
+});
+
+test('DEV-050: running cancellation blocks commit and holds project lock until acknowledged',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
+  const j=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Running',undefined,{kind:'python_script',code:'pass'});
+  await x.jobs.claimNext();
+  assert.equal((await x.jobs.requestCancellation(x.ownerA,j.id)).status,'cancelling');
+  assert.equal(await x.jobs.cancellationRequested(x.ownerA,j.id),true);
+  assert.equal(await x.jobs.heartbeat(x.ownerA,j.id),true);
+  await assert.rejects(()=>x.jobs.finalize(x.ownerA,j.id,'none'),/not finalizable/);
+  await assert.rejects(()=>x.jobs.reserve(x.ownerA,x.pA.id,0,'Conflicting',undefined,
+      {kind:'python_script',code:'pass'}),/Another job is active/);
+  assert.equal(await x.jobs.confirmCancelled(x.ownerA,j.id),true);
+  assert.equal(await x.jobs.confirmCancelled(x.ownerA,j.id),false);
+  assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'cancelled');
+  assert.equal(await x.jobs.heartbeat(x.ownerA,j.id),false);
+  const next=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Safe to retry',undefined,
+    {kind:'python_script',code:'pass'});
+  assert.equal(next.status,'pending');
+});
+
+test('DEV-050: uncertain termination never reports cancelled or releases revision lock',
+  {skip:!process.env.TEST_DATABASE_URL},async t=>{
+  const x=await fixture(t);
+  await x.accounts.saveAndTest(x.ownerA,'ak-a','as-a');
+  const j=await x.jobs.reserve(x.ownerA,x.pA.id,0,'Uncertain',undefined,
+    {kind:'python_script',code:'pass'});
+  await x.jobs.claimNext();
+  await x.jobs.requestCancellation(x.ownerA,j.id);
+  await x.jobs.cancellationNeedsRecovery(x.ownerA,j.id);
+  assert.equal((await x.jobs.get(x.ownerA,j.id)).status,'needs_recovery');
+  assert.equal(await x.jobs.confirmCancelled(x.ownerA,j.id),false);
+  await assert.rejects(()=>x.jobs.reserve(x.ownerA,x.pA.id,0,'Blocked',undefined,
+    {kind:'python_script',code:'pass'}),/Another job is active/);
+});

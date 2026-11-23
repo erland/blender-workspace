@@ -1,4 +1,5 @@
 import {JobExecutionError} from './job-diagnostics.js';
+import {JobCancelledConfirmed} from './job-cancellation.js';
 import {setTimeout as sleep} from 'node:timers/promises';
 import type {JobRepository} from './job-repository.js';
 import type {JobOrchestrator} from './orchestrator.js';
@@ -8,7 +9,7 @@ import type {GlbPreviewRepository} from './glb-preview-repository.js';
 import type {GlbPreviewOrchestrator} from './glb-preview-orchestrator.js';
 
 export interface DispatchOptions {pollMs?:number;graceMinutes?:number;}
-export interface DispatchOutcome {state:'idle'|'completed'|'failed';jobId?:string;}
+export interface DispatchOutcome {state:'idle'|'completed'|'failed'|'cancelled';jobId?:string;}
 /** Bounded, separate worker process. No Modal execution in the MCP HTTP request.
  * Atomic claiming in PostgreSQL supports independent dispatcher replicas.
  * Ambiguous jobs are quarantined for recovery, not replayed.
@@ -16,7 +17,7 @@ export interface DispatchOutcome {state:'idle'|'completed'|'failed';jobId?:strin
 export class JobDispatcher {
   readonly pollMs:number;
   readonly graceMinutes:number;
-  constructor(private readonly jobs:Pick<JobRepository,'claimNext'|'quarantineStaleRunning'> & Partial<Pick<JobRepository,'heartbeat'>>,
+  constructor(private readonly jobs:Pick<JobRepository,'claimNext'|'quarantineStaleRunning'> & Partial<Pick<JobRepository,'heartbeat'|'cancellationRequested'>>,
     private readonly workflow:Pick<JobOrchestrator,'executeClaimed'>,
     options:DispatchOptions={},
     private readonly renders?:Pick<RenderJobRepository,'claimNext'|'quarantineStale'>,
@@ -59,10 +60,25 @@ export class JobDispatcher {
     });};
     const heartbeatTimer=setInterval(beat,15_000);
     heartbeatTimer.unref();
+    const controller=new AbortController();
+    let checking=false;
+    const checkCancellation=async()=>{
+      if(checking||controller.signal.aborted||!this.jobs.cancellationRequested)return;
+      checking=true;
+      try{
+        if(await this.jobs.cancellationRequested(job.owner_key,job.id))controller.abort();
+      }catch{
+        console.error(JSON.stringify({event:'job_cancel_poll_unavailable',jobId:job.id}));
+      }finally{checking=false;}
+    };
+    const cancellationTimer=setInterval(()=>{void checkCancellation();},2_000);
+    cancellationTimer.unref();
     try{
-      await this.workflow.executeClaimed(job);
+      await checkCancellation();
+      await this.workflow.executeClaimed(job,controller.signal);
       return {state:'completed',jobId:job.id};
     }catch(error){
+      if(error instanceof JobCancelledConfirmed)return {state:'cancelled',jobId:job.id};
       // Log only allowlisted diagnostics, never provider exception strings or credentials.
       const diagnostic=error instanceof JobExecutionError
         ? {phase:error.phase,code:error.code,...(error.reason?{reason:error.reason}:{}),
@@ -70,7 +86,7 @@ export class JobDispatcher {
         : {phase:'setup',code:'initialization_failed'};
       console.error(JSON.stringify({event:'blender_job_failed',jobId:job.id,...diagnostic}));
       return {state:'failed',jobId:job.id};
-    }finally{clearInterval(heartbeatTimer);}
+    }finally{clearInterval(heartbeatTimer);clearInterval(cancellationTimer);}
   }
   async run(signal:AbortSignal):Promise<void>{
     // Run watchdog independently of dispatchOnce's blocking Modal execution.

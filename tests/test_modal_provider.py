@@ -190,6 +190,25 @@ class ModalProviderTests(unittest.TestCase):
                 self.assertEqual(report["status"], "FAILED")
                 self.assertEqual(report["artifacts"], [])
 
+    def test_dev050_sigterm_runs_modal_cleanup_and_requires_ack(self):
+        import signal
+        from modal_provider.runner import RequestedCancellation
+        for termination_ok in (True,False):
+            sdk=self.sdk()
+            sandbox=sdk.Sandbox.create.return_value
+            sandbox.exec.return_value.wait.side_effect=lambda: signal.raise_signal(signal.SIGTERM)
+            if not termination_ok:
+                sandbox.terminate.side_effect=RuntimeError('Provider unavailable')
+            with TemporaryDirectory() as tmp:
+                script,_=self.files(tmp)
+                out=Path(tmp)/'out'
+                with self.assertRaises(RequestedCancellation):
+                    run(sdk,out,python_file=str(script))
+                sandbox.terminate.assert_called_once_with(wait=True)
+                report=json.loads((out/'modal_run_report.json').read_text())
+                self.assertTrue(report['sandbox_created'])
+                self.assertEqual(report['sandbox_terminated'],termination_ok)
+
     def test_blender_failure_always_terminates(self):
         sdk = self.sdk(exit_code=1)
         with TemporaryDirectory() as tmp:

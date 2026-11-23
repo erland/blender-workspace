@@ -5,6 +5,7 @@ import type { Job, JobRepository } from './job-repository.js';
 import type { IncomingArtifact, LocalArtifactStore,RevisionResource } from '../storage/artifact-store.js';
 import {parsePythonScript,type PythonScriptSpec} from './python-script.js';
 import {JobExecutionError} from './job-diagnostics.js';
+import {JobCancelledConfirmed,JobCancellationUnconfirmed} from './job-cancellation.js';
 import {parseAssetSources} from './asset-sources.js';
 import type {UploadedAssets} from './uploaded-assets.js';
 import type {RenderJobRepository} from './render-repository.js';
@@ -20,7 +21,8 @@ export interface RevisionResourceInput extends RevisionResource { path:string; }
 export interface BlenderExecutor {
   runPythonScript(outDir:string,owner:string,revision:number,spec:PythonScriptSpec,
     inputBlend?:string,assets?:BlenderAssetInput[],resources?:RevisionResourceInput[],
-    onProgress?:(phase:string,blenderSignal:boolean)=>Promise<void>):Promise<void>;
+    onProgress?:(phase:string,blenderSignal:boolean)=>Promise<void>,
+    signal?:AbortSignal):Promise<void>;
 }
 
 const SCENE_ARTIFACTS=['scene.blend','scene.json'] as const;
@@ -36,12 +38,14 @@ export class JobOrchestrator {
     return this.executeClaimed(job);
   }
   /** Only Python jobs can publish a scene; unrecognized historical jobs fail closed. */
-  async executeClaimed(job:Job):Promise<Job> {
+  async executeClaimed(job:Job,signal?:AbortSignal):Promise<Job> {
     if(job.status!=='running')throw new Error('Only running jobs can execute');
     const owner=job.owner_key,jobId=job.id;
     const temp=await mkdtemp(path.join(os.tmpdir(),'bw-job-'));
     let published=false;
     try {
+      if(signal?.aborted || await this.jobs.cancellationRequested?.(owner,jobId))
+        throw new JobCancelledConfirmed();
       if(job.edit_spec!==null && job.edit_spec!==undefined)
         throw new Error('Retired structured edit job is not executable');
       const spec=parsePythonScript(job.operation_spec);
@@ -90,7 +94,9 @@ export class JobOrchestrator {
       const onProgress=async(phase:string,blenderSignal:boolean)=>{
         await this.jobs.heartbeat?.(owner,jobId,phase,blenderSignal);
       };
-      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets,resources,onProgress);
+      await this.executor.runPythonScript(temp,owner,job.requested_revision,spec,source,assets,resources,onProgress,signal);
+      if(signal?.aborted || await this.jobs.cancellationRequested?.(owner,jobId))
+        throw new JobCancelledConfirmed();
       await onProgress('artifact_validation',false);
       // GLB is a disposable preview, never a prerequisite for the native
       // Blender revision. Only publish one if the trusted worker declared it.
@@ -138,9 +144,12 @@ export class JobOrchestrator {
           resources.push({name:record.name,...stored});
         }
         await onProgress('artifact_storage',false);
+        if(signal?.aborted || await this.jobs.cancellationRequested?.(owner,jobId))
+          throw new JobCancelledConfirmed();
         await this.files.publish({projectId:job.project_id,revision:job.requested_revision,
           expectedPreviousRevision:job.expected_revision,artifacts,resources});
-      }catch{
+      }catch(error){
+        if(error instanceof JobCancelledConfirmed)throw error;
         throw new JobExecutionError('artifact_storage','artifact_storage_failed');
       }
       published=true;
@@ -157,6 +166,19 @@ export class JobOrchestrator {
         throw new JobExecutionError('revision_commit','revision_commit_failed');
       }
     }catch(error) {
+      if(error instanceof JobCancelledConfirmed) {
+        if(await this.jobs.confirmCancelled?.(owner,jobId))throw error;
+        // A cancelled request can race with successful job completion;
+        // if finalization already won the transaction, preserve success.
+        if((await this.jobs.get(owner,jobId))?.status==='completed')return (await this.jobs.get(owner,jobId))!;
+        throw error;
+      }
+      if(error instanceof JobCancellationUnconfirmed) {
+        await this.jobs.cancellationNeedsRecovery?.(owner,jobId);
+        throw error;
+      }
+      if(await this.jobs.cancellationRequested?.(owner,jobId))
+        await this.jobs.cancellationNeedsRecovery?.(owner,jobId);
       if(published)await this.jobs.markRecoverable(owner,jobId,error);
       else await this.jobs.markFailed(owner,jobId,error);
       throw error;

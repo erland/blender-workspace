@@ -152,6 +152,25 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          return projectIndexPage(items,message,session.csrf);
        }catch{return reply.code(503).send('Projektlistan kunde inte hämtas. Försök igen senare.');}
      });
+     // Owner-only, CSRF-protected cancellation request. Never executes Modal in HTTP.
+     app.post('/jobs/:jobId/cancel',{bodyLimit:4096},async(request,reply)=>{
+       const session=google.settingsSession(request.headers.cookie);
+       reply.header('cache-control','no-store');
+       if(!session)return reply.code(401).send('Unauthorized');
+       const origin=request.headers.origin;
+       const safari=origin==='null'&&request.headers['sec-fetch-site']==='same-origin';
+       if(origin!==config.publicOrigin&&!safari)return reply.code(403).send('Forbidden');
+       if(!(request.headers['content-type']??'').startsWith('application/x-www-form-urlencoded'))
+         return reply.code(415).send('Unsupported Media Type');
+       const form=new URLSearchParams(typeof request.body==='string'?request.body:'');
+       if(form.get('csrf')!==session.csrf)return reply.code(403).send('Forbidden');
+       const {jobId}=request.params as {jobId:string};
+       if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId))
+         return reply.code(404).send('Jobbet hittades inte');
+       const cancelled=await services!.jobs.requestCancellation(session.ownerKey,jobId);
+       if(!cancelled)return reply.code(404).send('Jobbet hittades inte');
+       return reply.code(303).header('location','/jobs?message=cancel_requested').send();
+     });
      // Owner-only combined modeling/render history. No Python source or browser token is embedded.
      app.get('/jobs',async(request,reply)=>{
        const session=google.settingsSession(request.headers.cookie);
@@ -177,7 +196,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
          ].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime());
          reply.header('content-security-policy',
            "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
-         return jobsOverviewPage(entries);
+         return jobsOverviewPage(entries,session.csrf);
        }catch{return reply.code(503).send('Jobblistan kunde inte hämtas. Försök igen senare.');}
      });
 
