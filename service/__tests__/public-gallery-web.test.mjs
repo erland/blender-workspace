@@ -96,7 +96,7 @@ test('DEV-056 only explicitly approved same-revision complete PNGs appear public
  const ownerPage=await f.app.inject({method:'GET',url:base,
    headers:{cookie:'owner-session'}});
  assert.equal(ownerPage.statusCode,200,ownerPage.body);
- assert.match(ownerPage.body,/Publika renderade bilder/);
+ assert.match(ownerPage.body,/Välj vilka bilder som syns/);
  assert.match(ownerPage.body,new RegExp(ids[0]));
  assert.doesNotMatch(ownerPage.body,new RegExp(ids[2]));
  const selected=await f.post([ids[0]]);
