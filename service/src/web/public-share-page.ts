@@ -1,4 +1,4 @@
-import {themeStyles,themedCss} from './theme.js';
+import {themeStyles,themedCss,componentStyles} from './theme.js';
 import {escapeHtml} from './project-pages.js';
 
 export interface ShareRenderImage {
@@ -35,7 +35,7 @@ button:disabled,select:disabled{opacity:.5}
 .public-gallery img{display:block;max-width:100%;width:100%;height:175px;object-fit:contain;background:#eef2f7;border-radius:6px}
 .public-gallery small{display:block;color:#475569;margin-top:7px}
 footer{margin-top:18px;color:#64748b;font-size:.82rem}
-`)}</style></head><body>
+`)}${componentStyles}</style></head><body>
 <header><h1>${title}</h1><p>Delad Blender-modell · revision ${revision}</p></header>
 <main><section aria-label="Publik GLB-visare">
 <canvas id="public-viewport" aria-label="Interaktiv tredimensionell modell"></canvas>
@@ -100,7 +100,7 @@ form.action-form{display:inline-block;margin:8px 12px 8px 0}
 .gallery-select h2{font-size:1.15rem}
 .image-choice span{flex:1}
 .status{padding:8px 12px;background:#edf5ff;border-radius:8px}
-`)}</style></head><body><main>
+`)}${componentStyles}</style></head><body><main>
 <p><a href="/projects/${encodeURIComponent(projectId)}?view=history">← Till revisionshistoriken</a></p>
 <h1>Dela revision ${revision}</h1>
 <div class="share-status" role="status"><strong>${statusLabel}</strong><span>${active?'Besökaren kan se den här revisionens 3D-modell. Inställningarna nedan avgör om bilder och originalfilen också är tillgängliga.':status==='revoked'?'Den gamla länken fungerar inte längre. Skapa en ny länk om du vill dela igen.':'Skapa en länk för att låta andra se modellen utan att kunna ändra den.'}</span></div>
