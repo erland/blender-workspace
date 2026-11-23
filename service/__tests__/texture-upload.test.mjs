@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 import {createApp} from '../dist/app.js';
 import {validateUpload} from '../dist/storage/uploaded-assets.js';
 import {parseAssetSources} from '../dist/jobs/asset-sources.js';
@@ -35,6 +38,12 @@ test('DEV-053 asset-source schema requires explicit mesh and supported channel',
 
 test('DEV-053 web image upload is not billable; texture assignment requires CSRF, owner and explicit consent',async t=>{
  let uploads=0,queued=0;
+ const directory=await mkdtemp(path.join(os.tmpdir(),'bw-texture-ux-'));
+ t.after(()=>rm(directory,{recursive:true,force:true}));
+ const report=path.join(directory,'scene.json');
+ await writeFile(report,JSON.stringify({schema_version:1,scene:{objects:[
+   {name:'Body',type:'MESH'},{name:'Camera',type:'CAMERA'}
+ ]}}));
  const google={settingsSession(cookie){
    return cookie==='owner-session'?{ownerKey:owner,csrf}:undefined;
  }};
@@ -64,7 +73,11 @@ test('DEV-053 web image upload is not billable; texture assignment requires CSRF
        assert.deepEqual(data,png);uploads++;return {id:uploadId,format:'png'};},
      async verifiedPath(){return {path:'/private/image.png',format:'png'};}
    },
-   modalAccounts:{async status(){return {connected:true};}}
+   modalAccounts:{async status(){return {connected:true};}},
+   artifacts:{
+     async inspect(){return {artifacts:[{name:'scene.json',sizeBytes:128}]};},
+     async verifiedArtifactPath(){return report;}
+   }
  };
  const app=createApp({authMode:'google',google:{},publicOrigin:origin,
    host:'127.0.0.1',port:3000,accessToken:''},mock,{google});
@@ -75,11 +88,12 @@ test('DEV-053 web image upload is not billable; texture assignment requires CSRF
      'content-type':'application/vnd.blender-workspace.model'},payload:png});
  assert.equal(upload.statusCode,201,upload.body);
  assert.equal(uploads,1);assert.equal(queued,0);
- const page=await app.inject({method:'GET',url:'/models/import',headers:{cookie:'owner-session'}});
+ const page=await app.inject({method:'GET',url:'/models/import?task=texture',headers:{cookie:'owner-session'}});
  assert.equal(page.statusCode,200,page.body);
- assert.match(page.body,/Applicera textur i ny revision/);
+ assert.match(page.body,/Applicera textur/);
+ assert.match(page.body,/id="texture-object"/);
  const payload=new URLSearchParams({csrf,confirm:'yes',projectId,uploadId,
-   objectName:'Body',channel:'normal'}).toString();
+   objectName:'Body',channel:'normal',sourceRevision:'2'}).toString();
  const post=(headers={},data=payload)=>app.inject({method:'POST',url:'/models/textures/apply',
    headers:{'content-type':'application/x-www-form-urlencoded',...headers},payload:data});
  assert.equal((await post()).statusCode,401);
