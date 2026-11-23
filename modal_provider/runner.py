@@ -248,6 +248,31 @@ def run(sdk, out_dir, *, cpu=2, memory_mib=DEFAULT_MEMORY_MIB, timeout=900,
                 "name": name, "bytes": local.stat().st_size,
                 "sha256": _sha256_file(local)})
         metadata=json.loads((out / "scene.json").read_text(encoding="utf8"))
+        # Verify all worker-declared externalized PNG/JPEG bytes before
+        # returning; do not trust arbitrary paths from the Blender report.
+        resource_files=metadata.get('resourceFiles',[])
+        if not isinstance(resource_files,list) or len(resource_files)>128:
+            raise ValueError('Invalid generated resource manifest')
+        seen=set()
+        for entry in resource_files:
+            if not isinstance(entry,dict) or set(entry)!={'name','sha256','sizeBytes'}:
+                raise ValueError('Invalid generated resource')
+            name=entry['name']
+            if (not isinstance(name,str) or not re.fullmatch(
+                    r'resources/[0-9a-f]{64}\\.(?:png|jpg)',name) or name in seen):
+                raise ValueError('Invalid generated resource name')
+            seen.add(name)
+            checksum=entry['sha256']
+            size=entry['sizeBytes']
+            if (not isinstance(checksum,str) or not re.fullmatch(r'[0-9a-f]{64}',checksum)
+                    or type(size) is not int or not 20<=size<=256*1024*1024
+                    or name.split('/')[1].split('.')[0]!=checksum):
+                raise ValueError('Invalid generated resource descriptor')
+            local=out/name
+            local.parent.mkdir(parents=True,exist_ok=True)
+            sandbox.filesystem.copy_to_local('/workspace/out/'+name,str(local))
+            if local.is_symlink() or not local.is_file() or local.stat().st_size!=size or _sha256_file(local)!=checksum:
+                raise ValueError('Corrupt generated resource')
         entries=metadata.get("artifacts",[])
         if isinstance(entries,list) and any(
                 isinstance(item,dict) and item.get("path")=="scene.glb" for item in entries):
