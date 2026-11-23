@@ -9,7 +9,6 @@ import {ProjectRepository} from '../dist/db/projects.js';
 test('DEV-055 DB hashes share token, scopes revision, rotates and immediately revokes',
  {skip:!process.env.TEST_DATABASE_URL},async t=>{
  const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:4});
- t.after(()=>pool.end());
  await applyMigrations(pool);
  const owner='share-test-'+randomUUID(),foreign='share-test-'+randomUUID();
  const projects=new ProjectRepository(pool);
@@ -22,6 +21,7 @@ test('DEV-055 DB hashes share token, scopes revision, rotates and immediately re
      [[project.id,otherProject.id]]);
    await pool.query('DELETE FROM bw_projects WHERE id = ANY($1::uuid[])',
      [[project.id,otherProject.id]]);
+   await pool.end();
  });
  await projects.addRevision(owner,project.id,'Saved',project.id+'/00000001');
  await projects.addRevision(foreign,otherProject.id,'Saved',otherProject.id+'/00000001');
