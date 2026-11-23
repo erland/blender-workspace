@@ -3,8 +3,13 @@ import {themeStyles,themedCss,componentStyles} from './theme.js';
 /** Owner-scoped project metadata rendered with escaped HTML. No browser tokens. */
 export interface PortalProject {id:string;name:string;description:string;current_revision:number;updated_at:Date}
 export interface PortalRevision {revision:number;note:string;artifact_prefix:string|null;created_at:Date;glbAvailable?:boolean;portableStatus?:'complete'|'external'|'unknown';externalCount?:number;resourceCount?:number}
-export interface PortalModelJob {id:string;project_id:string;requested_revision:number;status:string;note:string;error_message:string|null;created_at:Date}
-export interface PortalJobItem {id:string;project_id:string;project_name:string;type:'model'|'render';revision:number;status:string;created_at:Date;detail:string;error:string|null}
+export interface PortalJobProgress {
+ started_at?:Date|null;worker_heartbeat_at?:Date|null;blender_heartbeat_at?:Date|null;
+ progress_phase?:string|null;deadline_at?:Date|null;finished_at?:Date|null;
+ cancellation_requested_at?:Date|null;
+}
+export interface PortalModelJob extends PortalJobProgress {id:string;project_id:string;requested_revision:number;status:string;note:string;error_message:string|null;created_at:Date}
+export interface PortalJobItem extends PortalJobProgress {id:string;project_id:string;project_name:string;type:'model'|'render';revision:number;status:string;created_at:Date;detail:string;error:string|null}
 export interface PortalRender {id:string;source_revision:number;engine:string;width:number;height:number;samples:number;status:string;created_at:Date;error_code?:string|null}
 export function escapeHtml(v:string):string {
  return v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -134,6 +139,50 @@ const statusLabels:Record<string,string>={
  pending:'I kö',running:'Körs',cancelling:'Avbryter',cancelled:'Avbrutet',completed:'Slutfört',failed:'Misslyckades',
  needs_recovery:'Kräver åtgärd'
 };
+/** Render only known lifecycle stages, never untrusted Python or provider output. */
+const modelPhases:Record<string,string>={
+ preparing:'Förbereder jobbet',modal_start:'Startar Modal',
+ blender_execution:'Kör Blender Python',artifact_transfer:'Överför resultat',
+ artifact_validation:'Verifierar filer',artifact_storage:'Sparar filer',
+ revision_commit:'Sparar revision'
+};
+const dateMs=(value:Date|null|undefined):number|null=>{
+ if(!value)return null;
+ const n=new Date(value).getTime();
+ return Number.isFinite(n)?n:null;
+};
+const wholeMinutes=(ms:number)=>Math.max(0,Math.floor(ms/60000));
+const formatDuration=(ms:number)=>wholeMinutes(ms)+' min';
+export function jobProgress(job:PortalJobItem,now=new Date()):string {
+ if(job.type!=='model')return '';
+ const active=activeStatus(job.status);
+ const started=dateMs(job.started_at),end=dateMs(job.finished_at);
+ const current=dateMs(now)??Date.now();
+ const elapsed=started!==null?formatDuration(Math.max(0,(end??current)-started)):null;
+ const stage=job.progress_phase&&Object.hasOwn(modelPhases,job.progress_phase)
+   ?modelPhases[job.progress_phase]:null;
+ const deadline=dateMs(job.deadline_at);
+ const worker=dateMs(job.worker_heartbeat_at),blender=dateMs(job.blender_heartbeat_at);
+ const age=(t:number)=>Math.max(0,current-t);
+ const elapsedText=elapsed?'<span>Körtid: '+escapeHtml(elapsed)+'</span>':'';
+ const stageText=stage?'<span>Fas: '+escapeHtml(stage)+'</span>':'';
+ if(!active) {
+   // Preserve last known stage in archived history, without calling it live.
+   return stageText||elapsedText?'<div class="job-progress" aria-label="Senaste körinformation">'+
+     stageText+elapsedText+'</div>':'';
+ }
+ const deadlineText=deadline!==null
+   ?'<span>Tidsgräns: '+(current>deadline?'passerad':formatDuration(deadline-current)+' kvar')+'</span>':'';
+ const workerText=worker!==null
+   ?'<span>Worker: '+(age(worker)>60000?'ingen färsk signal':formatDuration(age(worker))+' sedan')+'</span>'
+   :'<span>Worker: ingen signal ännu</span>';
+ // Blender's last successful numeric pulse is not equivalent to job percentage.
+ const blenderText=blender!==null
+   ?'<span>Blender: '+(age(blender)>60000?'ingen färsk signal':formatDuration(age(blender))+' sedan')+'</span>'
+   :'<span>Blender: ingen signal ännu</span>';
+ return '<div class="job-progress" aria-label="Körinformation">'+
+   stageText+elapsedText+deadlineText+workerText+blenderText+'</div>';
+}
 function jobRow(job:PortalJobItem,linked=true,csrf?:string):string {
  const status=statusLabels[job.status]??'Okänd status';
  const destination=projectUrl(job.project_id)+(job.type==='render'?'?view=images':'?view=history');
@@ -149,7 +198,7 @@ function jobRow(job:PortalJobItem,linked=true,csrf?:string):string {
    '<span class="job-main"><strong>'+escapeHtml(job.project_name)+'</strong>'+
    '<span class="muted small">'+category+' · revision '+job.revision+'</span>'+
    '<span class="muted small job-detail">'+escapeHtml(job.detail)+' · '+when(job.created_at)+'</span>'+
-   safeError+'</span>'+
+   safeError+jobProgress(job)+'</span>'+
    '<span class="job-end"><span class="tag'+(warning?' empty':'')+'">'+
      escapeHtml(status)+'</span><span class="job-arrow" aria-hidden="true">›</span></span>'+
    (linked?'</a>':'</div>')+
