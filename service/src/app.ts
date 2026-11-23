@@ -366,7 +366,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
            return ownerSharePage(projectId,Number(revision),session.csrf,'revoked');
          }
          // Publication is impossible unless real, checksum-verified GLB exists.
-         await activeGlb(session.ownerKey,projectId,Number(revision));
+         await services!.artifacts!.verifiedArtifactPath(projectId,Number(revision),'scene.glb');
          const created=await services!.publicShares.create(session.ownerKey,projectId,Number(revision));
          const publicUrl=config.publicOrigin+'/share/'+created.token;
          return ownerSharePage(projectId,Number(revision),session.csrf,'active',publicUrl);
@@ -776,7 +776,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
      try{
        const share=await services!.publicShares.resolve(token);
        if(!share)return reply.code(404).send('Delningen hittades inte');
-       await activeGlb(share.owner_key,share.project_id,share.revision);
+       await services!.artifacts!.verifiedArtifactPath(share.project_id,share.revision,'scene.glb');
        return reply.type('text/html; charset=utf-8')
          .send(publicSharePage(token,share.project_name,share.revision));
      }catch{return reply.code(404).send('Delningen hittades inte');}
@@ -789,7 +789,7 @@ ${MODAL_MEMORY_CHOICES_MIB.map(n=>'<option value="'+n+'"'+(n===memoryMiB?' selec
      try{
        const share=await services!.publicShares.resolve(token);
        if(!share)return reply.code(404).send({error:'not_found'});
-       const file=await activeGlb(share.owner_key,share.project_id,share.revision);
+       const file=await services!.artifacts!.verifiedArtifactPath(share.project_id,share.revision,'scene.glb');
        return reply.type('model/gltf-binary').send(createReadStream(file));
      }catch{return reply.code(404).send({error:'not_found'});}
    });
