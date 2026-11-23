@@ -174,7 +174,7 @@ export class JobOrchestrator {
       throw new Error('Job is not recoverable');
     await this.files.inspect(job.project_id,job.requested_revision,true);
     const committed=await this.jobs.finalize(owner,jobId,
-      `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`);
+      `${job.project_id}/${String(job.requested_revision).padStart(8,'0')}`,true);
     await this.registerSavedInlineRender(committed);
     return committed;
   }
