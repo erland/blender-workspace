@@ -85,8 +85,9 @@ export class ModalPythonExecutor implements BlenderExecutor {
           if(ended)return;
           cancellationAsked=true;
           proc.kill('SIGTERM');
-          // If Python cannot acknowledge Modal cleanup, do not claim cancellation.
-          stopTimer=setTimeout(()=>{proc.kill('SIGKILL');},12_000);
+          // Modal terminate(wait=True) may take tens of seconds. Never kill before
+          // allowing the trusted controller to report actual Sandbox cleanup.
+          stopTimer=setTimeout(()=>{proc.kill('SIGKILL');},90_000);
           stopTimer.unref();
         };
         const clear=()=>{clearTimeout(timer);if(stopTimer)clearTimeout(stopTimer);
@@ -113,7 +114,7 @@ export class ModalPythonExecutor implements BlenderExecutor {
           if(ended)return;ended=true;clear();
           if(timedOut)return reject(new JobExecutionError('setup','worker_timeout'));
           if(cancellationAsked){
-            if(/(?:^|\\n)BW_CANCELLED(?:\\r?\\n|$)/.test(stderr))
+            if(/^BW_CANCELLED\r?$/m.test(stderr))
               return reject(new JobCancelledConfirmed());
             // Even if the controller exited 0, only its trusted cleanup
             // acknowledgement can prove a requested interrupt was safe.
