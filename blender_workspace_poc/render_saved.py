@@ -6,6 +6,11 @@ import sys
 from pathlib import Path
 import bpy
 
+# Blender --python does not automatically add the repository root.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 def apply_viewer_camera(scene, data):
     """Convert glTF/Three Y-up camera to Blender Z-up without saving the scene."""
     from mathutils import Matrix, Vector
