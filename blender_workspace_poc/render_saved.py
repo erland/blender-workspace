@@ -5,7 +5,6 @@ import math
 import sys
 from pathlib import Path
 import bpy
-from blender_workspace_poc.preview_setup import frame_model, add_preview_lighting
 
 def apply_viewer_camera(scene, data):
     """Convert glTF/Three Y-up camera to Blender Z-up without saving the scene."""
@@ -63,6 +62,9 @@ def render(source,output,engine,width,height,samples,camera_json=None):
     if engine=='CYCLES' and samples>32:
         raise ValueError('Cycles samples limit exceeded')
     bpy.ops.wm.open_mainfile(filepath=source,load_ui=False,use_scripts=False)
+    # Delay Blender-only imports until after argument validation. This keeps
+    # the rendering limit tests runnable with a lightweight bpy stub.
+    from blender_workspace_poc.preview_setup import frame_model, add_preview_lighting
     scene=bpy.context.scene
     if engine=='BLENDER_EEVEE_NEXT':
         supported={item.identifier for item in scene.render.bl_rna.properties['engine'].enum_items}
