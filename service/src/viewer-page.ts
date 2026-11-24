@@ -36,7 +36,7 @@ canvas{display:block;width:100%;height:100%;border-radius:12px;touch-action:none
 .viewer-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:white;border-bottom:1px solid #cbd5e1}
 .viewer-toolbar .primary{flex:1;background:#2054b8;color:white;border-color:#2054b8;font-weight:650}
 .viewer-toolbar .icon-button{flex:0 0 44px;padding:8px}
-/* Only animated GLBs reveal this toolbar; static models retain the compact layout. */
+/* Only animated GLBs reveal playback controls; static models can still export orbit video. */
 .animation-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;padding:8px 12px;border-bottom:1px solid #cbd5e1}
 .animation-bar[hidden]{display:none}
 .animation-bar select{max-width:min(100%,230px)}
@@ -44,7 +44,7 @@ canvas{display:block;width:100%;height:100%;border-radius:12px;touch-action:none
 .animation-bar label{display:inline-flex;gap:6px;align-items:center}
 .animation-bar input[type=checkbox]{width:20px;height:20px;accent-color:#2054b8}
 .animation-bar output{font-variant-numeric:tabular-nums;white-space:nowrap;color:#475569;font-size:.84rem}
-.animation-video{flex:1 1 100%;border-top:1px solid #e2e8f0;padding-top:5px}
+.animation-video{background:#fff;border-bottom:1px solid #cbd5e1;padding:6px 12px}
 .animation-video summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:650}
 .animation-video-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0 8px}
 .animation-video-controls label{display:inline-flex;align-items:center;gap:6px}
@@ -127,20 +127,31 @@ footer{padding:9px 12px;font-size:.88rem;color:#475569}
  <input id="animation-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Animationsposition">
  <output id="animation-clock" for="animation-seek">0.0 s / 0.0 s</output>
  <label><input id="animation-loop" type="checkbox" checked> Upprepa</label>
+ </div>
  <details id="animation-video" class="animation-video">
   <summary>Exportera video</summary>
   <div class="animation-video-controls">
+   <label for="video-mode">Exporttyp <select id="video-mode" aria-label="Exporttyp">
+    <option value="orbit">360° kamerarotation</option>
+    <option value="animation">Befintlig animation</option>
+   </select></label>
+   <label for="video-duration">Ett varv <select id="video-duration" aria-label="Tid för ett varv">
+    <option value="10">10 s</option><option value="15" selected>15 s</option>
+    <option value="30">30 s</option><option value="60">60 s</option>
+   </select></label>
+   <label for="video-resolution">Upplösning <select id="video-resolution" aria-label="Videoupplösning">
+    <option value="720">720p</option><option value="1080" selected>1080p</option>
+   </select></label>
    <label for="video-format">Format <select id="video-format" aria-label="Videoformat" disabled></select></label>
-   <button id="video-start" type="button" disabled>Spela in video (720p)</button>
+   <button id="video-start" type="button" disabled>Exportera video</button>
    <button id="video-cancel" type="button" hidden>Avbryt</button>
    <a id="video-download" hidden>Spara video</a>
    <button id="video-share" type="button" hidden>Dela video</button>
    <output id="video-status" role="status" aria-live="polite">
-    720p · 30 fps (målvärde). Upp till 120 sekunder, spelas in i realtid utan Modal-kostnad.
+    30 fps (målvärde). Video skapas på enheten utan Modal-kostnad.
    </output>
   </div>
  </details>
-</div>
 <details class="viewer-settings" id="viewer-settings">
  <summary>${uiIcon('settings')} Visningsinställningar</summary>
  <div class="settings-content">
