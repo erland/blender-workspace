@@ -2,7 +2,7 @@ schema_version: 1
 project: blender-workspace
 status: code_complete_live_acceptance_deferred
 mode: CHANGE
-selected_step: VERIFY_DEV047_LIVE
+selected_step: VERIFY_DEV060_LIVE
 in_progress: null
 completed_steps:
   - DEV-001
@@ -26,6 +26,7 @@ completed_steps:
   - DEV-045
   - DEV-046
   - DEV-047
+  - DEV-060
 verification:
   dev008:
     status: DEFERRED
@@ -312,7 +313,7 @@ dev038:
   live_acceptance: DEFERRED
   next: "DEV-039 New project from an owned saved revision"
 
-next_development_step: VERIFY_DEV047_LIVE
+next_development_step: VERIFY_DEV060_LIVE
 
 dev039:
   status: COMPLETE
@@ -419,3 +420,20 @@ dev047:
     deployment_run: https://github.com/erland/blender-workspace/actions/runs/45015051381
   live_acceptance: DEFERRED
   next: "After deployment call workspace_get_render_image on an existing render and verify that ChatGPT can visually inspect actual pixels; no Modal job"
+
+dev060:
+  status: COMPLETE
+  scope: "360-degree browser video export for static and animated GLB, private and public viewers; 720p/1080p, MP4/WebM, 10/15/30/60 seconds; original animation export preserved"
+  implementation_branch: feature/dev-060-orbit-video-export
+  source_pr: https://github.com/erland/blender-workspace/pull/123
+  implementation_sha: 172bef2d8dc0e789a39c0d7b4e0dbed8707686f9
+  code_ci:
+    status: PASS
+    service_run: https://github.com/erland/blender-workspace/actions/runs/45485325923
+    blender_run: https://github.com/erland/blender-workspace/actions/runs/45485326008
+    deployment_run: https://github.com/erland/blender-workspace/actions/runs/45485325875
+    design_visual_run: https://github.com/erland/blender-workspace/actions/runs/45485325907
+  live_acceptance:
+    status: DEFERRED
+    reason: "Real iPad/browser MP4/WebM recording, playback and sharing require the deployed application; no owner-billed Modal jobs for browser capture"
+  next: "After release, accept static and animated 360-degree video export on iPad, desktop and public viewer"
