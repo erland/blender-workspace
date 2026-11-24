@@ -16,19 +16,46 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Build three images once
-        run: |
-          docker build -f service/Dockerfile -t bw-mcp:ci service
-          docker build -f job-worker/Dockerfile \
-            --build-arg MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:v0.0.0 \
-            -t bw-worker:ci .
-          docker build -f Dockerfile -t bw-blender:ci .
-      - name: Validate service, preflight, worker image pin and Blender
+      - uses: docker/setup-buildx-action@v3
+      - name: Build MCP service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./service
+          file: ./service/Dockerfile
+          load: true
+          tags: bw-mcp:ci
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,scope=mcp,mode=max,ignore-error=true
+      - name: Build job worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./job-worker/Dockerfile
+          load: true
+          tags: bw-worker:ci
+          build-args: MODAL_BLENDER_IMAGE=ghcr.io/erland/blender-workspace-blender:v0.0.0
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max,ignore-error=true
+      - name: Validate service, preflight and worker image pin
         run: |
           docker run --rm --entrypoint python3 bw-mcp:ci -I -c "compile('import bpy', '<ci>', 'exec')"
           docker run --rm --entrypoint node bw-mcp:ci -e "import('node:fs').then(fs=>{if(!fs.existsSync('/app/dist/db/migrate-cli.js')||!fs.existsSync('/app/migrations'))process.exit(1)})"
           docker run --rm --entrypoint python3 bw-worker:ci -c "import os; assert os.environ['MODAL_BLENDER_IMAGE']=='ghcr.io/erland/blender-workspace-blender:v0.0.0'"
-          docker run --rm bw-blender:ci
+      # PRs already build and smoke-test Blender in CI - Blender.
+      # Keep the full deployment verification on main and manual runs.
+      - name: Build Blender for full deployment verification
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: bw-blender:ci
+          cache-from: type=gha,scope=blender
+          cache-to: type=gha,scope=blender,mode=max,ignore-error=true
+      - name: Validate Blender image
+        if: github.event_name != 'pull_request'
+        run: docker run --rm bw-blender:ci
       - name: Render Coolify Compose with dummy variables
         env:
           BW_IMAGE_TAG: v1.2.3
