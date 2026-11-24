@@ -26,6 +26,13 @@ label{display:inline-flex;gap:7px;align-items:center}
 button,select{font:inherit;min-height:44px;border:1px solid #64748b;border-radius:9px;background:white;padding:8px 12px}
 button:disabled,select:disabled{opacity:.5}
 #animation-controls[hidden]{display:none}
+.video-export{border-top:1px solid #e2e8f0;margin-top:12px;padding-top:8px}
+.video-export summary{cursor:pointer;min-height:44px;font-weight:650}
+.video-export .controls{gap:8px}
+.video-export a{display:inline-flex;align-items:center;min-height:44px;padding:8px 12px;
+ border:1px solid #2054b8;border-radius:9px;text-decoration:none}
+.video-export [hidden]{display:none}
+#video-status{flex:1 1 100%;color:#475569}
 #public-status{display:block;color:#475569;min-height:24px}
 .note{color:#475569;font-size:.9rem;margin:12px 2px 0}
 .public-gallery{margin-top:16px}
@@ -44,6 +51,25 @@ footer{margin-top:18px;color:#64748b;font-size:.82rem}
 <button type="button" id="public-play" disabled>Spela</button>
 <label for="public-loop"><input id="public-loop" type="checkbox" checked> Upprepa</label>
 </div>
+<details id="animation-video" class="video-export">
+<summary>Exportera video</summary>
+<div class="controls">
+<label for="video-mode">Exporttyp <select id="video-mode">
+<option value="orbit">360° kamerarotation</option><option value="animation">Befintlig animation</option>
+</select></label>
+<label for="video-duration">Ett varv <select id="video-duration">
+<option value="10">10 s</option><option value="15" selected>15 s</option><option value="30">30 s</option><option value="60">60 s</option>
+</select></label>
+<label for="video-resolution">Upplösning <select id="video-resolution">
+<option value="720">720p</option><option value="1080" selected>1080p</option>
+</select></label>
+<label for="video-format">Format <select id="video-format" disabled></select></label>
+<button type="button" id="video-start" disabled>Exportera video</button>
+<button type="button" id="video-cancel" hidden>Avbryt</button>
+<a id="video-download" hidden>Spara video</a>
+<button type="button" id="video-share" hidden>Dela video</button>
+<output id="video-status" role="status" aria-live="polite">Webbläsarbaserad export utan Modal.</output>
+</div></details>
 <p id="public-status" role="status" aria-live="polite">Laddar modell…</p>
 </section>
 ${renders.length?`<section class="public-gallery" aria-label="Renderade bilder från revision ${revision}">
