@@ -4,54 +4,8 @@ The authoritative BLEND is already saved before this function runs. Camera,
 lighting and render settings are preview-only and never written back to BLEND.
 """
 from pathlib import Path
-from mathutils import Vector
 import bpy
-
-
-def scene_bounds():
-    """Bounds of real renderable objects; avoid triggering procedural evaluation."""
-    corners = []
-    for obj in bpy.context.scene.objects:
-        if obj.type not in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'CURVES', 'POINTCLOUD', 'VOLUME'}:
-            continue
-        if obj.hide_render:
-            continue
-        # Stored object bounds need no evaluated depsgraph. Unknown procedural
-        # expansions may lie outside the camera; never claim perfect framing.
-        try:
-            if obj.type == 'CURVES' and not len(obj.data.points):
-                continue
-            for corner in obj.bound_box:
-                corners.append(obj.matrix_world @ Vector(corner))
-        except (AttributeError, RuntimeError, TypeError):
-            continue
-    return corners
-
-
-def frame_model(scene):
-    """Frame about 80% of 512-square image with a three-quarter camera."""
-    points = scene_bounds()
-    if not points:
-        raise ValueError('No known renderable bounds')
-    lo = Vector(tuple(min(point[i] for point in points) for i in range(3)))
-    hi = Vector(tuple(max(point[i] for point in points) for i in range(3)))
-    center = (lo + hi) * .5
-    span = max((hi - lo).length, .1)
-    view = Vector((1, -1.3, .75)).normalized()
-    position = center + view * max(span * 2.2, 4.)
-    bpy.ops.object.camera_add(location=position)
-    camera = bpy.context.object
-    camera.name = 'Temporary preview camera'
-    camera.rotation_euler = (center - position).to_track_quat('-Z','Y').to_euler()
-    camera.data.type = 'ORTHO'
-    camera.data.clip_end = max(1000, span * 20)
-    right = camera.rotation_euler.to_quaternion() @ Vector((1, 0, 0))
-    up = camera.rotation_euler.to_quaternion() @ Vector((0, 1, 0))
-    horizontal = max(point.dot(right) for point in points) - min(point.dot(right) for point in points)
-    vertical = max(point.dot(up) for point in points) - min(point.dot(up) for point in points)
-    camera.data.ortho_scale = max(horizontal, vertical, .1) / .78
-    scene.camera = camera
-    return camera
+from blender_workspace_poc.preview_setup import frame_model, add_preview_lighting
 
 
 def render_inline(output):
@@ -74,13 +28,7 @@ def render_inline(output):
     scene.render.image_settings.color_mode = 'RGBA'
     scene.render.filepath = str(output)
     scene.render.film_transparent = False
-    if not any(obj.type == 'LIGHT' and not obj.hide_render for obj in scene.objects):
-        bpy.ops.object.light_add(type='AREA', location=camera.location + Vector((-2,1,3)))
-        key=bpy.context.object
-        key.name = 'Temporary preview light'
-        key.data.energy=900
-        key.data.shape='DISK'
-        key.data.size=max(4, camera.data.ortho_scale * 1.4)
+    add_preview_lighting(scene,camera)
     bpy.ops.render.render(write_still=True)
     file=Path(output)
     if not file.is_file() or file.stat().st_size<100:
