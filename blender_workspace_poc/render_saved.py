@@ -6,6 +6,11 @@ import sys
 from pathlib import Path
 import bpy
 
+# Blender --python does not automatically add the repository root.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 def apply_viewer_camera(scene, data):
     """Convert glTF/Three Y-up camera to Blender Z-up without saving the scene."""
     from mathutils import Matrix, Vector
@@ -62,6 +67,9 @@ def render(source,output,engine,width,height,samples,camera_json=None):
     if engine=='CYCLES' and samples>32:
         raise ValueError('Cycles samples limit exceeded')
     bpy.ops.wm.open_mainfile(filepath=source,load_ui=False,use_scripts=False)
+    # Delay Blender-only imports until after argument validation. This keeps
+    # the rendering limit tests runnable with a lightweight bpy stub.
+    from blender_workspace_poc.preview_setup import frame_model, add_preview_lighting
     scene=bpy.context.scene
     if engine=='BLENDER_EEVEE_NEXT':
         supported={item.identifier for item in scene.render.bl_rna.properties['engine'].enum_items}
@@ -86,20 +94,8 @@ def render(source,output,engine,width,height,samples,camera_json=None):
     if camera_json is not None:
         apply_viewer_camera(scene,json.loads(camera_json))
     elif scene.camera is None:
-        # Temporary preview camera, never saved back to the original .blend.
-        from mathutils import Vector
-        bpy.ops.object.camera_add(location=(6,-8,5))
-        camera=bpy.context.object
-        direction=Vector((0,0,0))-camera.location
-        camera.rotation_euler=direction.to_track_quat('-Z','Y').to_euler()
-        camera.data.type='ORTHO'
-        camera.data.ortho_scale=9
-        scene.camera=camera
-    if not any(o.type=='LIGHT' for o in bpy.data.objects):
-        bpy.ops.object.light_add(type='AREA',location=(2,-4,8))
-        bpy.context.object.data.energy=800
-        bpy.context.object.data.shape='DISK'
-        bpy.context.object.data.size=7
+        frame_model(scene, width/height)
+    add_preview_lighting(scene,scene.camera)
     bpy.ops.render.render(write_still=True)
     file=Path(output)
     if not file.is_file() or file.stat().st_size<64:
