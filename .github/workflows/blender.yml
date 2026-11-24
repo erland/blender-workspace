@@ -20,8 +20,18 @@ jobs:
         run: |
           python3 -m compileall -q blender_workspace_poc modal_provider tests
           python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - uses: docker/setup-buildx-action@v3
       - name: Build Blender once
-        run: docker build --progress plain -t blender-workspace:ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: blender-workspace:ci
+          cache-from: type=gha,scope=blender
+          cache-to: type=gha,scope=blender,mode=max,ignore-error=true
+      - name: Validate default Blender image command
+        run: docker run --rm blender-workspace:ci
       - name: DEV-052 verify native BLEND retains packed image textures after source is removed
         run: |
           set -o pipefail

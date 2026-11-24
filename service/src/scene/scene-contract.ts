@@ -85,6 +85,9 @@ const sceneSchema=z.object({
 const reportSchema=z.object({
   schema_version:z.literal(1),scene:sceneSchema
 }).passthrough();
+// Large architectural scenes use verbose per-object topology reports.
+// Keep a strict upper bound while allowing >2 MiB immutable scene snapshots.
+const MAX_SCENE_REPORT_BYTES=32*1024*1024;
 export type SceneDescription=z.infer<typeof sceneSchema>;
 export type SceneObject=z.infer<typeof sceneObject>;
 export const SceneDescriptionSchema=sceneSchema;
@@ -100,11 +103,11 @@ export async function inspectSavedScene(
   const manifest=await storage.inspect(projectId,revision,true);
   const reports=manifest.artifacts.filter(x=>x.name.endsWith('.json'));
   if(reports.length!==1)throw new Error('Exactly one scene report is required');
-  if(reports[0].sizeBytes>2*1024*1024)
+  if(reports[0].sizeBytes>MAX_SCENE_REPORT_BYTES)
     throw new Error('Scene report too large to inspect');
   const filepath=await storage.verifiedArtifactPath(projectId,revision,reports[0].name);
   const size=await stat(filepath);
-  if(size.size>2*1024*1024)throw new Error('Scene report too large to inspect');
+  if(size.size>MAX_SCENE_REPORT_BYTES)throw new Error('Scene report too large to inspect');
   const report=SceneReportSchema.parse(JSON.parse(await readFile(filepath,'utf8')));
   const names=new Set<string>();
   const ids=new Set<string>();
@@ -215,7 +218,7 @@ export async function inspectSavedPerformance(
   storage:Pick<LocalArtifactStore,'verifiedArtifactPath'>,
   projectId:string,revision:number){
   const filename=await storage.verifiedArtifactPath(projectId,revision,'scene.json');
-  if((await stat(filename)).size>2*1024*1024)throw new Error('Scene report too large');
+  if((await stat(filename)).size>MAX_SCENE_REPORT_BYTES)throw new Error('Scene report too large');
   const report=SceneReportSchema.parse(JSON.parse(await readFile(filename,'utf8')));
   const data=storedPerformance.parse(report);
   if(!data.timings&&!data.execution&&!data.inlineRender)return null;
