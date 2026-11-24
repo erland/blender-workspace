@@ -144,7 +144,7 @@ test('DEV-051 viewer provides responsive accessible UI for GLB exports',async()=
  assert.match(html,/role="status" aria-live="polite"/);
  assert.match(html,/720p/);
  const client=await readFile(new URL('../viewer/client.js',import.meta.url),'utf8');
- assert.match(client,/recordCanvasClip\(/);
+ assert.match(client,/createViewerRecording\(/);
  assert.match(client,/supportedVideoFormats\(/);
  assert.match(client,/videoDownload\.download=/);
  assert.match(client,/navigator\.canShare/);
