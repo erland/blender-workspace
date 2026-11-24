@@ -20,11 +20,11 @@ async function simulatedController(t,acknowledge){
 import signal,sys,time
 def terminate(_signum,_frame):
     time.sleep(0.05)
-    ${acknowledge ? "sys.stderr.write('BW_CANCELLED\\\\r\\\\n')" : "sys.stderr.write('BW_DIAGNOSTIC phase=cleanup code=sandbox_cleanup_failed\\\\n')"}
+    ${acknowledge ? "sys.stderr.write('BW_CANCELLED\\r\\n')" : "sys.stderr.write('BW_DIAGNOSTIC phase=cleanup code=sandbox_cleanup_failed\\n')"}
     sys.stderr.flush()
     raise SystemExit(2)
 signal.signal(signal.SIGTERM,terminate)
-sys.stdout.write('BW_PROGRESS phase=modal_start\\\\n')
+sys.stdout.write('BW_PROGRESS phase=modal_start\\n')
 sys.stdout.flush()
 while True:
     time.sleep(0.1)
