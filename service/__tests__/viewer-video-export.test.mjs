@@ -135,7 +135,7 @@ test('DEV-051 no mismatched file extension when encoder returns unexpected conta
  assert.match((await result).message,/filinnehållet/);
 });
 
-test('DEV-051 viewer provides responsive accessible UI only for animated GLBs',async()=>{
+test('DEV-051 viewer provides responsive accessible UI for GLB exports',async()=>{
  const html=viewerPage('11111111-1111-4111-8111-111111111111',1);
  for(const id of ['animation-video','video-format','video-start','video-cancel',
     'video-download','video-share','video-status'])
@@ -144,11 +144,60 @@ test('DEV-051 viewer provides responsive accessible UI only for animated GLBs',a
  assert.match(html,/role="status" aria-live="polite"/);
  assert.match(html,/720p/);
  const client=await readFile(new URL('../viewer/client.js',import.meta.url),'utf8');
- assert.match(client,/recordCanvasClip\(/);
+ assert.match(client,/createViewerRecording\(/);
  assert.match(client,/supportedVideoFormats\(/);
  assert.match(client,/videoDownload\.download=/);
  assert.match(client,/navigator\.canShare/);
  assert.match(client,/activeVideo\?\.controller\.cancel\(\)/);
  const helper=await readFile(new URL('../viewer/video-export.js',import.meta.url),'utf8');
  assert.doesNotMatch(helper,/fetch\s*\(|ModalPythonExecutor|workspace_queue_python_script/);
+});
+
+import {videoSize,ORBIT_DURATIONS,orbitPosition,orbitHasPerspective}
+  from '../viewer/video-orbit.js';
+import {publicSharePage} from '../dist/web/public-share-page.js';
+
+test('DEV-060 orbit preserves height, radius, and returns to exact initial position',()=>{
+ assert.deepEqual(ORBIT_DURATIONS,[10,15,30,60]);
+ assert.deepEqual(videoSize('720'),{width:1280,height:720});
+ assert.deepEqual(videoSize('1080'),{width:1920,height:1080});
+ assert.throws(()=>videoSize('4k'),/upplösning/);
+ const start=[10,8,0],target=[2,3,0];
+ assert.deepEqual(orbitPosition(start,target,0,10),start);
+ const half=orbitPosition(start,target,5,10);
+ assert.ok(Math.abs(half[0]+6)<1e-10);
+ assert.equal(half[1],8);
+ assert.ok(Math.abs(half[2])<1e-10);
+ const end=orbitPosition(start,target,10,10);
+ assert.ok(Math.abs(end[0]-start[0])<1e-10);
+ assert.ok(Math.abs(end[2]-start[2])<1e-10);
+ assert.equal(end[1],start[1]);
+ assert.equal(orbitHasPerspective(start,target),true);
+ assert.equal(orbitHasPerspective([2,10,0],target),false);
+ assert.throws(()=>orbitPosition(start,target,1,9),/kameravärden/);
+ assert.throws(()=>orbitPosition(start,target,NaN,10),/kameravärden/);
+});
+
+test('DEV-060 both viewer shells expose orbit export independently of animation presence',async()=>{
+ const owner=viewerPage('11111111-1111-4111-8111-111111111111',1);
+ const pub=publicSharePage('x'.repeat(43),'Testmodell',1);
+ for(const html of [owner,pub]){
+   for(const id of ['animation-video','video-mode','video-duration',
+     'video-resolution','video-format','video-start','video-cancel',
+     'video-download','video-share','video-status'])
+     assert.ok(html.includes('id="'+id+'"'),id);
+   assert.match(html,/360° kamerarotation/);
+   assert.match(html,/1080p/);
+ }
+ const privateJs=await readFile(new URL('../viewer/client.js',import.meta.url),'utf8');
+ const publicJs=await readFile(new URL('../viewer/public-client.js',import.meta.url),'utf8');
+ const shared=await readFile(new URL('../viewer/video-capture.js',import.meta.url),'utf8');
+ for(const js of [privateJs,publicJs]){
+   assert.match(js,/createViewerRecording\(/);
+   assert.match(js,/activeVideo\?\.controller\.cancel\(\)/);
+   assert.match(js,/supportedVideoFormats\(/);
+ }
+ assert.match(shared,/recordCanvasClip\(/);
+ assert.match(shared,/orbitPosition\(/);
+ assert.doesNotMatch(shared,/fetch\s*\(|ModalPythonExecutor|workspace_queue_python_script/);
 });

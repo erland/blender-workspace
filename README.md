@@ -110,8 +110,15 @@ browser using Three.js. The viewer exposes clip selection, play/pause, timeline
 scrubbing and repeat controls only when usable clips exist. Revisions being
 compared follow the same normalized time position only when an animation with
 the same name exists in both revisions; other comparisons remain static.
-Playback is read-only, works without Modal jobs and does not create an MP4 or
-change the authoritative `.blend` file. Blender effects that cannot be
+Playback is read-only and does not change the authoritative `.blend`
+file. Browser video export (DEV-051/DEV-060) separately records either the
+selected clip once or a 360° camera orbit for static or animated GLB revisions.
+The authenticated and public shared viewers provide the same options:
+10/15/30/60-second orbit, 720p/1080p, and MP4/WebM only when the browser
+supports encoding. This runs locally via Three.js and MediaRecorder without
+Modal or server video work. 30 fps is a target, not a guarantee. Live iPad/
+browser video recording acceptance is deferred; see
+[DEV-060](service/docs/dev-060-browser-orbit-video.md). Blender effects that cannot be
 represented as glTF animations may not animate in the browser. Browser/iPad
 acceptance remains a deployment test.
 

@@ -4,8 +4,9 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {cameraPlacement,DEFAULT_VIEW,VIEW_DIRECTIONS} from './view-controls.js';
 import {resizeViewportProjection} from './viewport-resize.js';
 import {ClipPlayer} from './clip-player.js';
-import {supportedVideoFormats,VIDEO_WIDTH,VIDEO_HEIGHT,MAX_VIDEO_SECONDS,
-  recordCanvasClip,videoFileName,VideoExportCancelled} from './video-export.js';
+import {supportedVideoFormats,MAX_VIDEO_SECONDS,videoFileName,VideoExportCancelled} from './video-export.js';
+import {videoSize,ORBIT_DURATIONS} from './video-orbit.js';
+import {createViewerRecording} from './video-capture.js';
 
 // Read-only same-origin GLB viewer; no user code, access tokens or Modal calls.
 const match=location.pathname.match(/^\/viewer\/([0-9a-f-]{36})\/revisions\/([1-9][0-9]{0,7})$/i);
@@ -28,6 +29,9 @@ const animationPlay=document.getElementById('animation-play');
 const animationSeek=document.getElementById('animation-seek');
 const animationClock=document.getElementById('animation-clock');
 const animationLoopToggle=document.getElementById('animation-loop');
+const videoMode=document.getElementById('video-mode');
+const videoDuration=document.getElementById('video-duration');
+const videoResolution=document.getElementById('video-resolution');
 const videoFormat=document.getElementById('video-format');
 const videoStart=document.getElementById('video-start');
 const videoCancel=document.getElementById('video-cancel');
@@ -52,15 +56,21 @@ function configureVideoFormats(){
     videoFormat.append(option);
   }
   if(formats.some(f=>f.mimeType===selectedMime))videoFormat.value=selectedMime;
-  const duration=main.animation?.duration??0;
-  const supported=formats.length>0&&duration>0&&duration<=MAX_VIDEO_SECONDS;
+  const clipAvailable=(main.animation?.duration??0)>0;
+  videoMode.querySelector('option[value="animation"]').disabled=!clipAvailable;
+  if(!clipAvailable&&videoMode.value==='animation')videoMode.value='orbit';
+  const isOrbit=videoMode.value==='orbit';
+  videoDuration.disabled=!isOrbit;
+  const duration=isOrbit?Number(videoDuration.value):main.animation?.duration??0;
+  const supported=formats.length>0&&Boolean(main.model)&&duration>0&&duration<=MAX_VIDEO_SECONDS;
   videoFormat.disabled=!supported;
   videoStart.disabled=!supported;
   if(!formats.length)videoStatus.textContent=
     'Den här webbläsaren kan inte spela in MP4 eller WebM från 3D-visaren.';
+  else if(!main.model)videoStatus.textContent='Ladda modellen innan videoexport.';
   else if(duration>MAX_VIDEO_SECONDS)videoStatus.textContent=
     'Animationen är för lång (max 120 sekunder för videoexport).';
-  else videoStatus.textContent='720p · upp till 30 fps. Spelas in i realtid på enheten, utan Modal.';
+  else videoStatus.textContent=videoResolution.value+'p · upp till 30 fps. Spelas in i realtid på enheten, utan Modal.';
 }
 const getGlbUrl=r=>'/viewer/api/projects/'+projectId+'/revisions/'+r+'/scene.glb';
 const getRevisionsUrl=()=>'/viewer/api/projects/'+projectId+'/revisions';
@@ -331,7 +341,9 @@ function configureAnimationControls(){
   animationPicker.value='0';selectAnimation(0);
   configureVideoFormats();
 }
-animationPicker.addEventListener('change',()=>selectAnimation(Number(animationPicker.value)));
+animationPicker.addEventListener('change',()=>{
+  selectAnimation(Number(animationPicker.value));configureVideoFormats();
+});
 animationPlay.addEventListener('click',()=>{
   if(!main.animation?.duration)return;
   if(!animationPlaying&&animationTime>=main.animation.duration)animationTime=0;
@@ -363,113 +375,90 @@ function animationFrame(now){
 }
 requestAnimationFrame(animationFrame);
 
-// Video export deliberately records the selected clip from 0 to its end,
-// once, with the camera frozen at export start. No Python, server request or
-// Modal job is involved. Separate GPU canvas preserves the live viewer size.
+// Both video modes share the DEV-051 MediaRecorder pipeline and a separate
+// Three.js canvas. No video server request or Modal job is involved.
 const exportControls=()=>[
   animationPicker,animationPlay,animationSeek,animationLoopToggle,
   revisionPicker,viewPicker,boundsToggle,axesToggle,wireframeToggle,
   document.getElementById('reset'),document.getElementById('snapshot'),
-  document.getElementById('render-current-view')
+  document.getElementById('render-current-view'),
+  videoMode,videoDuration,videoResolution,videoFormat
 ];
+for(const input of [videoMode,videoDuration,videoResolution])
+  input.addEventListener('change',()=>{clearVideoDownload();configureVideoFormats();});
 videoFormat.addEventListener('change',clearVideoDownload);
 videoStart.addEventListener('click',()=>{
-  if(activeVideo||!main.model||!main.animation?.duration)return;
-  const duration=main.animation.duration;
-  if(duration>MAX_VIDEO_SECONDS){
-    videoStatus.textContent='Animationen är för lång (max 120 sekunder).';return;
+  const mode=videoMode.value;
+  if(activeVideo||!main.model||!['orbit','animation'].includes(mode))return;
+  const duration=mode==='orbit'?Number(videoDuration.value):main.animation?.duration??0;
+  if(duration<=0||duration>MAX_VIDEO_SECONDS||
+     (mode==='orbit'&&!ORBIT_DURATIONS.includes(duration))){
+    videoStatus.textContent='Ogiltig videolängd (högst 120 sekunder).';return;
   }
   const mimeType=videoFormat.value;
-  const format=supportedVideoFormats().find(item=>item.mimeType===mimeType);
-  if(!format){
+  if(!supportedVideoFormats().some(item=>item.mimeType===mimeType)){
     videoStatus.textContent='Det valda videoformatet stöds inte på denna enhet.';return;
   }
+  const {width,height}=videoSize(videoResolution.value);
   clearVideoDownload();
-  const beforeTime=animationTime;
+  const beforeTime=animationTime,beforePlaying=animationPlaying;
   animationPlaying=false;animationLastFrame=null;applyAnimationTime();
   const disabledState=exportControls().map(control=>[control,control.disabled]);
   for(const [control] of disabledState)control.disabled=true;
-  videoFormat.disabled=true;videoStart.disabled=true;
-  videoCancel.hidden=false;
-  let canvas=null,renderer=null,controller=null;
+  videoStart.disabled=true;videoCancel.hidden=false;
   const release=()=>{
-    try{renderer?.dispose();renderer?.forceContextLoss();}catch{}
-    canvas?.remove();
     for(const [control,disabled] of disabledState)control.disabled=disabled;
-    videoCancel.hidden=true;
-    activeVideo=null;
-    animationTime=beforeTime;animationLastFrame=null;applyAnimationTime();
-    configureVideoFormats();
+    videoCancel.hidden=true;activeVideo=null;
+    animationTime=beforeTime;animationPlaying=beforePlaying;
+    animationLastFrame=null;applyAnimationTime();configureVideoFormats();
   };
   try{
-    canvas=document.createElement('canvas');
-    canvas.width=VIDEO_WIDTH;canvas.height=VIDEO_HEIGHT;
-    canvas.setAttribute('aria-hidden','true');
-    canvas.style.cssText='position:fixed;left:-10000px;top:0;width:1px;height:1px;pointer-events:none';
-    document.body.append(canvas);
-    renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
-    renderer.setPixelRatio(1);
-    renderer.setSize(VIDEO_WIDTH,VIDEO_HEIGHT,false);
-    renderer.outputColorSpace=main.renderer.outputColorSpace;
-    renderer.toneMapping=main.renderer.toneMapping;
-    const camera=main.camera.clone();
-    camera.aspect=VIDEO_WIDTH/VIDEO_HEIGHT;
-    camera.updateProjectionMatrix();
-    const drawFrame=seconds=>{
-      animationTime=seconds;
-      applyAnimationTime();
-      renderer.render(main.scene,camera);
-    };
-    // First frame is drawn before recording begins; recorder.start remains
-    // directly inside the click handler for Safari/iPad gesture restrictions.
-    drawFrame(0);
-    controller=recordCanvasClip({canvas,durationSeconds:duration,mimeType,drawFrame,
+    const controller=createViewerRecording({
+      scene:main.scene,sourceCamera:main.camera,sourceRenderer:main.renderer,
+      target:main.controls.target,mode,durationSeconds:duration,mimeType,width,height,
+      onFrame:seconds=>{
+        if(mode==='animation'){animationTime=seconds;applyAnimationTime();}
+      },
       onProgress:(seconds,total)=>{
         videoStatus.textContent='Spelar in video: '+seconds.toFixed(1)+' / '+
-          total.toFixed(1)+' s (720p, 30 fps målvärde)…';
-      }});
+          total.toFixed(1)+' s ('+videoResolution.value+'p, 30 fps målvärde)…';
+      }
+    });
     activeVideo={controller};
-    controller.done.then(({blob,format:recordedFormat})=>{
+    controller.done.then(({blob,format})=>{
       videoObjectUrl=URL.createObjectURL(blob);
-      const filename=videoFileName(revision,selectedAnimationName(),recordedFormat);
+      const filename=videoFileName(revision,mode==='orbit'?'360-rotation':
+        selectedAnimationName(),format);
       videoDownload.href=videoObjectUrl;videoDownload.download=filename;
       videoDownload.hidden=false;
-      // Optional platform sharing must never invalidate a completed download.
       try{
         if(typeof File==='function'){
           const file=new File([blob],filename,{type:blob.type});
-          if(typeof navigator.share==='function'&&
-             navigator.canShare?.({files:[file]})){
+          if(typeof navigator.share==='function'&&navigator.canShare?.({files:[file]})){
             videoSharedFile=file;videoShare.hidden=false;
           }
         }
-      }catch{/* Download via the local Blob URL remains available. */}
-      videoStatus.textContent='Videon är färdig ('+recordedFormat.toUpperCase()+
-        ', 720p). Välj Spara video eller Dela video.';
+      }catch{/* Local download remains available. */}
+      videoStatus.textContent='Videon är färdig ('+format.toUpperCase()+', '+
+        videoResolution.value+'p). Välj Spara video eller Dela video.';
     }).catch(error=>{
-      videoStatus.textContent=error instanceof VideoExportCancelled
-        ?'Videoexporten avbröts.'
-        :error instanceof Error?error.message:'Det gick inte att exportera videon.';
+      videoStatus.textContent=error instanceof VideoExportCancelled?
+        'Videoexporten avbröts.':error instanceof Error?error.message:
+        'Det gick inte att exportera videon.';
     }).finally(()=>{
-      // Only release GPU resources; keep the generated Blob URL available
-      // until another clip/export is selected or the tab is closed.
-      const message=videoStatus.textContent;
-      release();
-      videoStatus.textContent=message;
+      const message=videoStatus.textContent;release();videoStatus.textContent=message;
     });
-  }catch{
-    release();
-    videoStatus.textContent='Videoinspelning kunde inte startas på den här enheten.';
+  }catch(error){
+    release();videoStatus.textContent=error instanceof Error?error.message:
+      'Videoinspelning kunde inte startas på den här enheten.';
   }
 });
 videoCancel.addEventListener('click',()=>activeVideo?.controller.cancel());
 videoShare.addEventListener('click',async()=>{
   if(!videoSharedFile||typeof navigator.share!=='function')return;
-  try{await navigator.share({files:[videoSharedFile],title:'Blender Workspace-animation'});}
-  catch(error){
-    if(error?.name!=='AbortError')videoStatus.textContent=
-      'Kunde inte dela videon. Använd Spara video i stället.';
-  }
+  try{await navigator.share({files:[videoSharedFile],title:'Blender Workspace-video'});}
+  catch(error){if(error?.name!=='AbortError')videoStatus.textContent=
+    'Kunde inte dela videon. Använd Spara video i stället.';}
 });
 revisionPicker.addEventListener('change',async()=>{
   const rev=revisionPicker.value;
@@ -566,6 +555,7 @@ renderButton.addEventListener('click',async()=>{
 try{
   await load(revision,main);
   configureAnimationControls();
+  configureVideoFormats();
   document.getElementById('reset').disabled=false;
   document.getElementById('snapshot').disabled=false;
   renderButton.disabled=false;
